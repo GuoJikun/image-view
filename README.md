@@ -21,8 +21,9 @@
 当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存）。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
-- v2 及后续需求：[docs/PLAN-V2.md](docs/PLAN-V2.md)
-- v1.x 设计与验收：[docs/PLAN.md](docs/PLAN.md)
+- v2.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
+- v2.x / v3+ 方向：[docs/PLAN-P2.md](docs/PLAN-P2.md) · [docs/PLAN-P3.md](docs/PLAN-P3.md)
+- v1.x 设计与验收：[docs/PLAN-P0.md](docs/PLAN-P0.md)
 
 ## 运行
 
@@ -98,9 +99,11 @@ examples/
 assets/
   icon.png      窗口图标
 docs/
-  PLAN.md       v1.x 设计与验收记录
-  PLAN-V2.md    v2 及后续阶段计划（P1/P2/P3）
   ROADMAP.md    阶段进度总览与里程碑
+  PLAN-P0.md    v1.x 设计与验收记录
+  PLAN-P1.md    v2.0 计划（M1~M7）
+  PLAN-P2.md    v2.x 专业能力与架构
+  PLAN-P3.md    v3+ 长期方向
 ```
 
 ## 开发
@@ -114,5 +117,5 @@ cargo build --release
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。
 
-- 设计细节与取舍见 `docs/PLAN.md`。
+- 设计细节与取舍见 `docs/PLAN-P0.md`。
 - 渲染后端默认使用 wgpu；若在老显卡驱动上遇到问题，可启用 eframe 的 `glow` 特性并切换 `NativeOptions.renderer`。
