@@ -1,7 +1,8 @@
 ; image-view NSIS template for cargo-packager.
 ;
 ; Derived from the cargo-packager default template. Project-specific changes:
-; - Per-user install into %LOCALAPPDATA%\Programs\image-view.
+; - Per-user install directly into %LOCALAPPDATA%\image-view, the same root the
+;   application uses for its own logs/ and thumbs/ directories.
 ; - Registers the app under "Open with" and under Settings > Default apps
 ;   without touching the current default handler for any extension.
 ; - Uninstall removes the program, shortcuts, uninstall entry, its own file
