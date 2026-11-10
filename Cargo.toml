@@ -1,6 +1,6 @@
 [package]
 name = "image-view"
-version = "0.1.0"
+version = "2.0.0-alpha.1"
 edition = "2024"
 rust-version = "1.95"
 description = "轻量级 Rust 桌面图片查看器"
@@ -59,7 +59,8 @@ imgalifier-heif = { version = "0.1", optional = true, default-features = false }
 [profile.release]
 lto = "thin"
 codegen-units = 1
-strip = "symbols"
+# 保留符号表，让崩溃日志里的 backtrace 仍有函数名；只去掉调试信息。
+strip = "debuginfo"
 
 [profile.dev]
 opt-level = 1

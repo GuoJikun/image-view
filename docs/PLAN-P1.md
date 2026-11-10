@@ -106,12 +106,14 @@
 
 > 安装器与文件关联是 v2.0 的硬性门槛；自动更新与多语言可后续补。
 
-- [ ] 安装器（Inno Setup 或 WiX）：安装、卸载、开始菜单、可选“设为默认看图程序”。
-- [ ] 文件关联：注册支持的扩展名，资源管理器“打开方式”可用。
-- [ ] 自动更新：检查发布清单、下载、哈希/签名校验、失败回滚；默认手动确认。
-- [ ] 多语言：中/英 UI 资源表（轻量方案优先，如自写 `fl!` 宏或 `rust-i18n`）。
-- [ ] 崩溃日志落盘；匿名统计默认关闭且需明示。
-- [ ] 版本号与 CHANGELOG 规范：`v2.0.0` 起语义化版本。
+- [x] 安装器（Inno Setup 6）：安装、卸载、开始菜单、按用户安装、可选“设为默认看图程序”。
+- [x] 文件关联：注册支持的扩展名、ProgID、`OpenWithProgids`、`Applications` 与“默认应用”能力项，资源管理器“打开方式”可用。
+- [ ] 自动更新：检查发布清单、下载、哈希/签名校验、失败回滚；默认手动确认（推迟到 v2.1）。
+- [ ] 多语言：中/英 UI 资源表（轻量方案优先，如自写 `fl!` 宏或 `rust-i18n`；推迟到 v2.2）。
+- [x] 崩溃日志落盘；匿名统计默认关闭且需明示。
+- [x] 版本号与 CHANGELOG 规范：`v2.0.0` 起语义化版本。
+
+> M5 完成情况：安装器、文件关联、崩溃日志与版本规范已落地；自动更新与中/英 UI 按发布门槛说明拆分到 v2.1 / v2.2。安装器向导暂为英文，应用界面仍为中文。Windows 10/11 不允许安装器静默改写默认看图程序，安装器注册“打开方式”和“默认应用”能力项，并提供系统设置入口。
 
 **验收**
 
@@ -305,6 +307,50 @@
 - 128 px 缩略图在极低 DPI 或非整数缩放显示器上可能略显模糊，尚未做多显示器 DPI 矩阵回归。
 - macOS/Linux 未实机验证。
 
+### P1-M5 发布工程（2026-11-10）
+
+**实现**
+
+- 新增 `logging.rs`：常规日志写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`，同时输出 stderr；单文件超过 4 MiB 轮转为 `.1`~`.3`。启动时记录版本、系统与架构；可用 `IMAGE_VIEW_LOG_DIR` 覆盖目录。
+- panic hook 在常规日志之外写独立 `crash-*.log`，包含 UTC 时间、panic 位置、消息与 `Backtrace::force_capture()`；最多保留 10 份。release 的 `strip` 从 `symbols` 调整为 `debuginfo`，保留函数名供 backtrace 使用。
+- “文件”菜单新增“打开日志文件夹”，直接调用系统文件管理器打开日志目录。
+- 新增 Inno Setup 6 脚本 `installer/image-view.iss`：按用户安装到 `%LOCALAPPDATA%\Programs\image-view`（无需管理员），x64 / Windows 10+，开始菜单快捷方式、可选桌面图标、可选“设为默认看图程序”。
+- 文件关联：为 18 个扩展名注册 ProgID `ImageView.Image`、`OpenWithProgids`、`Applications\image-view.exe\SupportedTypes`，以及 `RegisteredApplications` + `Capabilities\FileAssociations` 默认应用能力项；卸载清理全部新增键值。
+- 默认查看器任务在安装前通过 Inno Pascal 备份 `HKCU\Software\Classes\.<ext>` 的原默认值，卸载时仅在当前值仍为 `ImageView.Image` 时恢复，避免覆盖用户安装后手动选择的查看器；同时提供安装完成后打开 Windows“默认应用”设置的入口。
+- 新增 `scripts/build-release.ps1`：从 `Cargo.toml` 读取版本，执行 `cargo build --release --locked`，调用 ISCC 生成安装包，并输出 `dist\SHA256SUMS.txt`。
+- 生成 16/24/32/48/64/128/256 多尺寸 `assets/icon.ico`；`build.rs` 在 Windows MSVC 下把 `assets/app.res`（仅图标资源）链接进 exe，使 exe、快捷方式与安装包使用同一图标。
+- 版本提升为 `2.0.0-alpha.1`；新增 `CHANGELOG.md`，记录 Keep a Changelog 结构、语义化版本与安装包版本映射规则。
+- 卸载同时删除 `%APPDATA%\image-view`（窗口/会话设置）与 `%LOCALAPPDATA%\image-view`（日志、缩略图缓存），避免用户数据残留。
+- 不引入遥测或联网上报；匿名统计默认关闭（本版本没有统计代码），日志仅保存在本机。
+
+**自动化验证**
+
+- `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`（75 个）、`cargo test --no-default-features`（75 个）、`cargo build --release` 通过。
+- 新增单测：UTC 时间换算、日志轮转与档位后移、小日志不轮转、崩溃转储按名称保留最新 10 份、日志目录创建与追加写入。
+- release exe 15,262,720 字节（约 14.56 MiB），较 M4 的 15,161,856 字节增加 100,864 字节。
+- 安装包 `image-view-2.0.0-alpha.1-setup.exe` 6,516,242 字节，SHA256 `3ff8c41fc43299338792b0e193c84dffa272b1a38932b6987dbeb42e9b8ebd3f`。
+- 临时 panic 自检（验收后已移除）：`IMAGE_VIEW_TEST_PANIC=1` 启动后退出码 101，生成 3,849 字节 `crash-*.log`，包含版本、UTC 时间、`src\main.rs:27:9`、消息与 backtrace。
+
+**手工验证**
+
+- 静默安装 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS="setdefault"`：退出码 0，程序、README、CHANGELOG、卸载器写入 `%LOCALAPPDATA%\Programs\image-view`。
+- 注册表检查：`HKCU\Software\Classes\ImageView.Image`、`Applications\image-view.exe`、`Software\image-view\Capabilities` 与 `RegisteredApplications\image-view` 均存在；合并视图 `HKCR\ImageView.Image\shell\open\command` 指向安装后的 exe 与 `%1`。
+- `.png` / `.qoi` / `.avif` 的 `OpenWithProgids` 均含 `ImageView.Image`；选择默认查看器任务后三者默认值变为 `ImageView.Image`。
+- 用 ShellExecute 打开 `target\assoc-test\test.qoi`（无 `UserChoice`，故走默认 ProgID）：实际启动 `%LOCALAPPDATA%\Programs\image-view\image-view.exe`，说明关联命令生效。
+- 连续两次同版本覆盖安装（模拟升级）后默认值仍为 `ImageView.Image`；静默卸载退出码 0，安装目录、ProgID、Applications、Capabilities、`Software\image-view`、`RegisteredApplications` 值、`%APPDATA%\image-view`、`%LOCALAPPDATA%\image-view` 全部消失。
+- 卸载后 `.png` / `.qoi` / `.avif` 的默认值恢复为安装前的空值，`OpenWithProgids` 中的 `ImageView.Image` 值被移除。
+- 通过 `ExtractAssociatedIcon` 提取 release exe 图标，确认是 image-view 的多尺寸图标而非 Rust 默认图标。
+
+**未覆盖**
+
+- 没有干净的 Win10/11 虚拟机，未完成“全新系统安装 → 双击 → 升级 → 卸载”的完整 VM 验收；本机已完成等价的静默安装/覆盖安装/卸载与注册表清理验证。
+- 安装包未签名，SmartScreen“未知发布者”提示与下载信誉未验证。
+- Windows 10/11 通过 `UserChoice` 锁定常见扩展名（本机 `.png` 仍为“照片”），安装器的默认查看器任务只写 HKCU 默认值并提供设置入口，无法静默夺取默认；最终仍由用户在“默认应用”中确认。
+- 安装器向导暂为英文；中/英 UI 资源表与自动更新按计划推迟到 v2.2 / v2.1。
+- 仅验证覆盖安装（同版本重装），未验证跨版本升级中的设置/缓存兼容；仅构建 x64，未验证 ARM64/x86。
+- 默认应用能力项在 Windows“设置 → 默认应用”中的显示与排序未逐项截图确认。
+- Inno Setup 6.7 编译器在本地构建时标记 `Non-commercial use only`；若用于商业分发，需先确认 Inno Setup 授权或改用 WiX。
+
 ## 7. 变更记录
 
 | 日期 | 变更 |
@@ -320,3 +366,4 @@
 | 2026-11-10 | 完成 P1-M2：ICC → sRGB 转换、16-bit 保持精度、色彩转换状态标记与验收夹具 |
 | 2026-11-10 | 完成 P1-M3：HEIC/AVIF 纯 Rust 解码、缺失解码器提示、特性开关与验收记录 |
 | 2026-11-10 | 完成 P1-M4：缩略图条/虚拟滚动、磁盘缓存与内存 LRU、预加载、mipmap + glow 渲染、验收记录 |
+| 2026-11-10 | 完成 P1-M5：Inno Setup 安装器、文件关联/默认应用、崩溃日志、图标与版本/CHANGELOG；自动更新与多语言推迟到 v2.1/v2.2 |

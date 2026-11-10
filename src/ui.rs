@@ -18,6 +18,7 @@ pub enum Action {
     RevealInExplorer,
     CopyPath,
     Delete,
+    OpenLogs,
     SetSort(SortOrder),
     SetShowColorStatus(bool),
 }
@@ -162,6 +163,11 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                         .clicked()
                     {
                         action = Some(Action::CopyPath);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("打开日志文件夹").clicked() {
+                        action = Some(Action::OpenLogs);
                         ui.close();
                     }
                     ui.separator();

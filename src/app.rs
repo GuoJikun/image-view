@@ -11,6 +11,7 @@ use crate::document::LoadedImage;
 use crate::fileops;
 use crate::folder::{self, FolderNav, SortOrder};
 use crate::loader::{Caps, LoadError, LoadResponse, Loader, Purpose};
+use crate::logging;
 use crate::settings::Settings;
 use crate::thumbs::{self, ThumbnailCache, ThumbnailLoader};
 use crate::ui;
@@ -120,6 +121,7 @@ impl ImageViewerApp {
             ui::Action::RevealInExplorer => self.reveal_current(),
             ui::Action::CopyPath => self.copy_current_path(ctx),
             ui::Action::Delete => self.delete_current(),
+            ui::Action::OpenLogs => self.open_logs(),
             ui::Action::SetSort(order) => self.set_sort(order),
             ui::Action::SetShowColorStatus(show) => self.settings.show_color_status = show,
         }
@@ -309,6 +311,21 @@ impl ImageViewerApp {
         };
         if let Err(error) = fileops::reveal_in_file_manager(&path) {
             log::warn!("无法在文件管理器中定位 {}：{error}", path.display());
+            self.error = Some(error.to_string());
+            self.error_path = None;
+        }
+    }
+
+    /// 打开日志目录，方便用户反馈问题时附上日志与崩溃转储。
+    fn open_logs(&mut self) {
+        let dir = logging::log_dir();
+        if let Err(error) = std::fs::create_dir_all(&dir) {
+            self.error = Some(format!("无法创建日志目录 {}：{error}", dir.display()));
+            self.error_path = None;
+            return;
+        }
+        if let Err(error) = fileops::open_folder(&dir) {
+            log::warn!("无法打开日志目录 {}：{error}", dir.display());
             self.error = Some(error.to_string());
             self.error_path = None;
         }

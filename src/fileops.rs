@@ -23,6 +23,33 @@ pub fn reveal_in_file_manager(path: &Path) -> Result<(), FileOpError> {
     Ok(())
 }
 
+/// 在系统文件管理器中打开该目录。
+pub fn open_folder(path: &Path) -> Result<(), FileOpError> {
+    open_folder_command(path).spawn()?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn open_folder_command(path: &Path) -> Command {
+    let mut command = Command::new("explorer");
+    command.arg(path);
+    command
+}
+
+#[cfg(target_os = "macos")]
+fn open_folder_command(path: &Path) -> Command {
+    let mut command = Command::new("open");
+    command.arg(path);
+    command
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn open_folder_command(path: &Path) -> Command {
+    let mut command = Command::new("xdg-open");
+    command.arg(path);
+    command
+}
+
 #[cfg(target_os = "windows")]
 fn reveal_command(path: &Path) -> Command {
     let mut command = Command::new("explorer");

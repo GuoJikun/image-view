@@ -13,6 +13,7 @@
 - 底部缩略图条：懒加载 + 虚拟滚动，点击跳转，方向键/点击后自动居中当前项；缩略图使用独立内存 LRU（512 张、最长边 128 px）与磁盘缓存（`%LOCALAPPDATA%\image-view\thumbs`，上限 256 MB）
 - 记住窗口位置/大小/最大化、上次目录与图片、排序方式；无参数启动时恢复上次会话
 - `Delete` 删除到系统回收站，`Ctrl+Shift+C` 复制路径，“文件”菜单或右键菜单可在资源管理器中定位
+- 文件日志与崩溃转储落盘（`%LOCALAPPDATA%\image-view\logs`），“文件 → 打开日志文件夹”可直接定位
 - 幻灯片：按 `Space` 每 3 秒自动前进，到最后一张自动停止
 - 相邻图片预加载 + 最近使用（LRU）主图纹理缓存，最多 3 张，回翻立即显示；缩略图预取当前项前后各 3 张
 - 主图与缩略图纹理使用 mipmap + LINEAR：缩小查看更平滑，100% 附近仍保持清晰
@@ -23,12 +24,27 @@
 
 ## 版本与路线
 
-当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存），并已完成 v2.0 的 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）与 P1-M4（缩略图条与渲染质量）。默认构建包含 HEIC/AVIF 解码器，渲染后端为 glow，release exe 约 14.5 MiB。
+当前版本为 **v2.0.0-alpha.1**（P1 开发快照），已完成 v2.0 的 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）与 P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）。默认构建包含 HEIC/AVIF 解码器，渲染后端为 glow，release exe 约 14.6 MiB。自动更新与中/英 UI 按计划推迟到 v2.1 / v2.2。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v2.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
 - v2.x / v3+ 方向：[docs/PLAN-P2.md](docs/PLAN-P2.md) · [docs/PLAN-P3.md](docs/PLAN-P3.md)
 - v1.x 设计与验收：[docs/PLAN-P0.md](docs/PLAN-P0.md)
+
+## 安装与卸载
+
+Windows 10/11 x64 可用仓库内的 Inno Setup 脚本生成安装包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
+```
+
+产物位于 `dist\`：`image-view-<version>-setup.exe` 与 `SHA256SUMS.txt`。
+
+- **安装**：按用户安装到 `%LOCALAPPDATA%\Programs\image-view`，无需管理员权限；创建开始菜单快捷方式，可选桌面图标与“设为默认看图程序”。安装向导暂为英文。
+- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF 的“打开方式”和 Windows“默认应用”能力项。Windows 10/11 不允许安装器静默改写默认查看器；勾选“设为默认看图程序”会写入用户级默认值并打开系统“默认应用”设置，最终仍需在系统设置中确认。
+- **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、注册表关联、`%APPDATA%\image-view`（设置）与 `%LOCALAPPDATA%\image-view`（日志与缩略图缓存）。
+- **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
 
 ## 运行
 
@@ -62,7 +78,11 @@ image-view [PATH]
   -V, --version   显示版本
 ```
 
-日志可通过环境变量 `RUST_LOG` 控制；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。
+日志默认写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`（可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含 backtrace，最多 10 份），可用“文件 → 打开日志文件夹”直接定位。
+
+## 隐私
+
+应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机 `%LOCALAPPDATA%\image-view\logs`。当前版本也没有自动更新检查，不会主动发起网络请求。
 
 ## 快捷键
 
@@ -114,12 +134,16 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - 预加载会跳过超过 30 MP 的图片（仅影响速度，不影响正常打开）。
 - 16-bit 图片以 8-bit 纹理显示（色彩转换阶段仍保留 16-bit 精度）；10-bit/HDR 输出不在当前版本范围内。
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
+- 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
+- Windows 10/11 的默认应用由系统 `UserChoice` 保护，安装器无法静默夺取常见扩展名的默认查看器；请在“设置 → 应用 → 默认应用”中确认。
+- 安装向导暂为英文；应用内中/英 UI 资源表与自动更新检查按计划推迟到 v2.2 / v2.1。
+- 日志与崩溃转储会写入 `%LOCALAPPDATA%\image-view\logs`；卸载会一并删除。若需长期保留问题现场，请在卸载前复制该目录。
 
 ## 项目结构
 
 ```
 src/
-  main.rs       入口：CLI、窗口参数、图标
+  main.rs       入口：CLI、窗口参数、图标、日志初始化
   app.rs        应用状态与每帧编排（eframe::App 的 logic / ui）
   ui.rs         顶部工具栏、底部状态栏、错误横幅、帮助窗口
   viewer.rs     缩放/平移数学与画布绘制
@@ -130,19 +154,31 @@ src/
   thumbs.rs     缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
   folder.rs     目录扫描、自然排序/时间排序、上一张/下一张、缩略图选中
   settings.rs   持久化设置：窗口状态、上次会话与排序方式
-  fileops.rs    回收站删除与在资源管理器中定位
+  fileops.rs    回收站删除、资源管理器定位与打开目录
+  logging.rs    文件日志轮转、启动信息与 panic 崩溃转储
+build.rs        在 Windows MSVC 下把 assets/app.res 链接进 exe
 examples/
   gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
   color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
   thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
 assets/
   icon.png      窗口图标
+  icon.ico      多尺寸应用图标（安装包 / exe）
+  app.rc        图标资源定义
+  app.res       编译后的 Windows 资源
+installer/
+  image-view.iss  Inno Setup 安装器脚本（按用户安装、文件关联、卸载清理）
+scripts/
+  build-release.ps1  构建 release exe、安装包与 SHA256
+design/
+  gen_ico.py    从 icon-1024.png 生成多尺寸 assets/icon.ico
 docs/
   ROADMAP.md    阶段进度总览与里程碑
   PLAN-P0.md    v1.x 设计与验收记录
   PLAN-P1.md    v2.0 计划（M1~M7，只查看）
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
+CHANGELOG.md    版本变更记录与语义化版本规范
 ```
 
 ## 开发
@@ -152,7 +188,10 @@ cargo fmt
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo build --release
+powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1   # exe + 安装包 + SHA256
 ```
+
+`build-release.ps1` 需要 Inno Setup 6（`iscc.exe` 在 PATH 中，或设置 `ISCC_PATH`）。发布前还应运行 `cargo fmt --check` 与 `cargo test --no-default-features`。
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
 

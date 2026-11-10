@@ -7,6 +7,7 @@ mod document;
 mod fileops;
 mod folder;
 mod loader;
+mod logging;
 mod settings;
 mod thumbs;
 mod ui;
@@ -18,10 +19,8 @@ use std::path::PathBuf;
 use eframe::egui;
 
 fn main() -> eframe::Result {
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("warn,image_view=info"),
-    )
-    .init();
+    logging::init();
+    logging::install_panic_hook();
 
     let open_path = match std::env::args_os().nth(1) {
         Some(arg) if arg == OsStr::new("-h") || arg == OsStr::new("--help") => {
@@ -49,11 +48,15 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let result = eframe::run_native(
         "image-view",
         options,
         Box::new(move |cc| Ok(Box::new(app::ImageViewerApp::new(cc, open_path)))),
-    )
+    );
+    if let Err(error) = &result {
+        log::error!("图形界面启动失败：{error}");
+    }
+    result
 }
 
 fn load_icon() -> egui::viewport::IconData {
