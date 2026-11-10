@@ -7,13 +7,18 @@ use eframe::egui::{self, Key, Modifiers};
 
 use crate::cache::ImageCache;
 use crate::document::LoadedImage;
-use crate::folder::{self, FolderNav};
+use crate::fileops;
+use crate::folder::{self, FolderNav, SortOrder};
 use crate::loader::{Caps, LoadError, LoadResponse, Loader, Purpose};
+use crate::settings::Settings;
 use crate::ui;
 use crate::viewer::{self, ViewMode, ViewState};
 
 /// 幻灯片自动前进间隔。
 const SLIDESHOW_INTERVAL: Duration = Duration::from_secs(3);
+
+/// 状态栏短提示的停留时间。
+const NOTICE_DURATION: Duration = Duration::from_secs(4);
 
 #[derive(Clone, Copy, Debug)]
 struct Slideshow {
@@ -40,17 +45,26 @@ pub struct ImageViewerApp {
     slideshow: Option<Slideshow>,
     /// 换图后需要再画一帧，让标题/状态栏的 Fit 百分比与画布同步。
     needs_repaint: bool,
+    settings: Settings,
+    /// 启动参数与上次会话只恢复一次。
+    session_restored: bool,
+    /// 状态栏短提示：文本与过期时刻。
+    notice: Option<(String, Instant)>,
 }
 
 impl ImageViewerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open_path: Option<PathBuf>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-        Self::with_context(cc.egui_ctx.clone(), open_path)
+        let settings = Settings::load(cc.storage);
+        Self::with_context(cc.egui_ctx.clone(), open_path, settings)
     }
 
-    fn with_context(ctx: egui::Context, open_path: Option<PathBuf>) -> Self {
+    fn with_context(ctx: egui::Context, open_path: Option<PathBuf>, settings: Settings) -> Self {
         Self {
-            folder: FolderNav::default(),
+            folder: FolderNav {
+                sort: settings.sort,
+                ..Default::default()
+            },
             image: None,
             view: ViewState::default(),
             loader: Loader::new(ctx),
@@ -66,6 +80,9 @@ impl ImageViewerApp {
             cache: ImageCache::default(),
             slideshow: None,
             needs_repaint: false,
+            settings,
+            session_restored: false,
+            notice: None,
         }
     }
 
@@ -80,6 +97,10 @@ impl ImageViewerApp {
             ui::Action::ZoomOut => self.zoom_by(ctx, 0.8),
             ui::Action::ToggleSlideshow => self.toggle_slideshow(),
             ui::Action::Help => self.show_help = true,
+            ui::Action::RevealInExplorer => self.reveal_current(),
+            ui::Action::CopyPath => self.copy_current_path(ctx),
+            ui::Action::Delete => self.delete_current(),
+            ui::Action::SetSort(order) => self.set_sort(order),
         }
     }
 
@@ -115,6 +136,105 @@ impl ImageViewerApp {
 
         self.folder.set_file(path);
         self.request_load(path.to_path_buf());
+    }
+
+    /// 无命令行参数时恢复上次浏览位置；目录或文件已不存在时静默跳过。
+    fn restore_last_session(&mut self) {
+        let Some(dir) = self.settings.last_dir.clone() else {
+            return;
+        };
+        if !dir.is_dir() {
+            log::debug!("上次浏览目录不存在：{}", dir.display());
+            return;
+        }
+
+        let file = self.settings.last_file.clone();
+        if let Some(path) = self
+            .folder
+            .restore(&dir, file.as_deref(), self.settings.sort)
+        {
+            self.request_load(path);
+        }
+    }
+
+    fn set_sort(&mut self, order: SortOrder) {
+        self.folder.set_sort(order);
+        self.settings.sort = order;
+        self.update_preloads();
+    }
+
+    fn current_path(&self) -> Option<PathBuf> {
+        self.image.as_ref().map(|image| absolute_path(&image.path))
+    }
+
+    fn copy_current_path(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.current_path() else {
+            return;
+        };
+        ctx.copy_text(path.display().to_string());
+        self.set_notice("已复制路径");
+    }
+
+    fn reveal_current(&mut self) {
+        let Some(path) = self.current_path() else {
+            return;
+        };
+        if let Err(error) = fileops::reveal_in_file_manager(&path) {
+            log::warn!("无法在文件管理器中定位 {}：{error}", path.display());
+            self.error = Some(error.to_string());
+            self.error_path = None;
+        }
+    }
+
+    /// 把当前图片移到回收站，并自动前进到下一张（目录清空时回到空状态）。
+    fn delete_current(&mut self) {
+        let Some(image) = self.image.as_ref() else {
+            return;
+        };
+        let path = image.path.clone();
+        let name = image.file_name();
+
+        if let Err(error) = fileops::delete_to_trash(&path) {
+            log::warn!("删除失败 {}：{error}", path.display());
+            self.error = Some(error.to_string());
+            self.error_path = None;
+            return;
+        }
+
+        log::info!("已移到回收站：{}", path.display());
+        self.slideshow = None;
+        self.cache.remove(&path);
+        self.image = None;
+        self.view = ViewState::default();
+        self.set_notice(format!("已移到回收站：{name}"));
+
+        match self.folder.remove_current() {
+            Some(next) => self.request_load(next),
+            None => {
+                // 目录已清空：取消在途请求，回到空状态。
+                self.generation = self.loader.cancel_pending();
+                self.pending = None;
+                self.error = None;
+                self.error_path = None;
+                self.needs_repaint = true;
+            }
+        }
+    }
+
+    fn set_notice(&mut self, text: impl Into<String>) {
+        self.notice = Some((text.into(), Instant::now() + NOTICE_DURATION));
+    }
+
+    fn tick_notice(&mut self, ctx: &egui::Context) {
+        let Some((_, until)) = &self.notice else {
+            return;
+        };
+        let now = Instant::now();
+        if now >= *until {
+            self.notice = None;
+        } else {
+            ctx.request_repaint_after(*until - now);
+        }
     }
 
     fn request_load(&mut self, path: PathBuf) {
@@ -324,6 +444,15 @@ impl ImageViewerApp {
                 self.toggle_slideshow();
             }
 
+            if ctx.input_mut(|input| input.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::C))
+            {
+                self.copy_current_path(ctx);
+            }
+
+            if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Delete)) {
+                self.delete_current();
+            }
+
             let zoom_in = ctx.input_mut(|input| {
                 input.consume_key(Modifiers::NONE, Key::Plus)
                     || input.consume_key(Modifiers::SHIFT, Key::Plus)
@@ -408,19 +537,47 @@ impl ImageViewerApp {
         );
     }
 
-    fn canvas(&mut self, ui: &mut egui::Ui) {
+    fn canvas(&mut self, ui: &mut egui::Ui) -> Option<ui::Action> {
         let texture = self.image.as_ref().map(|image| &image.texture);
         let image_size = self
             .image
             .as_ref()
             .map(LoadedImage::texture_size)
             .unwrap_or(egui::Vec2::ZERO);
+        let has_image = self.image.is_some();
+        let mut action = None;
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(egui::Color32::from_gray(18)))
             .show(ui, |ui| {
-                viewer::canvas(ui, &mut self.view, texture, image_size);
+                let response = viewer::canvas(ui, &mut self.view, texture, image_size);
+                if !has_image {
+                    return;
+                }
+                response.context_menu(|ui| {
+                    if ui.button("复制路径  Ctrl+Shift+C").clicked() {
+                        action = Some(ui::Action::CopyPath);
+                        ui.close();
+                    }
+                    if ui.button("在资源管理器中显示").clicked() {
+                        action = Some(ui::Action::RevealInExplorer);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
+                        .button(
+                            egui::RichText::new("移到回收站  Delete")
+                                .color(egui::Color32::from_rgb(240, 120, 120)),
+                        )
+                        .clicked()
+                    {
+                        action = Some(ui::Action::Delete);
+                        ui.close();
+                    }
+                });
             });
+
+        action
     }
 
     fn sync_title(&mut self, ctx: &egui::Context) {
@@ -445,12 +602,16 @@ impl eframe::App for ImageViewerApp {
 
         if let Some(path) = self.startup_path.take() {
             self.open_path(&path);
+        } else if !self.session_restored {
+            self.restore_last_session();
         }
+        self.session_restored = true;
 
         self.handle_dropped_files(ctx);
         self.handle_shortcuts(ctx);
         self.poll_loader(ctx);
         self.tick_slideshow(ctx);
+        self.tick_notice(ctx);
 
         // 标题/工具栏在画布之前绘制；先用上一帧画布尺寸重算 Fit，
         // 避免加载或旋转后标题短暂显示上一张/上一个角度的百分比。
@@ -477,6 +638,7 @@ impl eframe::App for ImageViewerApp {
             can_next: self.folder.can_next(),
             has_image: self.image.is_some(),
             slideshow: self.slideshow.is_some(),
+            sort: self.folder.sort,
             zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
         };
         if let Some(action) = ui::toolbar(ui, &toolbar_state) {
@@ -498,16 +660,35 @@ impl eframe::App for ImageViewerApp {
             downscaled: self.image.as_ref().is_some_and(|image| image.downscaled),
             loading: self.pending.is_some(),
             slideshow: self.slideshow.is_some(),
+            notice: self.notice.as_ref().map(|(text, _)| text.clone()),
         };
         ui::status_bar(ui, &status);
 
-        self.canvas(ui);
+        if let Some(action) = self.canvas(ui) {
+            self.handle_action(ui.ctx(), action);
+        }
         ui::help_window(ui.ctx(), &mut self.show_help);
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        self.settings.last_dir =
+            (!self.folder.dir.as_os_str().is_empty()).then(|| absolute_path(&self.folder.dir));
+        self.settings.last_file = self
+            .image
+            .as_ref()
+            .map(|image| absolute_path(&image.path))
+            .or_else(|| self.pending.as_deref().map(absolute_path));
+        self.settings.sort = self.folder.sort;
+        self.settings.save(storage);
     }
 }
 
+/// 转成绝对路径；失败时保留原路径（例如路径已不可访问）。
+fn absolute_path(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// 解析旋转快捷键：`R` 顺时针（+1），`Shift+R` 逆时针（-1）。
-///
 /// `consume_key` 使用逻辑修饰键匹配，未按下的 Shift 不会阻止 `Modifiers::NONE`
 /// 命中；因此必须先匹配更具体的 `Shift+R`，否则会被 `R` 先消费。
 fn consume_rotation(ctx: &egui::Context) -> i8 {
@@ -563,7 +744,6 @@ mod tests {
 
     fn temp_dir(tag: &str) -> PathBuf {
         use std::sync::atomic::{AtomicU32, Ordering};
-
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let dir = std::env::temp_dir().join(format!(
             "image-view-app-test-{}-{tag}-{}",
@@ -594,11 +774,12 @@ mod tests {
         std::fs::write(&path, b"fixture").expect("write fixture");
 
         let ctx = egui::Context::default();
-        let mut app = ImageViewerApp::with_context(ctx.clone(), None);
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None, Settings::default());
         app.folder = FolderNav {
             dir: dir.clone(),
             files: vec![path.clone()],
             index: Some(0),
+            ..Default::default()
         };
         app.cache.insert(fixture(&ctx, &path), &path);
         app.pending = Some(path.clone());
@@ -625,11 +806,12 @@ mod tests {
         }
 
         let ctx = egui::Context::default();
-        let mut app = ImageViewerApp::with_context(ctx.clone(), None);
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None, Settings::default());
         app.folder = FolderNav {
             dir: dir.clone(),
             files: vec![first.clone(), last.clone()],
             index: Some(0),
+            ..Default::default()
         };
         app.image = Some(fixture(&ctx, &first));
 
@@ -663,11 +845,12 @@ mod tests {
         }
 
         let ctx = egui::Context::default();
-        let mut app = ImageViewerApp::with_context(ctx.clone(), None);
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None, Settings::default());
         app.folder = FolderNav {
             dir: dir.clone(),
             files: vec![first.clone(), second.clone()],
             index: Some(0),
+            ..Default::default()
         };
         app.image = Some(fixture(&ctx, &first));
         app.cache.insert(fixture(&ctx, &first), &first);
@@ -689,6 +872,57 @@ mod tests {
             app.image.as_ref().map(|image| image.path.as_path()),
             Some(second.as_path())
         );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn save_records_absolute_session_and_sort() {
+        use std::collections::HashMap;
+
+        use eframe::Storage;
+
+        #[derive(Default)]
+        struct MemoryStorage(HashMap<String, String>);
+
+        impl Storage for MemoryStorage {
+            fn get_string(&self, key: &str) -> Option<String> {
+                self.0.get(key).cloned()
+            }
+
+            fn set_string(&mut self, key: &str, value: String) {
+                self.0.insert(key.to_owned(), value);
+            }
+
+            fn remove_string(&mut self, key: &str) {
+                self.0.remove(key);
+            }
+
+            fn flush(&mut self) {}
+        }
+
+        let dir = temp_dir("save-session");
+        let path = dir.join("a.png");
+        std::fs::write(&path, b"fixture").expect("write fixture");
+
+        let ctx = egui::Context::default();
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None, Settings::default());
+        app.folder = FolderNav {
+            dir: dir.clone(),
+            files: vec![path.clone()],
+            index: Some(0),
+            ..Default::default()
+        };
+        app.image = Some(fixture(&ctx, &path));
+        app.set_sort(SortOrder::ModifiedNewest);
+
+        let mut storage = MemoryStorage::default();
+        <ImageViewerApp as eframe::App>::save(&mut app, &mut storage);
+
+        let saved = Settings::load(Some(&storage));
+        assert_eq!(saved.last_dir, Some(absolute_path(&dir)));
+        assert_eq!(saved.last_file, Some(absolute_path(&path)));
+        assert_eq!(saved.sort, SortOrder::ModifiedNewest);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }

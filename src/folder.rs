@@ -1,6 +1,9 @@
 //! 目录扫描与上一个/下一个导航。
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
 
 /// 与解码器特性保持一致的扩展名列表。
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
@@ -19,23 +22,40 @@ pub fn is_supported_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// 按文件名自然排序（`img2` 在 `img10` 之前），大小写不敏感。
-fn sort_files(files: &mut [PathBuf]) {
-    files.sort_by(|a, b| {
-        let an = a
-            .file_name()
-            .map(|name| name.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        let bn = b
-            .file_name()
-            .map(|name| name.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        natord::compare(&an, &bn).then_with(|| a.cmp(b))
-    });
+/// 目录内图片的排序方式。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SortOrder {
+    /// 文件名自然排序（大小写不敏感）。
+    #[default]
+    Name,
+    /// 修改时间从新到旧，时间相同时按文件名。
+    ModifiedNewest,
+}
+
+/// 文件名的小写形式，用于自然排序与稳定比较。
+fn natural_key(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
+/// 按指定顺序排序图片列表。
+fn sort_files(files: &mut [PathBuf], order: SortOrder) {
+    match order {
+        SortOrder::Name => files.sort_by(|a, b| {
+            natord::compare(&natural_key(a), &natural_key(b)).then_with(|| a.cmp(b))
+        }),
+        SortOrder::ModifiedNewest => files.sort_by_cached_key(|path| {
+            let modified = std::fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .ok();
+            (std::cmp::Reverse(modified), natural_key(path))
+        }),
+    }
 }
 
 /// 扫描目录下所有支持的图片（不递归）。
-pub fn scan(dir: &Path) -> Vec<PathBuf> {
+pub fn scan(dir: &Path, order: SortOrder) -> Vec<PathBuf> {
     let started = std::time::Instant::now();
     let mut files = Vec::new();
 
@@ -56,7 +76,7 @@ pub fn scan(dir: &Path) -> Vec<PathBuf> {
         }
     }
 
-    sort_files(&mut files);
+    sort_files(&mut files, order);
     log::debug!(
         "扫描目录 {}：{} 张图片，耗时 {:?}",
         dir.display(),
@@ -72,6 +92,7 @@ pub struct FolderNav {
     pub dir: PathBuf,
     pub files: Vec<PathBuf>,
     pub index: Option<usize>,
+    pub sort: SortOrder,
 }
 
 impl FolderNav {
@@ -84,7 +105,7 @@ impl FolderNav {
             .unwrap_or_else(|| PathBuf::from("."));
 
         self.dir = dir;
-        self.files = scan(&self.dir);
+        self.files = scan(&self.dir, self.sort);
 
         let name = path.file_name().map(|name| name.to_os_string());
         self.index = name.as_ref().and_then(|name| {
@@ -96,7 +117,7 @@ impl FolderNav {
         // 通过对话框打开了一个扩展名不在扫描列表里的文件时，也允许浏览。
         if self.index.is_none() {
             self.files.push(path.to_path_buf());
-            sort_files(&mut self.files);
+            sort_files(&mut self.files, self.sort);
             self.index = self
                 .files
                 .iter()
@@ -107,8 +128,59 @@ impl FolderNav {
     /// 打开目录并返回第一张图片。
     pub fn open_dir(&mut self, dir: &Path) -> Option<PathBuf> {
         self.dir = dir.to_path_buf();
-        self.files = scan(dir);
+        self.files = scan(dir, self.sort);
         self.index = (!self.files.is_empty()).then_some(0);
+        self.current().map(Path::to_path_buf)
+    }
+
+    /// 恢复上次会话：扫描目录并定位到保存的图片；图片不存在时退回第一张。
+    pub fn restore(&mut self, dir: &Path, file: Option<&Path>, sort: SortOrder) -> Option<PathBuf> {
+        self.dir = dir.to_path_buf();
+        self.sort = sort;
+        self.files = scan(dir, sort);
+
+        let saved = file.and_then(|file| file.file_name()).and_then(|name| {
+            self.files
+                .iter()
+                .position(|candidate| candidate.file_name() == Some(name))
+        });
+        self.index = saved.or_else(|| (!self.files.is_empty()).then_some(0));
+        self.current().map(Path::to_path_buf)
+    }
+
+    /// 切换排序方式，并保持当前图片仍被选中。
+    pub fn set_sort(&mut self, order: SortOrder) {
+        if self.sort == order {
+            return;
+        }
+        self.sort = order;
+
+        let current = self
+            .current()
+            .and_then(|path| path.file_name())
+            .map(OsString::from);
+        sort_files(&mut self.files, order);
+        self.index = current.and_then(|name| {
+            self.files
+                .iter()
+                .position(|candidate| candidate.file_name() == Some(name.as_os_str()))
+        });
+        if self.index.is_none() && !self.files.is_empty() {
+            self.index = Some(0);
+        }
+    }
+
+    /// 移除当前项（例如已删除到回收站），返回新的当前图片。
+    pub fn remove_current(&mut self) -> Option<PathBuf> {
+        let index = self.index?;
+        if index < self.files.len() {
+            self.files.remove(index);
+        }
+        if self.files.is_empty() {
+            self.index = None;
+            return None;
+        }
+        self.index = Some(index.min(self.files.len() - 1));
         self.current().map(Path::to_path_buf)
     }
 
@@ -173,7 +245,7 @@ mod tests {
             .into_iter()
             .map(PathBuf::from)
             .collect();
-        sort_files(&mut files);
+        sort_files(&mut files, SortOrder::Name);
         let names: Vec<String> = files
             .iter()
             .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
@@ -211,7 +283,7 @@ mod tests {
         std::fs::create_dir(dir.join("sub")).expect("create dir");
         std::fs::write(dir.join("sub").join("c.jpg"), b"").expect("write fixture");
 
-        let files = scan(&dir);
+        let files = scan(&dir, SortOrder::Name);
         let names: Vec<String> = files
             .iter()
             .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
@@ -231,6 +303,7 @@ mod tests {
             dir: dir.clone(),
             files: vec![dir.join("missing.png"), dir.join("gone.png"), valid.clone()],
             index: Some(0),
+            ..Default::default()
         };
 
         assert_eq!(nav.step(1).as_deref(), Some(valid.as_path()));
@@ -250,6 +323,7 @@ mod tests {
             dir: dir.clone(),
             files: vec![dir.join("missing.png"), current.clone()],
             index: Some(1),
+            ..Default::default()
         };
 
         assert!(nav.step(-1).is_none());
@@ -257,6 +331,78 @@ mod tests {
         assert_eq!(nav.files, vec![current.clone()]);
         assert_eq!(nav.current(), Some(current.as_path()));
         assert!(!nav.can_prev());
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn restore_prefers_saved_file_and_falls_back_to_first() {
+        let dir = temp_dir("restore");
+        for name in ["a.png", "b.png", "c.png"] {
+            std::fs::write(dir.join(name), b"").expect("write fixture");
+        }
+
+        let mut nav = FolderNav::default();
+        assert_eq!(
+            nav.restore(&dir, Some(&dir.join("b.png")), SortOrder::Name),
+            Some(dir.join("b.png"))
+        );
+        assert_eq!(nav.index, Some(1));
+
+        // 保存的图片已经不存在：退回第一张，而不是报错。
+        assert_eq!(
+            nav.restore(&dir, Some(&dir.join("gone.png")), SortOrder::Name),
+            Some(dir.join("a.png"))
+        );
+        assert_eq!(nav.index, Some(0));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn set_sort_keeps_current_file_selected() {
+        let dir = temp_dir("sort");
+        for name in ["img10.jpg", "img2.jpg", "img1.jpg"] {
+            std::fs::write(dir.join(name), b"").expect("write fixture");
+        }
+
+        let mut nav = FolderNav::default();
+        nav.open_dir(&dir);
+        nav.index = Some(2);
+        let current = nav.current().map(Path::to_path_buf);
+        assert_eq!(current, Some(dir.join("img10.jpg")));
+
+        // 按修改时间排序后仍指向同一文件。
+        nav.set_sort(SortOrder::ModifiedNewest);
+        assert_eq!(nav.sort, SortOrder::ModifiedNewest);
+        assert_eq!(nav.current().map(Path::to_path_buf), current);
+        assert_eq!(nav.files.len(), 3);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn remove_current_advances_to_next_then_ends_empty() {
+        let dir = temp_dir("remove");
+        let first = dir.join("a.png");
+        let second = dir.join("b.png");
+        for path in [&first, &second] {
+            std::fs::write(path, b"").expect("write fixture");
+        }
+
+        let mut nav = FolderNav::default();
+        nav.open_dir(&dir);
+        assert_eq!(nav.index, Some(0));
+
+        // 删除第一张后前进到下一张。
+        assert_eq!(nav.remove_current(), Some(second.clone()));
+        assert_eq!(nav.index, Some(0));
+        assert_eq!(nav.position(), Some((1, 1)));
+
+        // 删除最后一张后回到空状态。
+        assert_eq!(nav.remove_current(), None);
+        assert_eq!(nav.index, None);
+        assert_eq!(nav.position(), None);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }

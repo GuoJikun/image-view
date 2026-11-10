@@ -3,8 +3,10 @@
 mod app;
 mod cache;
 mod document;
+mod fileops;
 mod folder;
 mod loader;
+mod settings;
 mod ui;
 mod viewer;
 
@@ -35,10 +37,13 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("图片查看器")
+            .with_app_id("image-view")
             .with_inner_size([1100.0, 760.0])
             .with_min_inner_size([480.0, 320.0])
             .with_drag_and_drop(true)
             .with_icon(load_icon()),
+        // 窗口尺寸/位置/最大化由 eframe 持久化；应用状态见 `settings` 模块。
+        persist_window: true,
         ..Default::default()
     };
 

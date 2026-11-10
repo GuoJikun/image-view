@@ -6,7 +6,7 @@ rust-version = "1.95"
 description = "轻量级 Rust 桌面图片查看器"
 
 [dependencies]
-eframe = "0.37"
+eframe = { version = "0.37", features = ["persistence"] }
 egui = "0.37"
 image = { version = "0.25.10", default-features = false, features = [
     "png",
@@ -29,6 +29,8 @@ natord = "1.0"
 thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
+serde = { version = "1", features = ["derive"] }
+trash = "5"
 
 [profile.release]
 lto = "thin"

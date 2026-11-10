@@ -2,6 +2,8 @@
 
 use eframe::egui;
 
+use crate::folder::SortOrder;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
     Open,
@@ -13,6 +15,10 @@ pub enum Action {
     ZoomOut,
     ToggleSlideshow,
     Help,
+    RevealInExplorer,
+    CopyPath,
+    Delete,
+    SetSort(SortOrder),
 }
 
 pub struct ToolbarState {
@@ -20,7 +26,15 @@ pub struct ToolbarState {
     pub can_next: bool,
     pub has_image: bool,
     pub slideshow: bool,
+    pub sort: SortOrder,
     pub zoom_percent: Option<f32>,
+}
+
+fn sort_label(order: SortOrder) -> &'static str {
+    match order {
+        SortOrder::Name => "排序：名称",
+        SortOrder::ModifiedNewest => "排序：修改时间",
+    }
 }
 
 pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
@@ -105,10 +119,56 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                 action = Some(Action::ToggleSlideshow);
             }
 
+            ui.separator();
+
+            egui::ComboBox::from_id_salt("sort_order")
+                .width(104.0)
+                .selected_text(sort_label(state.sort))
+                .show_ui(ui, |ui| {
+                    for order in [SortOrder::Name, SortOrder::ModifiedNewest] {
+                        if ui
+                            .selectable_label(state.sort == order, sort_label(order))
+                            .clicked()
+                        {
+                            action = Some(Action::SetSort(order));
+                        }
+                    }
+                });
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("帮助").clicked() {
                     action = Some(Action::Help);
                 }
+                ui.menu_button("文件", |ui| {
+                    if ui
+                        .add_enabled(state.has_image, egui::Button::new("在资源管理器中显示"))
+                        .clicked()
+                    {
+                        action = Some(Action::RevealInExplorer);
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(state.has_image, egui::Button::new("复制路径  Ctrl+Shift+C"))
+                        .clicked()
+                    {
+                        action = Some(Action::CopyPath);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui
+                        .add_enabled(
+                            state.has_image,
+                            egui::Button::new(
+                                egui::RichText::new("移到回收站  Delete")
+                                    .color(egui::Color32::from_rgb(240, 120, 120)),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        action = Some(Action::Delete);
+                        ui.close();
+                    }
+                });
             });
         });
     });
@@ -124,6 +184,8 @@ pub struct StatusState {
     pub downscaled: bool,
     pub loading: bool,
     pub slideshow: bool,
+    /// 短暂提示，例如“已复制路径”。
+    pub notice: Option<String>,
 }
 
 pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
@@ -162,6 +224,11 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
                     ui.label(
                         egui::RichText::new("已降采样")
                             .color(egui::Color32::from_rgb(240, 180, 80)),
+                    );
+                }
+                if let Some(notice) = &state.notice {
+                    ui.label(
+                        egui::RichText::new(notice).color(egui::Color32::from_rgb(140, 210, 150)),
                     );
                 }
             });
@@ -228,6 +295,8 @@ pub fn help_window(ctx: &egui::Context, open: &mut bool) {
                         ("F", "切换适配 / 100%"),
                         ("R", "顺时针旋转 90°"),
                         ("Shift+R", "逆时针旋转 90°"),
+                        ("Ctrl+Shift+C", "复制当前图片路径"),
+                        ("Delete", "移到回收站"),
                         ("F11", "全屏"),
                         ("Esc", "退出全屏 / 关闭帮助"),
                     ] {

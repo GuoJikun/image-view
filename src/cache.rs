@@ -29,6 +29,11 @@ impl ImageCache {
         self.entries.iter().any(|image| image.path == path)
     }
 
+    /// 移除指定路径（例如图片已删除到回收站）。
+    pub fn remove(&mut self, path: &Path) {
+        self.entries.retain(|image| image.path != path);
+    }
+
     /// 插入或刷新条目；`current` 是正在显示的图片，淘汰时不会移除它。
     pub fn insert(&mut self, image: LoadedImage, current: &Path) {
         self.insert_with_limits(image, current, MAX_ENTRIES, MAX_PIXELS);
@@ -158,5 +163,19 @@ mod tests {
         let mut cache = ImageCache::default();
         assert!(cache.get(Path::new("missing")).is_none());
         assert!(!cache.contains(Path::new("missing")));
+    }
+
+    #[test]
+    fn remove_drops_only_the_requested_entry() {
+        let ctx = egui::Context::default();
+        let mut cache = ImageCache::default();
+        for name in ["a", "b"] {
+            cache.insert(image(&ctx, name, [10, 10]), Path::new("a"));
+        }
+
+        cache.remove(Path::new("b"));
+
+        assert!(cache.contains(Path::new("a")));
+        assert!(!cache.contains(Path::new("b")));
     }
 }
