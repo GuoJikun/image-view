@@ -8,6 +8,8 @@ use image::ImageDecoder as _;
 use image::imageops::FilterType;
 use image::metadata::Orientation;
 
+use crate::color::{self, ColorInfo};
+
 /// 解码与纹理上传的安全上限。
 #[derive(Clone, Debug)]
 pub struct Caps {
@@ -58,6 +60,9 @@ pub struct Decoded {
     pub size: [usize; 2],
     pub source_size: [usize; 2],
     pub rgba: Vec<u8>,
+    /// 源文件位深（8 或 16）；纹理始终为 8-bit。
+    pub source_depth: u8,
+    pub color: ColorInfo,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -267,6 +272,14 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
     let mut decoder = reader.into_decoder().map_err(map_decode_error)?;
     // JPEG/TIFF/WebP 的解码器会提供 EXIF 方向；其他格式默认无变换。
     let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    // ICC profile 必须在解码器被消费前读取。profile 缺失或读取失败不阻断解码。
+    let icc_profile = match decoder.icc_profile() {
+        Ok(profile) => profile,
+        Err(error) => {
+            log::debug!("无法读取 {} 的 ICC profile：{error}", path.display());
+            None
+        }
+    };
     let mut image = image::DynamicImage::from_decoder(decoder).map_err(map_decode_error)?;
     image.apply_orientation(orientation);
 
@@ -284,11 +297,23 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
         image
     };
 
-    let rgba = image.into_rgba8().into_raw();
+    // 16-bit 在转换与降采样后仍保持 16-bit，最后统一量化为 8-bit 纹理。
+    let source_depth = color::source_depth(&image);
+    let (rgba, color_info) = color::to_srgb_rgba8(image, icc_profile.as_deref());
+    if color_info.converted {
+        log::debug!(
+            "已转换到 sRGB：{} ({})",
+            path.display(),
+            color_info.label().unwrap_or_default()
+        );
+    }
+
     Ok(Decoded {
         size: target,
         source_size,
         rgba,
+        source_depth,
+        color: color_info,
     })
 }
 
@@ -446,6 +471,84 @@ mod tests {
         merge_pending(&mut pending, vec![request("b.jpg", Purpose::Preload)]);
 
         assert_eq!(paths(&pending), ["a.jpg", "b.jpg"]);
+    }
+
+    fn write_png_with_icc(path: &Path, image: &image::DynamicImage, icc: Vec<u8>) {
+        use image::ImageEncoder as _;
+
+        let mut bytes = Vec::new();
+        let mut encoder = image::codecs::png::PngEncoder::new(&mut bytes);
+        encoder.set_icc_profile(icc).expect("set ICC profile");
+        let rgba = image.to_rgba8();
+        encoder
+            .write_image(
+                rgba.as_raw(),
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba8,
+            )
+            .expect("encode png");
+        std::fs::write(path, bytes).expect("write png");
+    }
+
+    #[test]
+    fn embedded_icc_profile_is_read_and_converted() {
+        let dir = temp_dir("icc");
+        let path = dir.join("profile.png");
+        // 线性 RGB 的中灰 128 转换到 sRGB 后应接近 188。
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            4,
+            4,
+            image::Rgb([128, 128, 128]),
+        ));
+        write_png_with_icc(&path, &image, crate::color::test_linear_rgb_icc());
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode png");
+        assert!(decoded.color.converted);
+        assert!(decoded.color.label().is_some());
+        assert_eq!(decoded.source_depth, 8);
+        assert!(
+            decoded.rgba[0].abs_diff(128) >= 40,
+            "应转换到约 188，实际 {}",
+            decoded.rgba[0]
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn sixteen_bit_png_keeps_depth_and_converts() {
+        let dir = temp_dir("icc-16");
+        let path = dir.join("profile-16.png");
+        let image = image::DynamicImage::ImageRgba16(image::ImageBuffer::from_pixel(
+            4,
+            4,
+            image::Rgba([0x8000u16, 0x8000, 0x8000, 0xFFFF]),
+        ));
+        // PngEncoder 从 DynamicImage 取 8-bit 数据；直接写 16-bit 缓冲。
+        use image::ImageEncoder as _;
+        let mut bytes = Vec::new();
+        let mut encoder = image::codecs::png::PngEncoder::new(&mut bytes);
+        encoder
+            .set_icc_profile(crate::color::test_linear_rgb_icc())
+            .expect("set ICC profile");
+        let rgba = image.as_rgba16().expect("rgba16");
+        encoder
+            .write_image(
+                bytemuck::cast_slice(rgba.as_raw()),
+                rgba.width(),
+                rgba.height(),
+                image::ExtendedColorType::Rgba16,
+            )
+            .expect("encode 16-bit png");
+        std::fs::write(&path, bytes).expect("write png");
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode png");
+        assert!(decoded.color.converted);
+        assert_eq!(decoded.source_depth, 16);
+        assert!(decoded.rgba[0] > 120, "实际 {}", decoded.rgba[0]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 
     #[test]

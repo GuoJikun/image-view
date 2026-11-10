@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use eframe::egui;
 
+use crate::color::ColorInfo;
 use crate::loader::Decoded;
 
 #[derive(Clone)]
@@ -13,6 +14,9 @@ pub struct LoadedImage {
     pub display_size: [usize; 2],
     pub source_size: [usize; 2],
     pub downscaled: bool,
+    /// 源文件位深（8 或 16）。
+    pub source_depth: u8,
+    pub color: ColorInfo,
 }
 
 impl LoadedImage {
@@ -30,6 +34,8 @@ impl LoadedImage {
             display_size: decoded.size,
             source_size: decoded.source_size,
             downscaled: decoded.size != decoded.source_size,
+            source_depth: decoded.source_depth,
+            color: decoded.color,
         }
     }
 
@@ -60,17 +66,27 @@ impl LoadedImage {
     }
 
     pub fn dimensions_text(&self) -> String {
+        let depth = if self.source_depth > 8 {
+            " · 16-bit"
+        } else {
+            ""
+        };
         if self.downscaled {
             format!(
-                "{}×{}（显示 {}×{}）",
+                "{}×{}（显示 {}×{}）{depth}",
                 self.source_size[0],
                 self.source_size[1],
                 self.display_size[0],
                 self.display_size[1]
             )
         } else {
-            format!("{}×{}", self.source_size[0], self.source_size[1])
+            format!("{}×{}{depth}", self.source_size[0], self.source_size[1])
         }
+    }
+
+    /// 状态栏色彩转换文案；未转换时返回 `None`。
+    pub fn color_label(&self) -> Option<String> {
+        self.color.label()
     }
 }
 

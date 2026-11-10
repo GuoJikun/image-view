@@ -2,6 +2,7 @@
 
 mod app;
 mod cache;
+mod color;
 mod document;
 mod fileops;
 mod folder;

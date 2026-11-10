@@ -92,6 +92,8 @@ mod tests {
             display_size: display,
             source_size: display,
             downscaled: false,
+            source_depth: 8,
+            color: crate::color::ColorInfo::default(),
         }
     }
 

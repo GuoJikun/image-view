@@ -101,6 +101,7 @@ impl ImageViewerApp {
             ui::Action::CopyPath => self.copy_current_path(ctx),
             ui::Action::Delete => self.delete_current(),
             ui::Action::SetSort(order) => self.set_sort(order),
+            ui::Action::SetShowColorStatus(show) => self.settings.show_color_status = show,
         }
     }
 
@@ -640,6 +641,7 @@ impl eframe::App for ImageViewerApp {
             slideshow: self.slideshow.is_some(),
             sort: self.folder.sort,
             zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
+            show_color_status: self.settings.show_color_status,
         };
         if let Some(action) = ui::toolbar(ui, &toolbar_state) {
             self.handle_action(ui.ctx(), action);
@@ -660,6 +662,11 @@ impl eframe::App for ImageViewerApp {
             downscaled: self.image.as_ref().is_some_and(|image| image.downscaled),
             loading: self.pending.is_some(),
             slideshow: self.slideshow.is_some(),
+            color: self
+                .settings
+                .show_color_status
+                .then(|| self.image.as_ref()?.color_label())
+                .flatten(),
             notice: self.notice.as_ref().map(|(text, _)| text.clone()),
         };
         ui::status_bar(ui, &status);
@@ -763,6 +770,8 @@ mod tests {
                 size: [2, 2],
                 source_size: [2, 2],
                 rgba: vec![255; 2 * 2 * 4],
+                source_depth: 8,
+                color: crate::color::ColorInfo::default(),
             },
         )
     }

@@ -58,18 +58,18 @@
 
 ### 3.2 P1-M2 色彩管理与高位深（1.5~2 d）
 
-- [ ] 读取 JPEG/TIFF/PNG/WebP 内嵌 ICC profile。
-- [ ] 用 `lcms2` 将源色彩空间转换到 sRGB 后再生成纹理。
-- [ ] 16-bit PNG/TIFF 在转换阶段保留色深，最终输出 8-bit 纹理（显示端仍为 8-bit）。
-- [ ] 无 ICC 时按 sRGB 处理；profile 解析/转换失败时回退原像素并写 debug 日志。
-- [ ] 状态栏可显示“已色彩转换”标记（可选，默认关闭）。
+- [x] 读取 JPEG/TIFF/PNG/WebP 内嵌 ICC profile。
+- [x] 用 `lcms2` 将源色彩空间转换到 sRGB 后再生成纹理。
+- [x] 16-bit PNG/TIFF 在转换阶段保留色深，最终输出 8-bit 纹理（显示端仍为 8-bit）。
+- [x] 无 ICC 时按 sRGB 处理；profile 解析/转换失败时回退原像素并写 debug 日志。
+- [x] 状态栏可显示“已色彩转换”标记（可选，默认关闭）。
 
 **验收**
 
 - 带 AdobeRGB / Display P3 profile 的图片与系统查看器、浏览器颜色接近（同屏对比）。
 - 16-bit 渐变图不出现明显色带；转换失败的图片仍可正常显示。
 
-**风险**：`lcms2` 原生依赖与体积 → 使用 feature gate，Windows 走预编译；作为可选组件评估。
+**风险**：`lcms2` 原生依赖与体积 → 实测 `lcms2-sys` 可用 MSVC 工具链静态编译，无需随包分发 DLL；release 体积增加约 1.1 MB，暂不引入 feature gate。
 
 ### 3.3 P1-M3 HEIC / AVIF（1~1.5 d）
 
@@ -206,6 +206,37 @@
 - macOS/Linux 文件管理器定位分支未在实机验证。
 - 多显示器拔插后的窗口位置钳制依赖 eframe/winit 行为，未单独测试。
 
+### P1-M2 ICC 色彩管理与 16-bit（2026-11-10）
+
+**实现**
+
+- 新增 `color.rs`：解码器消费前读取内嵌 ICC profile，经 `lcms2` 以相对比色意图转换到 sRGB；JPEG/TIFF/PNG/WebP 均走同一路径。
+- 无 profile 时直接按 sRGB 生成纹理；profile 解析失败、转换失败或色彩空间与图像通道不匹配（如灰度 profile 套 RGB 像素）时回退原像素，只写 debug 日志，不阻塞显示。
+- RGB/RGBA 走 `RGBA_8` / `RGBA_16` 转换并保留 alpha；灰度走 `GRAY_8` / `GRAY_16` → `RGB_8` / `RGB_16`，手动保留 alpha。
+- 16-bit 图片在方向校正、降采样、ICC 转换阶段保持 16-bit，最后一次性四舍五入量化到 8-bit 纹理；显示端仍统一为 RGBA8。
+- 新增持久化项 `Settings.show_color_status`（默认关闭），可在“文件”菜单勾选“显示色彩转换标记”；开启后状态栏显示 `Display P3 → sRGB` 等蓝色标记，尺寸栏对 16-bit 源图追加 `· 16-bit`。
+- 新增 `examples/color_fixtures.rs`，生成 AdobeRGB / Display P3 / sRGB 参考的 8/16-bit PNG、JPEG、WebP、TIFF 与渐变夹具。
+
+**自动化验证**
+
+- `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`（57 个）、`cargo build --release` 通过。
+- 单测覆盖：缺失/损坏 profile 回退、RGB 与灰度转换、alpha 保留、16-bit 精度与量化、profile/通道不匹配回退、PNG 内嵌 ICC 读取、16-bit PNG 解码；设置新增字段缺省时回退默认值。
+- release exe 18,941,440 字节（约 18.1 MB，较 M1 增加约 1.1 MB，来自静态链接的 `lcms2`）。
+
+**手工验证**
+
+- `cargo run --example color_fixtures -- target/color-fixtures` 生成 21 张夹具；逐张打开 AdobeRGB / Display P3 的 PNG/JPEG/WebP/TIFF（PNG/TIFF 含 8/16-bit），日志均出现“已转换到 sRGB”及正确的 profile 描述。
+- 与 Edge 对同一文件的直接渲染截图对比（各取 14 个色块/渐变采样点）：AdobeRGB 最大通道差 6/255、平均 1.57；Display P3 最大通道差 5/255、平均 2.14，肉眼无可辨差异。
+- 16-bit Display P3 与 sRGB 渐变图在 100% 下均无可见色带；状态栏显示 `640×360 · 16-bit`。
+- 开启“显示色彩转换标记”后，状态栏显示 `Display P3 → sRGB`；截图与状态栏尺寸标记一致。
+
+**未覆盖**
+
+- CMYK ICC profile 不受支持：`image` 在 LCMS 前已将 CMYK JPEG 解码为 RGB，遇到此类 profile 会回退原像素；未引入 CMYK 专用解码链路。
+- 纹理仍为 8-bit（符合 M2 范围），10-bit/HDR 输出留给 P2。
+- 未与 Windows“照片”等系统查看器逐屏对比，使用 Edge 浏览器作为色彩管理参照。
+- macOS/Linux 未实机验证。
+
 ## 7. 变更记录
 
 | 日期 | 变更 |
@@ -218,3 +249,4 @@
 | 2026-11-10 | 发布工程与图库互换：发布工程提前为 M5，图库、搜索与对比后移为 M6 |
 | 2026-11-10 | 明确图库（M6）仍属 v2.0，仅执行顺序后移；v2.0 门槛为 M1~M6 全部完成 |
 | 2026-11-10 | 完成 P1-M1：窗口/会话/排序持久化、回收站删除、复制路径、资源管理器定位 |
+| 2026-11-10 | 完成 P1-M2：ICC → sRGB 转换、16-bit 保持精度、色彩转换状态标记与验收夹具 |

@@ -24,6 +24,8 @@ pub struct Settings {
     /// 上次浏览的图片，位于 `last_dir` 内。
     pub last_file: Option<PathBuf>,
     pub sort: SortOrder,
+    /// 状态栏是否显示“已色彩转换”标记（默认关闭）。
+    pub show_color_status: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +35,7 @@ impl Default for Settings {
             last_dir: None,
             last_file: None,
             sort: SortOrder::default(),
+            show_color_status: false,
         }
     }
 }
@@ -101,6 +104,7 @@ mod tests {
             last_dir: Some(PathBuf::from(r"D:\photos")),
             last_file: Some(PathBuf::from(r"D:\photos\a.jpg")),
             sort: SortOrder::ModifiedNewest,
+            show_color_status: true,
         }
     }
 

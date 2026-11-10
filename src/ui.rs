@@ -19,6 +19,7 @@ pub enum Action {
     CopyPath,
     Delete,
     SetSort(SortOrder),
+    SetShowColorStatus(bool),
 }
 
 pub struct ToolbarState {
@@ -28,6 +29,7 @@ pub struct ToolbarState {
     pub slideshow: bool,
     pub sort: SortOrder,
     pub zoom_percent: Option<f32>,
+    pub show_color_status: bool,
 }
 
 fn sort_label(order: SortOrder) -> &'static str {
@@ -140,6 +142,14 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                     action = Some(Action::Help);
                 }
                 ui.menu_button("文件", |ui| {
+                    let mut show_color_status = state.show_color_status;
+                    if ui
+                        .checkbox(&mut show_color_status, "显示色彩转换标记")
+                        .changed()
+                    {
+                        action = Some(Action::SetShowColorStatus(show_color_status));
+                    }
+                    ui.separator();
                     if ui
                         .add_enabled(state.has_image, egui::Button::new("在资源管理器中显示"))
                         .clicked()
@@ -184,6 +194,8 @@ pub struct StatusState {
     pub downscaled: bool,
     pub loading: bool,
     pub slideshow: bool,
+    /// 色彩转换标记（仅在设置开启时由 app 填入）。
+    pub color: Option<String>,
     /// 短暂提示，例如“已复制路径”。
     pub notice: Option<String>,
 }
@@ -225,6 +237,12 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
                         egui::RichText::new("已降采样")
                             .color(egui::Color32::from_rgb(240, 180, 80)),
                     );
+                }
+                if let Some(color) = &state.color {
+                    ui.label(
+                        egui::RichText::new(color).color(egui::Color32::from_rgb(120, 180, 240)),
+                    )
+                    .on_hover_text("已按内嵌 ICC profile 转换到 sRGB");
                 }
                 if let Some(notice) = &state.notice {
                     ui.label(
