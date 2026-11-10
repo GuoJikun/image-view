@@ -80,7 +80,7 @@ P2 不阻塞 v1.0；P3 为探索性方向，进入开发前需拆成 P1/P2 级�
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
-| 2026-11-10 | 安装器迁移到 cargo-packager + NSIS 3.09：定制 `installer/nsis/image-view.nsi`、新增 `Packager.toml` 与 `docs/NSIS-TOOLCHAIN.md`，移除 Inno 脚本；离线打包 6,018,723 字节（较 Inno 版 -7.6%），静默安装/卸载验证零残留 | 本次提交 |
+| 2026-11-10 | 安装器迁移到 cargo-packager + NSIS 3.09：定制 `installer/nsis/image-view.nsi`、新增 `Packager.toml` 与 `docs/NSIS-TOOLCHAIN.md`，移除 Inno 脚本；安装路径为 `%LOCALAPPDATA%\image-view`（去 `Programs` 层级），离线打包 6,018,081 字节（较 Inno 版 -7.6%），静默安装/卸载验证通过 | 本次提交 |
 | 2026-11-10 | P1-M5 发布工程：Inno Setup 按用户安装、18 类扩展名关联/默认应用、日志与崩溃转储、版本 `1.0.0` 与 CHANGELOG；75 个单测，exe 15,262,720 字节，安装包 6,513,568 字节 | `70c8a6d` |
 | 2026-11-10 | 版本口径统一：发布前所有工作归入 `1.0.0`，文档与安装包同步更新；重建安装包 6,513,568 字节 | 本次提交 |
 | 2026-11-10 | P1-M4 缩略图条与渲染质量：虚拟滚动、磁盘缓存/内存 LRU、预加载、mipmap + glow；70 个单测，release 15,161,856 字节 | 本次提交 |

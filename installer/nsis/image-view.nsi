@@ -508,9 +508,11 @@ Function .onInit
         StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
       ${EndIf}
     !else if "${INSTALLMODE}" == "currentUser"
-      ; %LOCALAPPDATA%\Programs keeps the install out of the roaming profile and
-      ; matches the layout used by the previous Inno Setup build.
-      StrCpy $INSTDIR "$LOCALAPPDATA\Programs\${PRODUCTNAME}"
+      ; Per-user install directly under %LOCALAPPDATA%. The application also
+      ; keeps logs\ and thumbs\ in this directory, so the program files and the
+      ; user data share one root; uninstall removes the program files and only
+      ; deletes the tree when the user asks to delete app data.
+      StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     !endif
 
     Call RestorePreviousInstallLocation
@@ -710,6 +712,8 @@ Section Uninstall
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
+  ; Remove the directory only if it is empty. logs\ and thumbs\ belong to the
+  ; user and are removed only through the app data checkbox below.
   {{#each resources_dirs}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
   {{/each}}
@@ -741,6 +745,8 @@ Section Uninstall
   {{#if appdata_paths}}
   ${If} $DeleteAppDataCheckboxState == 1
       SetShellVarContext current
+      ; The install root and the app data root are the same directory, so this
+      ; also removes the (now empty) program directory.
       {{#each appdata_paths}}
       RmDir /r "{{unescape_dollar_sign this}}"
       {{/each}}

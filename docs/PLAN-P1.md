@@ -363,7 +363,7 @@
 
 - 新增 `Packager.toml`：`formats = ["nsis"]`、`installMode = "currentUser"`、`template = "installer/nsis/image-view.nsi"`、`installerIcon`、`languages = ["English","SimpChinese"]`、`displayLanguageSelector`、`compression = "lzma"`、`appdataPaths`。
 - 新增 `installer/nsis/image-view.nsi`：以 cargo-packager v0.11.8 默认模板为基线定制。
-  - 安装路径改为 `%LOCALAPPDATA%\Programs\image-view`，与 Inno 版一致（默认模板为 `%LOCALAPPDATA%\image-view`）。
+  - 安装路径保持 `%LOCALAPPDATA%\image-view`（与 cargo-packager 默认一致）。该目录同时是应用的日志（`logs\`）与缩略图缓存（`thumbs\`）根目录，因此卸载只删除程序文件，目录树仅在勾选“删除应用数据”时整体移除。
   - 文件关联改为自有注册段（`RegisterFileAssociations` / `un.UnregisterFileAssociations`）：ProgID `ImageView.Image`、`OpenWithProgids`、`Applications\image-view.exe`、`Capabilities\FileAssociations`、`RegisteredApplications`，覆盖同样的 18 个扩展名。
   - 不写任何扩展名的默认处理器，卸载时仅在默认值仍为本 ProgID 时清除，避免留下失效关联。
   - 卸载新增删除 `${MANUPRODUCTKEY}`（`HKCU\Software\image-view\image-view`）：默认模板只删“Installer Language”值，会残留安装位置键。
@@ -374,12 +374,12 @@
 
 **自动化与手工验证**
 
-- 打包（离线，无下载请求）：`dist\image-view_1.0.0_x64-setup.exe` 6,018,723 字节，SHA256 `c2849a54df7b3a57e017e9cefd81683d24ee03e4cb3fe5581fa30b856a6e01eb`。相对 Inno 版 6,513,568 字节减少 494,845 字节（约 7.6%）。
-- 静默安装 `/S` 退出码 0：`image-view.exe`（15,262,720 字节）、`README.md`、`CHANGELOG.md`、`uninstall.exe` 写入 `%LOCALAPPDATA%\Programs\image-view`。
+- 打包（离线，无下载请求）：`dist\image-view_1.0.0_x64-setup.exe` 6,018,081 字节，SHA256 `14d552f5ee8476cc8ae7732336cddf4b94261036b137e164ad854a1d32b00d69`。相对 Inno 版 6,513,568 字节减少 495,487 字节（约 7.6%）。
+- 静默安装 `/S` 退出码 0：`image-view.exe`（15,262,720 字节）、`README.md`、`CHANGELOG.md`、`uninstall.exe` 写入 `%LOCALAPPDATA%\image-view`；同目录下既有的 `thumbs\` 未被覆盖或清除，`%LOCALAPPDATA%\Programs\image-view` 不存在。
 - 注册表：卸载项 `DisplayName`/`DisplayVersion`（`1.0.0`）/`Publisher`/`InstallLocation`/`EstimatedSize`（15,282 KB）正确；`Capabilities\FileAssociations` 18 项；`RegisteredApplications\image-view` 指向 `Software\image-view\Capabilities`；`Classes\ImageView.Image\shell\open\command` 指向安装目录 exe 与 `%1`。
 - `OpenWithProgids`：18/18 扩展名均含 `ImageView.Image`；`.png`、`.jpg` 的默认值保持为空，确认未改写默认处理器。
 - 快捷方式：开始菜单 `image-view.lnk` 与桌面 `image-view.lnk` 均创建（静默安装默认创建）。
-- 静默卸载 `/S` 退出码 0，以下项全部清除：安装目录、卸载项、`Software\image-view`（含 `image-view` 子键）、`ImageView.Image`、`Applications\image-view.exe`、`RegisteredApplications` 值、开始菜单与桌面快捷方式、抽样扩展名的 `OpenWithProgids` 值。
+- 静默卸载 `/S` 退出码 0：程序文件（exe、README、CHANGELOG、uninstall.exe）全部删除；卸载项、`Software\image-view`（含 `image-view` 子键）、`ImageView.Image`、`Applications\image-view.exe`、`RegisteredApplications` 值、开始菜单与桌面快捷方式、抽样扩展名的 `OpenWithProgids` 值均清除。`%LOCALAPPDATA%\image-view` 目录因保留 `thumbs\` 用户数据而按设计留存，未勾选“删除应用数据”时不清除。
 
 **未覆盖**
 
@@ -406,4 +406,5 @@
 | 2026-11-10 | 完成 P1-M4：缩略图条/虚拟滚动、磁盘缓存与内存 LRU、预加载、mipmap + glow 渲染、验收记录 |
 | 2026-11-10 | 完成 P1-M5：Inno Setup 安装器、文件关联/默认应用、崩溃日志、图标与版本/CHANGELOG；自动更新与多语言推迟到 v1.1/v1.2 |
 | 2026-11-10 | 版本口径统一：发布前所有工作归入 `1.0.0`，原 `2.0.0-alpha.1` / `v2.0` / `v2.1` / `v2.2` 分别改为 `1.0.0` / `v1.0` / `v1.1` / `v1.2` |
-| 2026-11-10 | 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS 3.09：新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`，移除 `installer/image-view.iss`；安装包 6,513,568 → 6,018,723 字节 |
+| 2026-11-10 | 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS 3.09：新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`，移除 `installer/image-view.iss`；安装包 6,513,568 → 6,018,081 字节 |
+| 2026-11-10 | 安装路径修正为 `%LOCALAPPDATA%\image-view`（去掉 `Programs` 子目录），与日志/缩略图缓存同根；卸载改为只删程序文件、目录树由“删除应用数据”控制 |

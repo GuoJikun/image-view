@@ -41,16 +41,17 @@
 
 - 记住窗口位置/大小/最大化、上次目录与图片、排序方式；无参数启动恢复上次会话。
 - 日志写入 `%LOCALAPPDATA%\image-view\logs`，单文件 4 MiB 轮转、保留 3 份历史；panic 额外生成带 backtrace 的 `crash-*.log`（最多 10 份）；“文件 → 打开日志文件夹”可直接定位。
-- NSIS 安装包（cargo-packager v0.11.8 + NSIS 3.09），按用户安装到 `%LOCALAPPDATA%\Programs\image-view`，无需管理员权限；提供开始菜单快捷方式，静默安装额外创建桌面快捷方式；安装向导支持英文与简体中文。
+- NSIS 安装包（cargo-packager v0.11.8 + NSIS 3.09），按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；提供开始菜单快捷方式，静默安装额外创建桌面快捷方式；安装向导支持英文与简体中文。
 - 文件关联：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF 的 ProgID、`OpenWithProgids`、`Applications` 与 Windows“默认应用”能力项；不改写任何扩展名的默认处理器，卸载时清理，不残留注册表项。
-- 卸载删除程序文件、快捷方式、卸载项与文件关联注册；用户数据（`%APPDATA%\image-view` 设置、`%LOCALAPPDATA%\image-view` 日志与缩略图缓存）由卸载页复选框决定，默认保留。
+- 卸载删除程序文件、快捷方式、卸载项与文件关联注册；程序目录同时存放 `logs\`、`thumbs\` 用户数据，与 `%APPDATA%\image-view` 设置一并由卸载页复选框控制，默认保留。
 - 多尺寸 `assets/icon.ico` 链接进 exe，安装包、快捷方式与资源管理器使用同一图标。
 - `scripts/build-release.ps1` 一键构建 release exe、安装包与 SHA256 校验文件；引入本 CHANGELOG 与语义化版本规范。
 
 ### 变更
 
 - 版本号统一为 `1.0.0`：发布前所有开发阶段都计入首个正式版，不再使用 `0.x` 或 `2.0.0-alpha.N` 标签。
-- 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS：移除 `installer/image-view.iss`，新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`；安装包体积 6,513,568 → 6,018,723 字节。
+- 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS：移除 `installer/image-view.iss`，新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`；安装包体积由 6,513,568 字节降至约 6.0 MB（减少约 7.6%）。
+- 安装路径改为 `%LOCALAPPDATA%\image-view`（不再使用 `%LOCALAPPDATA%\Programs` 子目录），与应用的日志、缩略图缓存目录同根。
 - 卸载不再默认删除用户数据，改为由卸载页的“删除应用数据”复选框控制。
 - 渲染后端使用 glow（OpenGL），以支持纹理 `mipmap_mode` 并减小 release 体积。
 - release 构建保留符号表（`strip = "debuginfo"`），使崩溃 backtrace 仍包含函数名；安装包体积相应略有增加。

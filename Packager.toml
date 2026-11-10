@@ -34,8 +34,9 @@ resources = ["README.md", "CHANGELOG.md"]
 formats = ["nsis"]
 
 [nsis]
-# Per-user install into %LOCALAPPDATA%\Programs\image-view, no administrator
-# rights required. Same location as the previous Inno Setup build.
+# Per-user install into %LOCALAPPDATA%\image-view, no administrator rights
+# required. The application keeps logs\ and thumbs\ in the same directory, so
+# the installer only deletes program files and leaves user data in place.
 installMode = "currentUser"
 
 # Project-owned script: the cargo-packager default template plus file
@@ -49,5 +50,7 @@ displayLanguageSelector = true
 # NSIS only accepts lzma, zlib or bzip2 (Inno's lzma2 is not available).
 compression = "lzma"
 
-# Ask the user before deleting %LOCALAPPDATA%\image-view and %APPDATA%\image-view.
+# Ask the user before deleting app data. $LOCALAPPDATA/image-view is also the
+# install root, so accepting the checkbox removes the (empty) program directory
+# together with logs\ and thumbs\.
 appdataPaths = ["$LOCALAPPDATA/image-view", "$APPDATA/image-view"]
