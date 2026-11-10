@@ -43,6 +43,16 @@ impl LoadedImage {
             .unwrap_or_else(|| self.path.display().to_string())
     }
 
+    /// 窗口标题：仅在内容变化时由调用方发送。
+    pub fn window_title(&self, zoom_percent: f32) -> String {
+        format_title(
+            &self.file_name(),
+            self.source_size,
+            zoom_percent,
+            self.downscaled,
+        )
+    }
+
     pub fn dimensions_text(&self) -> String {
         if self.downscaled {
             format!(
@@ -55,5 +65,42 @@ impl LoadedImage {
         } else {
             format!("{}×{}", self.source_size[0], self.source_size[1])
         }
+    }
+}
+
+pub fn format_title(
+    file_name: &str,
+    source_size: [usize; 2],
+    zoom_percent: f32,
+    downscaled: bool,
+) -> String {
+    let mut title = format!(
+        "{file_name} — {}×{} ({zoom_percent:.0}%)",
+        source_size[0], source_size[1]
+    );
+    if downscaled {
+        title.push_str(" · 已降采样");
+    }
+    title.push_str(" — 图片查看器");
+    title
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn title_contains_name_size_and_zoom() {
+        assert_eq!(
+            format_title("a.jpg", [6000, 4000], 67.4, false),
+            "a.jpg — 6000×4000 (67%) — 图片查看器"
+        );
+    }
+
+    #[test]
+    fn title_marks_downscaled_images() {
+        let title = format_title("big.png", [20000, 10000], 25.0, true);
+        assert!(title.contains("已降采样"));
+        assert!(title.contains("20000×10000"));
     }
 }

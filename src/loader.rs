@@ -180,7 +180,7 @@ fn decode(path: &Path, caps: &Caps) -> Result<Decoded, LoadError> {
     let target = target_size(source_size, caps.max_side, caps.max_pixels);
 
     let image = if target != source_size {
-        let filter = if source_size[0] * source_size[1] > 100_000_000 {
+        let filter = if source_size[0] * source_size[1] >= 50_000_000 {
             FilterType::Triangle
         } else {
             FilterType::Lanczos3

@@ -19,6 +19,8 @@ pub struct ImageViewerApp {
     generation: u64,
     pending: Option<PathBuf>,
     error: Option<String>,
+    /// 最近一次失败、可重试的路径。
+    error_path: Option<PathBuf>,
     title_cache: String,
     show_help: bool,
     fullscreen: bool,
@@ -38,6 +40,7 @@ impl ImageViewerApp {
             generation: 0,
             pending: None,
             error: None,
+            error_path: None,
             title_cache: String::new(),
             show_help: false,
             fullscreen: false,
@@ -74,12 +77,14 @@ impl ImageViewerApp {
                 self.request_load(first);
             } else {
                 self.error = Some(format!("目录中没有支持的图片：{}", path.display()));
+                self.error_path = None;
             }
             return;
         }
 
         if !path.exists() {
             self.error = Some(format!("文件不存在：{}", path.display()));
+            self.error_path = None;
             return;
         }
 
@@ -90,11 +95,13 @@ impl ImageViewerApp {
     fn request_load(&mut self, path: PathBuf) {
         if !path.is_file() {
             self.error = Some(format!("文件不存在：{}", path.display()));
+            self.error_path = None;
             return;
         }
 
         self.pending = Some(path.clone());
         self.error = None;
+        self.error_path = None;
         self.generation = self.loader.request(path, self.caps.clone());
     }
 
@@ -124,10 +131,12 @@ impl ImageViewerApp {
                     self.image = Some(LoadedImage::from_decoded(ctx, path, decoded));
                     self.view = ViewState::default();
                     self.error = None;
+                    self.error_path = None;
                 }
                 Err(error) => {
                     log::error!("failed to load {}: {error}", path.display());
                     self.error = Some(error.to_string());
+                    self.error_path = Some(path);
                 }
             }
         }
@@ -153,7 +162,7 @@ impl ImageViewerApp {
             self.open_dialog();
         }
 
-        if self.image.is_some() {
+        if self.image.is_some() || self.pending.is_some() {
             if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::ArrowLeft)) {
                 self.step(-1);
             }
@@ -256,21 +265,7 @@ impl ImageViewerApp {
 
     fn sync_title(&mut self, ctx: &egui::Context) {
         let title = match &self.image {
-            Some(image) => {
-                let zoom = (self.view.zoom * 100.0).round() as i32;
-                let mut title = format!(
-                    "{} — {}×{} ({}%)",
-                    image.file_name(),
-                    image.source_size[0],
-                    image.source_size[1],
-                    zoom
-                );
-                if image.downscaled {
-                    title.push_str(" · 已降采样");
-                }
-                title.push_str(" — 图片查看器");
-                title
-            }
+            Some(image) => image.window_title(self.view.zoom * 100.0),
             None => "图片查看器".to_owned(),
         };
 
@@ -309,13 +304,18 @@ impl eframe::App for ImageViewerApp {
             self.handle_action(ui.ctx(), action);
         }
 
-        ui::error_banner(ui, &mut self.error);
+        let can_retry = self.error_path.is_some();
+        if ui::error_banner(ui, &mut self.error, can_retry)
+            && let Some(path) = self.error_path.take()
+        {
+            self.request_load(path);
+        }
 
         let status = ui::StatusState {
             file_name: self.image.as_ref().map(LoadedImage::file_name),
             dimensions: self.image.as_ref().map(LoadedImage::dimensions_text),
             zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
-            position: self.folder.position(),
+            position: self.image.as_ref().and_then(|_| self.folder.position()),
             downscaled: self.image.as_ref().is_some_and(|image| image.downscaled),
             loading: self.pending.is_some(),
         };

@@ -150,11 +150,13 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
     });
 }
 
-pub fn error_banner(ui: &mut egui::Ui, error: &mut Option<String>) {
+/// 绘制错误横幅；返回 `true` 表示用户点击了“重试”。
+pub fn error_banner(ui: &mut egui::Ui, error: &mut Option<String>, can_retry: bool) -> bool {
     let Some(message) = error.as_ref() else {
-        return;
+        return false;
     };
     let mut dismiss = false;
+    let mut retry = false;
 
     egui::Panel::top("error_banner")
         .frame(
@@ -169,6 +171,9 @@ pub fn error_banner(ui: &mut egui::Ui, error: &mut Option<String>) {
                     if ui.button("关闭").clicked() {
                         dismiss = true;
                     }
+                    if can_retry && ui.button("重试").clicked() {
+                        retry = true;
+                    }
                 });
             });
         });
@@ -176,6 +181,7 @@ pub fn error_banner(ui: &mut egui::Ui, error: &mut Option<String>) {
     if dismiss {
         *error = None;
     }
+    retry
 }
 
 pub fn help_window(ctx: &egui::Context, open: &mut bool) {
