@@ -1,5 +1,6 @@
 //! 后台解码线程：尺寸检查、解码、降采样。
 
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 
@@ -78,6 +79,58 @@ pub enum LoadError {
     /// 预加载遇到大图时主动放弃；不会展示给用户。
     #[error("预加载已跳过（原图 {w}×{h} 过大）")]
     PreloadSkipped { w: u32, h: u32 },
+    #[cfg(feature = "avif")]
+    #[error("AVIF 解码失败：{0}")]
+    Avif(String),
+    #[cfg(feature = "heic")]
+    #[error("HEIC 解码失败：{0}")]
+    Heic(String),
+    /// 仅在关闭对应 feature 的构建中构造。
+    #[cfg_attr(all(feature = "avif", feature = "heic"), allow(dead_code))]
+    #[error("{format} 解码器未包含在此构建中；请使用启用该特性的版本打开 .{extension} 文件")]
+    MissingDecoder {
+        format: &'static str,
+        extension: String,
+    },
+}
+
+/// 按扩展名选择解码器；HEIC/AVIF 不走 `image` 的通用读取路径。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Format {
+    Standard,
+    Avif,
+    Heic,
+}
+
+fn format_for(path: &Path) -> Format {
+    match path.extension().and_then(OsStr::to_str) {
+        Some(extension) if extension.eq_ignore_ascii_case("avif") => Format::Avif,
+        Some(extension)
+            if extension.eq_ignore_ascii_case("heic") || extension.eq_ignore_ascii_case("heif") =>
+        {
+            Format::Heic
+        }
+        _ => Format::Standard,
+    }
+}
+
+/// 仅在关闭对应 feature 的构建中调用。
+#[cfg_attr(all(feature = "avif", feature = "heic"), allow(dead_code))]
+fn missing_decoder(path: &Path, format: Format) -> LoadError {
+    let (label, fallback) = match format {
+        Format::Avif => ("AVIF", "avif"),
+        Format::Heic => ("HEIC", "heic"),
+        Format::Standard => ("图片", "img"),
+    };
+    let extension = path
+        .extension()
+        .and_then(OsStr::to_str)
+        .unwrap_or(fallback)
+        .to_owned();
+    LoadError::MissingDecoder {
+        format: label,
+        extension,
+    }
 }
 
 /// 请求类型：打开当前图片，或后台预加载相邻图片。
@@ -249,9 +302,20 @@ fn map_decode_error(error: image::ImageError) -> LoadError {
 }
 
 fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
-    // 先只读头部尺寸，拒绝解压炸弹，避免为超大图分配完整缓冲。
-    let reader = image::ImageReader::open(path)?.with_guessed_format()?;
-    let (width, height) = reader.into_dimensions()?;
+    match format_for(path) {
+        Format::Standard => decode_standard(path, caps, purpose),
+        Format::Avif => decode_avif(path, caps, purpose),
+        Format::Heic => decode_heic(path, caps, purpose),
+    }
+}
+
+/// 解码前的统一尺寸检查：拒绝解压炸弹，并让预加载只挑小图。
+fn check_source_limits(
+    width: u32,
+    height: u32,
+    caps: &Caps,
+    purpose: Purpose,
+) -> Result<(), LoadError> {
     let source_pixels = u64::from(width) * u64::from(height);
     if source_pixels > caps.max_source_pixels {
         return Err(LoadError::TooLarge {
@@ -259,13 +323,20 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
             h: height,
         });
     }
-    // 预加载只挑小图，避免后台解码大图拖慢用户翻页。
     if purpose == Purpose::Preload && source_pixels > caps.preload_max_source_pixels {
         return Err(LoadError::PreloadSkipped {
             w: width,
             h: height,
         });
     }
+    Ok(())
+}
+
+fn decode_standard(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    // 先只读头部尺寸，拒绝解压炸弹，避免为超大图分配完整缓冲。
+    let reader = image::ImageReader::open(path)?.with_guessed_format()?;
+    let (width, height) = reader.into_dimensions()?;
+    check_source_limits(width, height, caps, purpose)?;
 
     let mut reader = image::ImageReader::open(path)?.with_guessed_format()?;
     reader.limits(caps.image_limits());
@@ -283,6 +354,107 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
     let mut image = image::DynamicImage::from_decoder(decoder).map_err(map_decode_error)?;
     image.apply_orientation(orientation);
 
+    finish(path, caps, image, icc_profile)
+}
+
+#[cfg(feature = "avif")]
+fn decode_avif(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    use imgalifier_avif::{Av1Backend, Decoder, Limits};
+
+    let data = std::fs::read(path)?;
+    let limits = Limits {
+        max_pixels: caps.max_source_pixels,
+        ..Limits::default()
+    };
+    let decoder = Decoder::new(
+        &data,
+        Av1Backend {
+            max_pixels: u32::try_from(caps.max_source_pixels).unwrap_or(u32::MAX),
+            ..Av1Backend::default()
+        },
+        limits,
+    )
+    .map_err(|error| LoadError::Avif(error.to_string()))?;
+
+    let info = decoder
+        .info()
+        .map_err(|error| LoadError::Avif(error.to_string()))?;
+    check_source_limits(info.width, info.height, caps, purpose)?;
+
+    // `colr` 中的 ICC 优先于 nclx；nclx 原色（如 Display P3）暂不做色域转换。
+    let icc_profile = extract_icc(&decoder);
+    let rgba = decoder
+        .decode_primary()
+        .map_err(|error| LoadError::Avif(error.to_string()))?;
+    let image = image::RgbaImage::from_raw(rgba.width, rgba.height, rgba.data)
+        .map(image::DynamicImage::ImageRgba8)
+        .ok_or_else(|| LoadError::Avif("像素数据长度与尺寸不匹配".to_owned()))?;
+
+    finish(path, caps, image, icc_profile)
+}
+
+/// 读取 HEIF 主图的 `colr` ICC profile（若存在）。
+#[cfg(any(feature = "avif", feature = "heic"))]
+fn extract_icc<B: imgalifier_heif::CodecBackend>(
+    decoder: &imgalifier_heif::Decoder<'_, B>,
+) -> Option<Vec<u8>> {
+    use imgalifier_heif::{Colr, Property};
+
+    let container = decoder.container();
+    let item = container.primary().ok()?;
+    container.find_property(item, |property| match property {
+        Property::Colr(Colr::Icc(profile)) => Some(profile.clone()),
+        _ => None,
+    })
+}
+
+#[cfg(not(feature = "avif"))]
+fn decode_avif(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+    Err(missing_decoder(path, Format::Avif))
+}
+
+#[cfg(feature = "heic")]
+fn decode_heic(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    use imgalifier_heif::hevc::HevcBackend;
+    use imgalifier_heif::{Decoder, Limits};
+
+    let data = std::fs::read(path)?;
+    let limits = Limits {
+        max_pixels: caps.max_source_pixels,
+        ..Limits::default()
+    };
+    let decoder = Decoder::new(&data, HevcBackend::default(), limits)
+        .map_err(|error| LoadError::Heic(error.to_string()))?;
+
+    let info = decoder
+        .info()
+        .map_err(|error| LoadError::Heic(error.to_string()))?;
+    check_source_limits(info.width, info.height, caps, purpose)?;
+
+    // 解码器已应用裁剪、旋转与镜像；ICC 优先于 nclx。
+    let icc_profile = extract_icc(&decoder);
+    let rgba = decoder
+        .decode_primary()
+        .map_err(|error| LoadError::Heic(error.to_string()))?;
+    let image = image::RgbaImage::from_raw(rgba.width, rgba.height, rgba.data)
+        .map(image::DynamicImage::ImageRgba8)
+        .ok_or_else(|| LoadError::Heic("像素数据长度与尺寸不匹配".to_owned()))?;
+
+    finish(path, caps, image, icc_profile)
+}
+
+#[cfg(not(feature = "heic"))]
+fn decode_heic(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+    Err(missing_decoder(path, Format::Heic))
+}
+
+/// 解码后的公共出口：降采样、位深记录与 ICC → sRGB 转换。
+fn finish(
+    path: &Path,
+    caps: &Caps,
+    image: image::DynamicImage,
+    icc_profile: Option<Vec<u8>>,
+) -> Result<Decoded, LoadError> {
     let source_size = [image.width() as usize, image.height() as usize];
     let target = target_size(source_size, caps.max_side, caps.max_pixels);
 
@@ -569,6 +741,84 @@ mod tests {
             Err(LoadError::PreloadSkipped { .. })
         ));
         assert!(decode(&path, &caps, Purpose::Open).is_ok());
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn format_is_selected_by_extension() {
+        assert_eq!(format_for(Path::new("a.AVIF")), Format::Avif);
+        assert_eq!(format_for(Path::new("a.heic")), Format::Heic);
+        assert_eq!(format_for(Path::new("a.HEIF")), Format::Heic);
+        assert_eq!(format_for(Path::new("a.png")), Format::Standard);
+        assert_eq!(format_for(Path::new("no-extension")), Format::Standard);
+    }
+
+    #[test]
+    fn missing_decoder_error_mentions_format_and_extension() {
+        let error = missing_decoder(Path::new("photo.HEIF"), Format::Heic);
+        let text = error.to_string();
+        assert!(text.contains("HEIC"), "实际：{text}");
+        assert!(text.contains("HEIF"), "实际：{text}");
+        assert!(text.contains("启用该特性"), "实际：{text}");
+    }
+
+    #[cfg(feature = "avif")]
+    #[test]
+    fn corrupt_avif_reports_decoder_error() {
+        let dir = temp_dir("avif-corrupt");
+        let path = dir.join("broken.avif");
+        std::fs::write(&path, b"not an avif file").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::Avif(_))
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "heic")]
+    #[test]
+    fn corrupt_heic_reports_decoder_error() {
+        let dir = temp_dir("heic-corrupt");
+        let path = dir.join("broken.heic");
+        std::fs::write(&path, b"not a heic file").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::Heic(_))
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(not(feature = "avif"))]
+    #[test]
+    fn avif_without_decoder_reports_missing_decoder() {
+        let dir = temp_dir("avif-missing");
+        let path = dir.join("photo.avif");
+        std::fs::write(&path, b"").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::MissingDecoder { .. })
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(not(feature = "heic"))]
+    #[test]
+    fn heic_without_decoder_reports_missing_decoder() {
+        let dir = temp_dir("heic-missing");
+        let path = dir.join("photo.heif");
+        std::fs::write(&path, b"").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::MissingDecoder { .. })
+        ));
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }

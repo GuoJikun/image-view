@@ -6,8 +6,8 @@
 
 - 通过文件对话框（Ctrl+O）、命令行参数或拖拽打开图片
 - 「适配窗口」与「100%」（1 图像像素 = 1 物理屏幕像素）
-- 自动按 EXIF 方向校正（JPEG/TIFF/WebP），`R` / `Shift+R` 顺时针 / 逆时针旋转 90°
-- 读取 JPEG/TIFF/PNG/WebP 内嵌 ICC profile 并转换到 sRGB；16-bit PNG/TIFF 在转换与缩放阶段保持精度，最终以 8-bit 纹理显示
+- 自动按 EXIF 方向校正（JPEG/TIFF/WebP），HEIC/AVIF 应用容器内的旋转/镜像属性；`R` / `Shift+R` 顺时针 / 逆时针旋转 90°
+- 读取 JPEG/TIFF/PNG/WebP/HEIC/AVIF 内嵌 ICC profile 并转换到 sRGB；16-bit PNG/TIFF 在转换与缩放阶段保持精度，最终以 8-bit 纹理显示
 - 以光标为锚点的滚轮 / 触控板缩放，鼠标拖拽平移，双击在「适配」与「100%」之间切换
 - 同一目录内上一张 / 下一张（按文件名自然排序，不循环），可切换按修改时间排序
 - 记住窗口位置/大小/最大化、上次目录与图片、排序方式；无参数启动时恢复上次会话
@@ -21,7 +21,7 @@
 
 ## 版本与路线
 
-当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存），并已完成 v2.0 的 P1-M1（桌面集成与持久化）与 P1-M2（ICC 色彩管理与 16-bit）。release exe 约 18.1 MB。
+当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存），并已完成 v2.0 的 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）与 P1-M3（HEIC / AVIF）。默认构建包含 HEIC/AVIF 解码器，release exe 约 20.1 MB。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v2.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -39,6 +39,16 @@ cargo run --release -- "D:\photos"      # 打开目录中第一张图片
 ```
 
 构建产物位于 `target\release\image-view.exe`，可自行复制到任意位置使用。
+
+HEIC/AVIF 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
+
+```powershell
+cargo build --release --no-default-features                     # 不含 HEIC/AVIF
+cargo build --release --no-default-features --features avif     # 仅 AVIF
+cargo build --release --no-default-features --features heic     # 仅 HEIC/HEIF
+```
+
+未包含对应解码器的构建打开这类文件时，会显示“解码器未包含在此构建中”的明确提示，不会崩溃。
 
 命令行参数：
 
@@ -73,14 +83,18 @@ image-view [PATH]
 
 ## 支持的格式
 
-PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS。
-（未启用 AVIF，以控制依赖体积与编译时间。）
+PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF。
 
-JPEG/TIFF/PNG/WebP 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
+HEIC/AVIF 默认启用，使用纯 Rust 解码器（`imgalifier-heif` / `imgalifier-avif`），不依赖 libheif 或系统 DLL。`.heif` 扩展名按 HEIC 处理。
+
+JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
 
 ## 已知限制
 
-- EXIF 方向校正只覆盖 JPEG/TIFF/WebP；其他格式按原始像素显示。
+- EXIF 方向校正只覆盖 JPEG/TIFF/WebP；HEIC/AVIF 使用容器内的旋转/镜像属性（`irot` / `imir`）。
+- HEIC/AVIF 若只带 nclx 色彩原色（如未内嵌 ICC 的 Display P3），暂不进行色域转换；内嵌 ICC 会经 LCMS 转换到 sRGB。iPhone 照片通常内嵌 ICC。
+- HEIC/AVIF 的 10/12-bit 源图由解码器内部转换为 8-bit 纹理；状态栏位深标记只区分通用解码路径的 8/16-bit。
+- HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估；AVIF（AV1）不在此列。
 - 旋转仅作用于当前查看，不写回文件，切换图片后重置。
 - 动图只显示第一帧。
 - 超大图会被降采样后再显示，此时「100%」是相对降采样后的纹理，状态栏会同时标注原图尺寸。
@@ -104,7 +118,7 @@ src/
   viewer.rs     缩放/平移数学与画布绘制
   document.rs   当前图片与 GPU 纹理
   cache.rs      最近使用（LRU）纹理缓存
-  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样
+  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样、HEIC/AVIF 分派
   color.rs      ICC profile 解析、sRGB 转换与 16-bit 精度保持
   folder.rs     目录扫描、自然排序/时间排序、上一张/下一张
   settings.rs   持久化设置：窗口状态、上次会话与排序方式

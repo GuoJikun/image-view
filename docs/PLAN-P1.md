@@ -4,7 +4,7 @@
 | --- | --- |
 | 阶段 | P1 |
 | 版本 | v2.0（部分里程碑可拆到 v2.1 / v2.2） |
-| 状态 | 🚧 进行中（M1 已完成） |
+| 状态 | 🚧 进行中（M1~M3 已完成） |
 | 估时 | 11~16 个工作日（单人） |
 | 前置 | P0 已完成（见 [PLAN-P0.md](PLAN-P0.md)） |
 | 总览 | [ROADMAP.md](ROADMAP.md) |
@@ -28,8 +28,8 @@
 | 里程碑 | 内容 | 估时 | 状态 |
 | --- | --- | --- | --- |
 | P1-M1 | 桌面集成与持久化 | 0.5~1 d | ✅ |
-| P1-M2 | ICC 色彩管理与 16-bit | 1.5~2 d | ⬜ |
-| P1-M3 | HEIC / AVIF | 1~1.5 d | ⬜ |
+| P1-M2 | ICC 色彩管理与 16-bit | 1.5~2 d | ✅ |
+| P1-M3 | HEIC / AVIF | 1~1.5 d | ✅ |
 | P1-M4 | 缩略图条与渲染质量 | 2~3 d | ⬜ |
 | P1-M5 | 安装、关联、更新与多语言 | 2~3 d | ⬜ |
 | P1-M6 | 图库、搜索与对比（只读） | 3~4 d | ⬜ |
@@ -73,17 +73,17 @@
 
 ### 3.3 P1-M3 HEIC / AVIF（1~1.5 d）
 
-- [ ] AVIF 解码（`avif-native` 或 `image` 新增特性），扩展名与文件过滤器同步。
-- [ ] HEIC 解码（`libheif-rs`，Windows 需随包分发 DLL）。
-- [ ] 缺失解码器时给出明确错误文案，而不是“格式不受支持”泛化提示。
-- [ ] 评估安装包体积与许可；默认构建可关闭，安装器提供可选组件。
+- [x] AVIF 解码（`imgalifier-avif`，纯 Rust `rav1d` 后端），扩展名与文件过滤器同步。
+- [x] HEIC 解码（`imgalifier-heif` 的纯 Rust HEVC 解码器，无需 libheif 或随包 DLL）。
+- [x] 缺失解码器时给出明确错误文案，而不是“格式不受支持”泛化提示。
+- [x] 评估安装包体积与许可；默认构建可关闭，安装器提供可选组件。
 
 **验收**
 
 - iPhone 导出的 HEIC 与 AVIF 样例正常显示、可旋转、可翻页。
 - 无解码器的构建打开对应文件时提示清晰、不崩溃。
 
-**风险**：C 依赖、许可与体积 → 优先 AVIF；HEIC 若使安装包增加超过 15 MB，则推迟到 v2.1。
+**风险**：C 依赖、许可与体积 → 实际采用纯 Rust 解码器，release 仅增加约 2.0 MB；`avif` / `heic` 为 Cargo 特性，默认开启、可单独关闭。HEVC（H.265）专利许可仍需在商业分发前自行评估。
 
 ### 3.4 P1-M4 浏览体验（2~3 d）
 
@@ -237,6 +237,40 @@
 - 未与 Windows“照片”等系统查看器逐屏对比，使用 Edge 浏览器作为色彩管理参照。
 - macOS/Linux 未实机验证。
 
+### P1-M3 HEIC / AVIF（2026-11-10）
+
+**实现**
+
+- `loader.rs` 按扩展名分派：`.avif` 走 `imgalifier-avif`（`Av1Backend`），`.heic` / `.heif` 走 `imgalifier-heif`（`HevcBackend`）；通用 `finish` 统一执行尺寸上限、预加载阈值、降采样、位深记录与 ICC → sRGB。
+- 两个解码器均为纯 Rust，无 C 工具链、无随包 DLL。HEIC 支持 iPhone 网格照片、裁剪、`irot` / `imir`、alpha 与 4:4:4；AVIF 支持 alpha、网格与序列首帧。
+- 解码前先读容器 `info()` 尺寸并执行 250 MP 原图 / 30 MP 预加载阈值检查；容器解析同时设置 `max_pixels`、item 数与单 item 字节上限。
+- HEIC/AVIF 共用的 `colr` ICC 读取：有 profile 时经 `lcms2` 转换到 sRGB，无 profile 时保留解码器输出。
+- 新增 Cargo 特性 `avif`、`heic`（默认开启，可单独关闭）；关闭对应特性时返回 `MissingDecoder`，错误横幅明确提示重新构建。
+- 目录扫描与文件对话框加入 `avif` / `heic` / `heif` 扩展名。
+
+**自动化验证**
+
+- `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`（61 个）、`cargo build --release` 通过；`cargo test --no-default-features` 同样通过。
+- 单测覆盖：扩展名分派（大小写）、损坏 AVIF/HEIC 的错误类型、缺失解码器文案、无特性构建的 `MissingDecoder` 路径、目录扩展名识别。
+- release exe 21,053,440 字节（约 20.1 MiB），较 M2 的 18,941,440 字节增加 2,112,000 字节（约 2.0 MiB）；`--no-default-features` 为 18,946,048 字节。
+- 许可：`imgalifier-heif` MIT；`imgalifier-avif` MIT AND BSD-2-Clause（内含 vendored `rav1d`），无 AGPL 依赖。
+
+**手工验证**
+
+- iPhone 网格 HEIC（`IMG_4862.HEIC`，4284×5712，内嵌 Display P3 ICC）在 12% 适配显示；按 `R` 顺时针旋转后状态栏变为 17%，内容方向正确。
+- 同目录 `01-iphone.HEIC` → `02-avif.avif`（800×533）→ `03-libheif.heic`（1280×854）依次翻页，状态栏 `1/3` → `2/3` → `3/3`，按 `←` 返回 `2/3`；三张均正常显示。
+- 额外样例解码通过：灰度 `grey.heic`、alpha `alpha.heic`、4:4:4 `yuv444.heic` / `rgb444-lossless.heic`、`transforms-odd.heic`、`heif-bitcoin-color.heif`（2880×1800）、`heif-lines.heif`（1920×1920）。
+- iPhone 样例的 ICC 转换日志为 `Display P3 → sRGB`；状态栏色彩标记开启后可见。
+- `--no-default-features --release` 构建分别打开 `.avif` 与 `.heic`：横幅显示“AVIF/HEIC 解码器未包含在此构建中；请使用启用该特性的版本打开 .avif/.heic 文件”，窗口保持可用，无崩溃。
+
+**未覆盖**
+
+- 未与系统查看器逐像素比较 HEIC/AVIF 色彩，只验证了 ICC 识别、转换日志与目视结果；AVIF 样例未内嵌 ICC。
+- 仅带 nclx 原色（如无 ICC 的 Display P3）的 HEIC/AVIF 暂不做色域转换；10/12-bit 与 HDR（PQ/HLG）源图由解码器内部转为 8-bit，未做 HDR 输出。
+- `.heif` 扩展名统一按 HEIC 处理；若 AVIF 使用 `.heif` 扩展名会解码失败并显示错误，可用 `.avif` 扩展名打开。
+- HEVC（H.265）专利许可未评估，商业分发前需自行确认。
+- macOS/Linux 未实机验证。
+
 ## 7. 变更记录
 
 | 日期 | 变更 |
@@ -250,3 +284,4 @@
 | 2026-11-10 | 明确图库（M6）仍属 v2.0，仅执行顺序后移；v2.0 门槛为 M1~M6 全部完成 |
 | 2026-11-10 | 完成 P1-M1：窗口/会话/排序持久化、回收站删除、复制路径、资源管理器定位 |
 | 2026-11-10 | 完成 P1-M2：ICC → sRGB 转换、16-bit 保持精度、色彩转换状态标记与验收夹具 |
+| 2026-11-10 | 完成 P1-M3：HEIC/AVIF 纯 Rust 解码、缺失解码器提示、特性开关与验收记录 |

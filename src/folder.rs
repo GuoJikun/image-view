@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// 与解码器特性保持一致的扩展名列表。
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "qoi", "tga", "pnm", "hdr",
-    "exr", "dds",
+    "exr", "dds", "avif", "heic", "heif",
 ];
 
 pub fn is_supported_image(path: &Path) -> bool {
@@ -257,7 +257,10 @@ mod tests {
     fn extension_matching_is_case_insensitive() {
         assert!(is_supported_image(Path::new("a.PNG")));
         assert!(is_supported_image(Path::new("b.JpEg")));
-        assert!(!is_supported_image(Path::new("c.txt")));
+        assert!(is_supported_image(Path::new("c.AVIF")));
+        assert!(is_supported_image(Path::new("d.HEIC")));
+        assert!(is_supported_image(Path::new("e.heif")));
+        assert!(!is_supported_image(Path::new("f.txt")));
         assert!(!is_supported_image(Path::new("no-extension")));
     }
 
