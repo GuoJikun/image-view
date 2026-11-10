@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use eframe::egui;
+use image::ImageDecoder as _;
 use image::imageops::FilterType;
+use image::metadata::Orientation;
 
 /// 解码与纹理上传的安全上限。
 #[derive(Clone, Debug)]
@@ -158,6 +160,13 @@ pub fn target_size(source: [usize; 2], max_side: usize, max_pixels: usize) -> [u
     ]
 }
 
+fn map_decode_error(error: image::ImageError) -> LoadError {
+    match error {
+        image::ImageError::Limits(_) => LoadError::OutOfMemory,
+        other => LoadError::Decode(other),
+    }
+}
+
 fn decode(path: &Path, caps: &Caps) -> Result<Decoded, LoadError> {
     // 先只读头部尺寸，拒绝解压炸弹，避免为超大图分配完整缓冲。
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
@@ -171,10 +180,11 @@ fn decode(path: &Path, caps: &Caps) -> Result<Decoded, LoadError> {
 
     let mut reader = image::ImageReader::open(path)?.with_guessed_format()?;
     reader.limits(caps.image_limits());
-    let image = reader.decode().map_err(|error| match error {
-        image::ImageError::Limits(_) => LoadError::OutOfMemory,
-        other => LoadError::Decode(other),
-    })?;
+    let mut decoder = reader.into_decoder().map_err(map_decode_error)?;
+    // JPEG/TIFF/WebP 的解码器会提供 EXIF 方向；其他格式默认无变换。
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut image = image::DynamicImage::from_decoder(decoder).map_err(map_decode_error)?;
+    image.apply_orientation(orientation);
 
     let source_size = [image.width() as usize, image.height() as usize];
     let target = target_size(source_size, caps.max_side, caps.max_pixels);
@@ -219,5 +229,77 @@ mod tests {
     #[test]
     fn small_images_are_not_upscaled() {
         assert_eq!(target_size([640, 480], 8192, 40_000_000), [640, 480]);
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "image-view-loader-test-{}-{tag}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    /// 写一张 40×20（左红右蓝）的 JPEG，并在 SOI 后插入 EXIF orientation。
+    fn write_oriented_jpeg(path: &Path, orientation: u8) {
+        let image = image::RgbImage::from_fn(40, 20, |x, _| {
+            if x < 20 {
+                image::Rgb([255, 0, 0])
+            } else {
+                image::Rgb([0, 0, 255])
+            }
+        });
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
+            .encode(&image.as_raw()[..], 40, 20, image::ExtendedColorType::Rgb8)
+            .expect("encode jpeg");
+
+        // 最小 TIFF/EXIF：一个 Orientation (0x0112) SHORT 条目。
+        let mut tiff = Vec::new();
+        tiff.extend_from_slice(b"II");
+        tiff.extend_from_slice(&42u16.to_le_bytes());
+        tiff.extend_from_slice(&8u32.to_le_bytes());
+        tiff.extend_from_slice(&1u16.to_le_bytes());
+        tiff.extend_from_slice(&0x0112u16.to_le_bytes());
+        tiff.extend_from_slice(&3u16.to_le_bytes());
+        tiff.extend_from_slice(&1u32.to_le_bytes());
+        tiff.extend_from_slice(&u16::from(orientation).to_le_bytes());
+        tiff.extend_from_slice(&[0, 0]);
+        tiff.extend_from_slice(&0u32.to_le_bytes());
+
+        let mut app1 = Vec::new();
+        app1.extend_from_slice(b"Exif\0\0");
+        app1.extend_from_slice(&tiff);
+        let length = (app1.len() + 2) as u16;
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&jpeg[..2]);
+        bytes.extend_from_slice(&[0xFF, 0xE1]);
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&app1);
+        bytes.extend_from_slice(&jpeg[2..]);
+        std::fs::write(path, bytes).expect("write jpeg");
+    }
+
+    #[test]
+    fn exif_orientation_is_applied() {
+        let dir = temp_dir("exif");
+        let path = dir.join("oriented.jpg");
+        write_oriented_jpeg(&path, 6); // 6 = 顺时针 90°
+
+        let decoded = decode(&path, &Caps::default()).expect("decode oriented jpeg");
+        assert_eq!(decoded.source_size, [20, 40]);
+        assert_eq!(decoded.size, [20, 40]);
+
+        // 原图左红右蓝，旋转后应为上红下蓝。
+        let rgba = image::RgbaImage::from_raw(20, 40, decoded.rgba).expect("rgba");
+        assert!(rgba.get_pixel(0, 0).0[0] > 200, "top-left should be red");
+        assert!(
+            rgba.get_pixel(0, 39).0[2] > 200,
+            "bottom-left should be blue"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 }

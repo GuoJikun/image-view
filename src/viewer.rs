@@ -18,6 +18,8 @@ pub struct ViewState {
     /// 图像中心相对画布中心的偏移（逻辑点）。
     pub pan: Vec2,
     pub mode: ViewMode,
+    /// 顺时针旋转的 90° 次数（0~3），只影响显示，不改动纹理。
+    pub rotation: u8,
     /// 上一帧画布尺寸，供键盘缩放的锚点使用。
     pub last_view: Vec2,
 }
@@ -28,6 +30,7 @@ impl Default for ViewState {
             zoom: 1.0,
             pan: Vec2::ZERO,
             mode: ViewMode::Fit,
+            rotation: 0,
             last_view: Vec2::ZERO,
         }
     }
@@ -44,6 +47,21 @@ impl ViewState {
         self.pan = Vec2::ZERO;
     }
 
+    /// 旋转 `steps` 个 90°（负数表示逆时针）；旋转后重新居中。
+    pub fn rotate(&mut self, steps: i8) {
+        self.rotation = (self.rotation as i8 + steps).rem_euclid(4) as u8;
+        self.pan = Vec2::ZERO;
+    }
+
+    /// 旋转后图像的显示尺寸（奇数个 90° 时长宽互换）。
+    pub fn displayed_size(image: Vec2, rotation: u8) -> Vec2 {
+        if rotation.is_multiple_of(2) {
+            image
+        } else {
+            Vec2::new(image.y, image.x)
+        }
+    }
+
     pub fn fit_zoom(view: Vec2, image: Vec2, pixels_per_point: f32) -> f32 {
         if image.x <= 0.0 || image.y <= 0.0 {
             return 1.0;
@@ -55,7 +73,11 @@ impl ViewState {
     /// Fit 模式每帧重算，保证窗口 resize 后仍然完整可见。
     pub fn update_fit(&mut self, view: Vec2, image: Vec2, pixels_per_point: f32) {
         if self.mode == ViewMode::Fit {
-            self.zoom = Self::fit_zoom(view, image, pixels_per_point);
+            self.zoom = Self::fit_zoom(
+                view,
+                Self::displayed_size(image, self.rotation),
+                pixels_per_point,
+            );
             self.pan = Vec2::ZERO;
         }
     }
@@ -83,11 +105,16 @@ impl ViewState {
         let new_scale = self.scale(pixels_per_point);
         self.pan = cursor - image_point * new_scale;
         self.mode = ViewMode::Manual;
-        self.clamp_pan(image, view, pixels_per_point);
+        self.clamp_pan(
+            Self::displayed_size(image, self.rotation),
+            view,
+            pixels_per_point,
+        );
     }
 
     pub fn clamp_pan(&mut self, image: Vec2, view: Vec2, pixels_per_point: f32) {
-        let display_size = image * self.scale(pixels_per_point);
+        let display_size =
+            Self::displayed_size(image, self.rotation) * self.scale(pixels_per_point);
         let limit = ((display_size - view) / 2.0).max(Vec2::ZERO);
         self.pan.x = self.pan.x.clamp(-limit.x, limit.x);
         self.pan.y = self.pan.y.clamp(-limit.y, limit.y);
@@ -106,7 +133,11 @@ impl ViewState {
         self.zoom = 1.0;
         self.pan = Vec2::ZERO;
         self.mode = ViewMode::Manual;
-        self.clamp_pan(image, view, pixels_per_point);
+        self.clamp_pan(
+            Self::displayed_size(image, self.rotation),
+            view,
+            pixels_per_point,
+        );
     }
 
     pub fn zoom_by(&mut self, image: Vec2, view: Vec2, factor: f32, pixels_per_point: f32) {
@@ -166,7 +197,8 @@ pub fn canvas(
     }
 
     if response.dragged() {
-        let display_size = image_size * view.scale(pixels_per_point);
+        let display_size =
+            ViewState::displayed_size(image_size, view.rotation) * view.scale(pixels_per_point);
         if display_size.x > rect.width() + 0.5 || display_size.y > rect.height() + 0.5 {
             view.mode = ViewMode::Manual;
             view.pan += response.drag_delta();
@@ -185,8 +217,10 @@ pub fn canvas(
     }
 
     let scale = view.scale(pixels_per_point);
-    let image_rect = Rect::from_center_size(rect.center() + view.pan, image_size * scale);
-    let uv = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    let image_rect = Rect::from_center_size(
+        rect.center() + view.pan,
+        ViewState::displayed_size(image_size, view.rotation) * scale,
+    );
 
     // 图片完全盖住画布时，棋盘格不可见，直接跳过以省掉上千个矩形。
     let covers_view = image_rect.min.x <= rect.min.x
@@ -196,18 +230,55 @@ pub fn canvas(
     if !covers_view {
         draw_checkerboard(painter, image_rect, rect);
     }
-    painter.image(texture.id(), image_rect, uv, Color32::WHITE);
+    paint_rotated(painter, texture.id(), image_rect, view.rotation);
 
     if response.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     } else if response.hovered() {
-        let display_size = image_size * scale;
+        let display_size = ViewState::displayed_size(image_size, view.rotation) * scale;
         if display_size.x > rect.width() + 0.5 || display_size.y > rect.height() + 0.5 {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
         }
     }
 
     response
+}
+
+/// 用带旋转 UV 的四边形绘制纹理，避免为了旋转重新上传纹理。
+fn paint_rotated(painter: &egui::Painter, texture: egui::TextureId, rect: Rect, rotation: u8) {
+    let uvs = rotation_uvs(rotation);
+
+    let mut mesh = egui::Mesh {
+        texture_id: texture,
+        ..Default::default()
+    };
+    for (pos, (u, v)) in [
+        rect.left_top(),
+        rect.right_top(),
+        rect.right_bottom(),
+        rect.left_bottom(),
+    ]
+    .into_iter()
+    .zip(uvs)
+    {
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos,
+            uv: egui::pos2(u, v),
+            color: Color32::WHITE,
+        });
+    }
+    mesh.indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// 四个屏幕角（左上、右上、右下、左下）对应的纹理 UV。
+fn rotation_uvs(rotation: u8) -> [(f32, f32); 4] {
+    match rotation % 4 {
+        0 => [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+        1 => [(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],
+        2 => [(1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0)],
+        _ => [(1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+    }
 }
 
 fn draw_checkerboard(painter: &egui::Painter, image_rect: Rect, clip: Rect) {
@@ -352,6 +423,52 @@ mod tests {
         approx(state.scale(1.0), 1.0);
         approx(state.scale(1.5), 1.0 / 1.5);
         approx(state.scale(2.0), 0.5);
+    }
+
+    #[test]
+    fn rotation_swaps_displayed_size() {
+        let image = vec2(4000.0, 3000.0);
+        assert_eq!(ViewState::displayed_size(image, 0), image);
+        assert_eq!(ViewState::displayed_size(image, 1), vec2(3000.0, 4000.0));
+        assert_eq!(ViewState::displayed_size(image, 2), image);
+        assert_eq!(ViewState::displayed_size(image, 3), vec2(3000.0, 4000.0));
+    }
+
+    #[test]
+    fn fit_uses_rotated_dimensions() {
+        let mut state = ViewState {
+            rotation: 1,
+            ..Default::default()
+        };
+        state.update_fit(vec2(1000.0, 800.0), vec2(4000.0, 3000.0), 1.0);
+        approx(state.zoom, 0.2);
+    }
+
+    #[test]
+    fn rotate_wraps_and_centers() {
+        let mut state = ViewState {
+            pan: vec2(10.0, 20.0),
+            ..Default::default()
+        };
+        state.rotate(-1);
+        assert_eq!(state.rotation, 3);
+        approx(state.pan.x, 0.0);
+        approx(state.pan.y, 0.0);
+        state.rotate(1);
+        assert_eq!(state.rotation, 0);
+    }
+
+    #[test]
+    fn rotation_uvs_turn_clockwise() {
+        // 顺时针 90°：屏幕左上角取原图左下角，右上角取原图左上角。
+        assert_eq!(rotation_uvs(1)[0], (0.0, 1.0));
+        assert_eq!(rotation_uvs(1)[1], (0.0, 0.0));
+        assert_eq!(rotation_uvs(1)[2], (1.0, 0.0));
+        assert_eq!(rotation_uvs(1)[3], (1.0, 1.0));
+        // 180° 与 270° 的角点同理
+        assert_eq!(rotation_uvs(2)[0], (1.0, 1.0));
+        assert_eq!(rotation_uvs(3)[0], (1.0, 0.0));
+        assert_eq!(rotation_uvs(4), rotation_uvs(0));
     }
 
     use eframe::egui::vec2;

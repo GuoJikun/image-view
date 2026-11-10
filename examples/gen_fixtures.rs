@@ -32,6 +32,41 @@ fn save(dynimg: &DynamicImage, dir: &Path, name: &str, format: ImageFormat) {
     }
 }
 
+/// 保存 JPEG 并注入 EXIF Orientation（用于验证自动方向校正）。
+fn save_oriented_jpeg(dynimg: &DynamicImage, dir: &Path, name: &str, orientation: u8) {
+    let mut jpeg = Vec::new();
+    if let Err(error) = dynimg.write_to(&mut std::io::Cursor::new(&mut jpeg), ImageFormat::Jpeg) {
+        println!("skip {name}: {error}");
+        return;
+    }
+
+    let mut tiff = Vec::new();
+    tiff.extend_from_slice(b"II");
+    tiff.extend_from_slice(&42u16.to_le_bytes());
+    tiff.extend_from_slice(&8u32.to_le_bytes());
+    tiff.extend_from_slice(&1u16.to_le_bytes());
+    tiff.extend_from_slice(&0x0112u16.to_le_bytes()); // Orientation
+    tiff.extend_from_slice(&3u16.to_le_bytes()); // SHORT
+    tiff.extend_from_slice(&1u32.to_le_bytes());
+    tiff.extend_from_slice(&u16::from(orientation).to_le_bytes());
+    tiff.extend_from_slice(&[0, 0]);
+    tiff.extend_from_slice(&0u32.to_le_bytes());
+
+    let mut app1 = Vec::new();
+    app1.extend_from_slice(b"Exif\0\0");
+    app1.extend_from_slice(&tiff);
+    let length = (app1.len() + 2) as u16;
+
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&jpeg[..2]);
+    bytes.extend_from_slice(&[0xFF, 0xE1]);
+    bytes.extend_from_slice(&length.to_be_bytes());
+    bytes.extend_from_slice(&app1);
+    bytes.extend_from_slice(&jpeg[2..]);
+    std::fs::write(dir.join(name), bytes).expect("写入 EXIF JPEG");
+    println!("ok   {name} (orientation {orientation})");
+}
+
 fn main() {
     let dir = PathBuf::from(
         std::env::args_os()
@@ -47,6 +82,8 @@ fn main() {
     save(&rgba, &dir, "fmt.png", ImageFormat::Png);
     save(&rgb, &dir, "fmt.jpg", ImageFormat::Jpeg);
     save(&gray, &dir, "gray.jpg", ImageFormat::Jpeg);
+    save_oriented_jpeg(&rgb, &dir, "exif-orient6.jpg", 6);
+    save_oriented_jpeg(&rgb, &dir, "exif-orient3.jpg", 3);
     save(&rgba, &dir, "fmt.gif", ImageFormat::Gif);
     save(&rgba, &dir, "fmt.webp", ImageFormat::WebP);
     save(&rgb, &dir, "fmt.bmp", ImageFormat::Bmp);

@@ -2,12 +2,12 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v1.0（P0 实施完成） |
+| 文档版本 | v1.1（P0 + EXIF 方向 + 90° 旋转） |
 | 日期 | 2026-11-10 |
 | 目标平台 | Windows 10/11 x64 优先，代码保持 macOS / Linux 可编译 |
 | 技术栈 | Rust 2024 + eframe/egui 0.37 + image 0.25 |
-| 预估工期 | 5 ~ 6.5 个工作日（单人） |
-| 当前状态 | P0 已完成；手工矩阵与性能实测记录见 §9.5 |
+| 预估工期 | 5 ~ 6.5 个工作日（单人），v1.1 前两项另计 0.5 天 |
+| 当前状态 | P0 与 v1.1 前两项已完成；验证记录见 §9.5、§9.6 |
 
 ---
 
@@ -61,7 +61,7 @@
 ### 1.4 验收标准（Definition of Done）
 
 1. `cargo build --release` 产出单个 exe，双击可启动；冷启动到首帧 ≤ 600 ms（SSD）。
-2. 双击 exe 或拖入 24MP JPEG，图片 ≤ 600 ms 可见，像素方向与解码结果一致（EXIF 方向校正属 P1）。
+2. 双击 exe 或拖入 24MP JPEG，图片 ≤ 600 ms 可见，像素方向与解码结果一致（EXIF 方向校正在 v1.1 已实现）。
 3. 打开 100MP 图片时 UI 不冻结、不 OOM；显示 8K 以内降采样结果并提示“已降采样”。
 4. 缩放/平移在 24MP 图片上保持 60 fps（常规窗口尺寸）。
 5. 支持的扩展名（见 §5.1）均能打开；损坏文件给出可读错误且不 panic。
@@ -131,17 +131,17 @@
 | F-13 | 大图降采样 | 超过纹理/内存上限时缩放，并在状态栏标记 | 100MP 图片可打开且内存受控 |
 | F-14 | 透明背景 | 图像区域绘制浅色棋盘格 | PNG 透明区可见 |
 
-### 3.2 P1（v1.1，预留设计）
+### 3.2 P1（v1.1，进行中）
 
-- EXIF 方向自动校正（`kamadak-exif` + `DynamicImage::apply_orientation`）。
-- 顺时针/逆时针旋转 90°（`R` / `Shift+R`）。
-- 全屏（`F11`）已提前实现；无边框沉浸模式待做。
-- 幻灯片（间隔 3s，空格暂停）。
-- 相邻图片预加载与 LRU 纹理缓存（3 张）。
-- 记住窗口大小/位置、上次目录、视图偏好。
-- Mipmap / 根据缩放选择过滤模式，改善缩小时的锯齿。
-- 删除到回收站（`trash` crate）、复制路径、在资源管理器中显示。
-- 记住文件夹顺序与滚动位置。
+- [x] EXIF 方向自动校正（`image` 内置 `ImageDecoder::orientation`，无需额外依赖）。
+- [x] 顺时针/逆时针旋转 90°（`R` / `Shift+R`，几何旋转，不重传纹理）。
+- [x] 全屏（`F11`）已提前实现；无边框沉浸模式待做。
+- [ ] 幻灯片（间隔 3s，空格暂停）。
+- [ ] 相邻图片预加载与 LRU 纹理缓存（3 张）。
+- [ ] 记住窗口大小/位置、上次目录、视图偏好。
+- [ ] Mipmap / 根据缩放选择过滤模式，改善缩小时的锯齿。
+- [ ] 删除到回收站（`trash` crate）、复制路径、在资源管理器中显示。
+- [ ] 记住文件夹顺序与滚动位置。
 
 ### 3.3 P2（远期）
 
@@ -164,7 +164,8 @@
 | `1` | 100% | |
 | `F` | 切换适配 / 100% | |
 | `F11` | 全屏 | 已提前实现（原 P1） |
-| `R` | 旋转 90° | P1 |
+| `R` | 顺时针旋转 90° | v1.1 已实现 |
+| `Shift+R` | 逆时针旋转 90° | v1.1 已实现 |
 | `Space` | 幻灯片暂停/继续 | P1 |
 | `Esc` | 退出全屏 / 关闭帮助 | |
 | `Ctrl+W` / `Alt+F4` | 关闭窗口 | 交给系统 |
@@ -345,11 +346,11 @@ fn decode(path: &Path, caps: &Caps) -> Result<Decoded, LoadError> {
 - 40MP 上限 = 160 MB 纹理 + 上传瞬时 160 MB；对 8 GB 内存机器可接受。
 - 解码后的 CPU 缓冲在 `load_texture` 后立即 drop，不常驻。
 
-#### EXIF 方向（P1）
+#### EXIF 方向（v1.1 已实现）
 
-- `kamadak-exif 0.6` 读取 `Orientation` (0x0112)。
-- 映射为 `image::metadata::Orientation`，调用 `DynamicImage::apply_orientation` 后再转 RGBA8。
-- 放在 worker 中，代价是一次像素重排。
+- 使用 `image` 0.25 内置的 `ImageDecoder::orientation()` 读取 `Orientation` (0x0112)，无需 `kamadak-exif`。
+- 只有 JPEG / TIFF / WebP 的解码器提供 EXIF；其他格式返回 `NoTransforms`，按原始像素显示。
+- 在 worker 中先 `DynamicImage::apply_orientation`，再计算尺寸、降采样与转 RGBA8，保证降采样基于最终方向。
 
 #### 动画
 
@@ -368,9 +369,11 @@ v1 统一取首帧。GIF/WebP 的动画播放需要保留帧缓冲与计时器�
 
 ```text
 image_center = canvas.center() + pan
-draw_size    = texture_size * scale
+draw_size    = displayed_size(texture_size, rotation) * scale
 draw_rect    = Rect::from_center_size(image_center, draw_size)
 ```
+
+`displayed_size` 在奇数个 90° 旋转时交换宽高；`rotation == 0` 时退化为 `texture_size`。
 
 这样在任意 DPI 下，100% 都是 1 纹理像素 = 1 物理像素。
 
@@ -444,27 +447,28 @@ fn clamp_pan(&mut self, image: Vec2, view: Vec2, ppp: f32) {
 | 滚轮 / `+` / `-` | 进入 Manual，保留当前 zoom 作为基准 |
 | 切换 DPI（跨显示器） | `zoom` 是物理口径，几何自动正确；重算 Fit 或钳制 pan |
 
-#### 旋转（P1）
+#### 旋转（v1.1 已实现）
 
-两种实现：
+采用**几何旋转**：`egui::Mesh` 四边形 + 旋转 UV 表，只改变采样方式，不重传纹理。
 
-1. **CPU 旋转像素**：对 RGBA 缓冲做 90° 转置，重新上传纹理；实现简单，旋转一次有几十毫秒卡顿。
-2. **几何旋转**：用 `egui::Mesh` 生成旋转四边形并调整 UV；无重传，但命中测试/平移方向需要额外换算。
-
-v1 不做；P1 建议方案 1（简单可靠），并在多级旋转时只重传一次。
+- `ViewState.rotation` 记录顺时针 90° 的次数（0~3），只影响显示；换图时随 `ViewState::default()` 重置。
+- `displayed_size()` 在奇数步时交换宽高；Fit、缩放钳制、平移钳制都以旋转后的尺寸为准。
+- 旋转后 `pan` 归零，避免图像跳出画布；`R` 顺时针、`Shift+R` 逆时针。
+- 屏幕四角对应的纹理 UV 表：0° `(0,0)(1,0)(1,1)(0,1)`；90° `(0,1)(0,0)(1,0)(1,1)`；180° `(1,1)(0,1)(0,0)(1,0)`；270° `(1,0)(1,1)(0,1)(0,0)`。
+- 曾考虑 CPU 旋转像素后重传纹理，但 24MP 图一次旋转有几十毫秒卡顿，且需要额外的纹理生命周期管理，故不采用。
 
 ### 5.3 输入处理顺序
 
 每帧顺序固定，避免同一事件被重复消费：
 
-1. `handle_shortcuts(ctx)`：`Ctrl+O`、`←/→`、`+/-`、`0/1/F`、`Esc`。使用 `consume_key`，避免长按重复触发翻页。
+1. `handle_shortcuts(ctx)`：`Ctrl+O`、`←/→`、`+/-`、`0/1/F`、`R` / `Shift+R`、`Esc`。使用 `consume_key`，避免长按重复触发翻页；`consume_key` 采用逻辑修饰键匹配（多余的 Shift 不算冲突），因此共享逻辑键的 `Shift+R` 必须先于 `R` 匹配。
 2. `poll_loader(ctx)`：接收解码结果，过期结果丢弃。
 3. 画布绘制与指针交互：
    - `resp.hovered()` 时处理滚轮/捏合缩放；只有指针在画布上才缩放。
    - `resp.dragged()` 时 `pan += resp.drag_delta()`，并钳制；`drag_started` 时进入 Manual。
    - `resp.double_clicked()` 切换模式。
 4. 面板绘制（顶部、底部）。
-5. 标题更新。
+5. 标题更新：`logic()` 中先用上一帧画布尺寸重算 Fit 缩放，保证标题/工具栏显示与画布一致。
 
 细节：
 
@@ -747,6 +751,15 @@ components = ["rustfmt", "clippy"]
 
 **验收**：§1.4 DoD 全部通过。
 
+### M6 v1.1 增量：EXIF 方向与旋转（0.5 d，已完成）
+
+- [x] EXIF Orientation 自动校正（JPEG/TIFF/WebP，走 `image` 内置解码器接口）。
+- [x] `R` / `Shift+R` 几何旋转 90°，不重传纹理；Fit/缩放/平移按旋转后尺寸计算。
+- [x] 帮助窗口与 README 快捷键、已知限制更新。
+- [x] 四色象限夹具 + 像素采样验证方向；EXIF Orientation 6 / 3 夹具。
+
+**验收**：§9.6 全部通过。
+
 ---
 
 ## 9. 测试计划
@@ -768,6 +781,12 @@ components = ["rustfmt", "clippy"]
 | `folder` | `["img10.jpg", "img2.jpg", "img1.jpg"]` | `img1, img2, img10` |
 | `folder` | 扩展名大小写混排 | 全部识别 |
 | `folder` | 过滤目录与非图片文件 | 不包含 |
+| `viewer` | 旋转 90°/270° 后显示尺寸 | 宽高交换；180° 不变 |
+| `viewer` | 旋转后的 Fit 缩放 | 4000×3000 旋转 90° 在 1000×800 画布中为 0.2 |
+| `viewer` | `rotate(-1)` 取模与居中 | `rotation == 3`，`pan == 0` |
+| `viewer` | 旋转 UV 表（90°） | 屏幕左上取原图左下，即顺时针 |
+| `app` | `R` / `Shift+R` 的旋转步数 | +1 / -1；其他按键为 0 |
+| `loader` | EXIF Orientation=6 的 JPEG | 显示尺寸 20×40，上红下蓝 |
 | `app` | 标题格式化为 `name — 6000×4000 (67%)` | 一致 |
 
 ### 9.2 手工测试矩阵
@@ -853,6 +872,41 @@ cargo build --release
 - 未单独定义 `LoadError::UnsupportedFormat`；无法猜测格式时统一归入 `Decode` 错误文案。
 - `F11` 全屏已实现（原计划列为 P1 的可选项）；无边框沉浸模式仍未做。
 
+### 9.6 v1.1 验证记录：EXIF 方向与 90° 旋转（2026-11-10）
+
+**质量门禁**：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`（24 个单元测试）、`cargo build --release` 全部通过。
+
+**实现要点**：
+
+- EXIF：`into_decoder()` → `orientation()` → `DynamicImage::from_decoder` → `apply_orientation`，然后才计算尺寸、降采样。
+- 旋转：`ViewState.rotation`（0~3）只影响显示；`egui::Mesh` 旋转 UV，纹理不重传；换图重置。
+
+**验证方法**：生成 320×240 四色象限图（左上红 / 右上绿 / 左下蓝 / 右下黄），用 `PrintWindow` 截图后逐象限采样平均色，避免肉眼判断方向出错。
+
+| 操作 | 期望（左上/右上/左下/右下） | 实测 |
+| --- | --- | --- |
+| 原图 | 红 / 绿 / 蓝 / 黄 | 一致 |
+| `R` ×1 | 蓝 / 红 / 黄 / 绿 | 一致 |
+| `R` ×2 | 黄 / 蓝 / 绿 / 红 | 一致 |
+| `R` ×3 | 绿 / 黄 / 红 / 蓝 | 一致 |
+| `R` ×4 | 回到原图 | 一致 |
+| `Shift+R` | 绿 / 黄 / 红 / 蓝（逆时针） | 一致（单元测试覆盖） |
+| EXIF Orientation=6 的 320×240 JPEG | 显示为 240×320，内容顺时针 90° | 一致 |
+| EXIF Orientation=3 的 JPEG | 内容旋转 180° | 一致 |
+| 1920×1080 在 Fit 下旋转 | 57% → 37%，竖图完整可见、无裁切 | 一致 |
+
+**发现与修复**：
+
+- `consume_key` 使用逻辑修饰键匹配，未按下的 Shift 不会阻止 `Modifiers::NONE` 命中。最初把 `rotate(1)` 绑定到 `Shift+R` 分支，导致 `R` 实际逆时针；改为先匹配 `Shift+R` 并绑定 `rotate(-1)` 后方向正确。该问题只有像素级采样才能稳定发现，肉眼在渐变图上容易误判。
+- GUI 脚本用 `PostMessage` 发送按键不会带 Shift，而 `keybd_event` 受前台窗口抢占影响偶发失败；因此把快捷键解析抽成 `consume_rotation()`，用 `egui::Context::run_pass` 注入按键事件做确定性单元测试（`R`→+1、`Shift+R`→-1、其他键→0）。
+- 标题与状态栏在画布之前计算，加载或旋转后可能短暂显示上一帧的百分比。现在 `logic()` 中先用上一帧画布尺寸重算 Fit，并在加载完成后补一帧重绘。
+- 截图中的“底部半透明条带”是测试图 `% 256` 渐变的自然回绕，不是渲染缺陷（像素值在边界处连续回绕）。
+
+**未覆盖**：
+
+- 仅验证 125% DPI；150% / 200% 与跨显示器未复测（缩放数学由单元测试覆盖）。
+- EXIF 方向只在 JPEG 上实测；TIFF/WebP 走同一接口，未单独取夹具。
+
 ---
 
 ## 10. 性能预算
@@ -879,8 +933,8 @@ cargo build --release
 | --- | --- | --- | --- |
 | 大图耗尽内存/显存 | 中 | 高 | 解码前尺寸检查 + `image::Limits` + 纹理上限 40MP/8192 |
 | 纹理上传卡顿（160MB 一次上传） | 中 | 中 | worker 解码；必要时 P1 分块上传；UI 显示 spinner |
-| 解码慢（100MP） | 高 | 中 | Triangle 缩放、跳过 EXIF、优先显示降采样图；P2 两阶段加载 |
-| 颜色与 EXIF 方向不符 | 高 | 低 | v1 在 README 声明；P1 加 EXIF 方向；P2 加 ICC |
+| 解码慢（100MP） | 高 | 中 | Triangle 缩放、优先显示降采样图；P2 两阶段加载 |
+| 颜色与 EXIF 方向不符 | 高 | 低 | v1.1 已加 EXIF 方向（JPEG/TIFF/WebP）；P2 加 ICC |
 | 不支持 HEIC/AVIF | 中 | 中 | 明确格式列表；后续用 libheif/avif-native |
 | wgpu 驱动兼容性 | 低 | 高 | 保留 `glow` 后端切换；日志记录适配器信息 |
 | 高 DPI 下 100% 语义错误 | 中 | 中 | 以 `ppp` 换算，专项测试 125/150/200% |
@@ -895,10 +949,11 @@ cargo build --release
 
 ## 12. 后续路线
 
-### v1.1（体验完善）
+### v1.1（体验完善）— 进行中
 
-- EXIF 方向、旋转 90°、全屏、幻灯片。
-- 相邻图片预加载 + 3 张 LRU 纹理缓存。
+- [x] EXIF 方向、旋转 90°、全屏。
+- [ ] 幻灯片。
+- [ ] 相邻图片预加载 + 3 张 LRU 纹理缓存。
 - 记住窗口状态与上次目录（`eframe` persistence 或自写 JSON）。
 - Mipmap/过滤模式自适应；缩略图占位。
 - 删除到回收站、复制路径、资源管理器定位。
@@ -928,7 +983,7 @@ cargo build --release
 3. **Fit 是否放大**：不放大超过 100%（推荐）；小图保持原始大小并居中。
 4. **翻页是否循环**：不循环，首尾禁用（推荐）。
 5. **界面语言**：仅中文（依赖系统字体回退）。
-6. **EXIF 方向**：v1.1 实现；v1 先按原始像素显示。
+6. **EXIF 方向**：v1.1 已实现（见 §9.6）；其他格式按原始像素显示。
 7. **目标平台**：Windows 优先，但代码不使用 Windows 专属 API（除子系统属性/图标）。
 8. **安装包/文件关联**：本阶段不做，只交付 exe。
 

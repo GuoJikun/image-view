@@ -8,7 +8,7 @@ use crate::document::LoadedImage;
 use crate::folder::{self, FolderNav};
 use crate::loader::{Caps, Loader};
 use crate::ui;
-use crate::viewer::{self, ViewState};
+use crate::viewer::{self, ViewMode, ViewState};
 
 pub struct ImageViewerApp {
     folder: FolderNav,
@@ -132,6 +132,8 @@ impl ImageViewerApp {
                     self.view = ViewState::default();
                     self.error = None;
                     self.error_path = None;
+                    // 标题与状态栏在画布之前计算，补一帧让 Fit 百分比立即同步。
+                    ctx.request_repaint();
                 }
                 Err(error) => {
                     log::error!("failed to load {}: {error}", path.display());
@@ -192,6 +194,12 @@ impl ImageViewerApp {
             }
             if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::F)) {
                 self.toggle_actual_size(ctx);
+            }
+
+            // 先匹配更具体的 Shift+R，否则共享同一逻辑键的 R 会先把它消费掉。
+            let rotate = consume_rotation(ctx);
+            if rotate != 0 {
+                self.view.rotate(rotate);
             }
         }
 
@@ -290,6 +298,19 @@ impl eframe::App for ImageViewerApp {
         self.handle_dropped_files(ctx);
         self.handle_shortcuts(ctx);
         self.poll_loader(ctx);
+
+        // 标题/工具栏在画布之前绘制；先用上一帧画布尺寸重算 Fit，
+        // 避免加载或旋转后标题短暂显示上一张/上一个角度的百分比。
+        if let Some(image) = &self.image
+            && self.view.mode == ViewMode::Fit
+            && self.view.last_view.x > 0.0
+            && self.view.last_view.y > 0.0
+        {
+            let size = image.texture_size();
+            let view = self.view.last_view;
+            self.view.update_fit(view, size, ctx.pixels_per_point());
+        }
+
         self.sync_title(ctx);
     }
 
@@ -323,5 +344,61 @@ impl eframe::App for ImageViewerApp {
 
         self.canvas(ui);
         ui::help_window(ui.ctx(), &mut self.show_help);
+    }
+}
+
+/// 解析旋转快捷键：`R` 顺时针（+1），`Shift+R` 逆时针（-1）。
+///
+/// `consume_key` 使用逻辑修饰键匹配，未按下的 Shift 不会阻止 `Modifiers::NONE`
+/// 命中；因此必须先匹配更具体的 `Shift+R`，否则会被 `R` 先消费。
+fn consume_rotation(ctx: &egui::Context) -> i8 {
+    let counter_clockwise = ctx.input_mut(|input| input.consume_key(Modifiers::SHIFT, Key::R));
+    let clockwise = ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::R));
+    if clockwise {
+        1
+    } else if counter_clockwise {
+        -1
+    } else {
+        0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rotation_for(key: Key, modifiers: Modifiers) -> i8 {
+        let ctx = egui::Context::default();
+        let input = egui::RawInput {
+            events: vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }],
+            ..Default::default()
+        };
+
+        let mut step = 0;
+        let mut output = ctx.run_pass(input, |ctx| step = consume_rotation(ctx));
+        output.textures_delta.clear();
+        step
+    }
+
+    #[test]
+    fn rotate_shortcuts_map_to_clockwise_and_counter_clockwise() {
+        assert_eq!(rotation_for(Key::R, Modifiers::NONE), 1, "R 应顺时针");
+        assert_eq!(
+            rotation_for(Key::R, Modifiers::SHIFT),
+            -1,
+            "Shift+R 应逆时针"
+        );
+    }
+
+    #[test]
+    fn rotate_shortcut_ignores_other_keys() {
+        assert_eq!(rotation_for(Key::F, Modifiers::NONE), 0);
+        assert_eq!(rotation_for(Key::F, Modifiers::SHIFT), 0);
     }
 }
