@@ -101,7 +101,7 @@ assets/
 docs/
   ROADMAP.md    阶段进度总览与里程碑
   PLAN-P0.md    v1.x 设计与验收记录
-  PLAN-P1.md    v2.0 计划（M1~M7）
+  PLAN-P1.md    v2.0 计划（M1~M8，编辑最后）
   PLAN-P2.md    v2.x 专业能力与架构
   PLAN-P3.md    v3+ 长期方向
 ```
