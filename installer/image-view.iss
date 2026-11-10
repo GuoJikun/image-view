@@ -1,7 +1,7 @@
 ; image-view Inno Setup 6 script.
 ;
 ; Build through scripts\build-release.ps1, or manually:
-;   iscc /DAppVersion=2.0.0-alpha.1 /DAppVersionNumeric=2.0.0.0 installer\image-view.iss
+;   iscc /DAppVersion=1.0.0 /DAppVersionNumeric=1.0.0.0 installer\image-view.iss
 ;
 ; Design notes:
 ; - Per-user install under %LOCALAPPDATA%\Programs, no administrator rights.

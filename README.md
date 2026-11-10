@@ -24,12 +24,12 @@
 
 ## 版本与路线
 
-当前版本为 **v2.0.0-alpha.1**（P1 开发快照），已完成 v2.0 的 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）与 P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）。默认构建包含 HEIC/AVIF 解码器，渲染后端为 glow，release exe 约 14.6 MiB。自动更新与中/英 UI 按计划推迟到 v2.1 / v2.2。
+当前版本为 **v1.0.0（未发布）**。发布前所有开发工作都归入 `1.0.0`：P0 查看基线，以及 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）。默认构建包含 HEIC/AVIF 解码器，渲染后端为 glow，release exe 约 14.6 MiB。1.0.0 仍在开发中：图库/搜索/对比（M6）尚未开始，GIF/WebP 动画（M7）计划在首个版本之后提供；自动更新与中/英 UI 也将在发布后以 v1.1 / v1.2 补齐。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
-- v2.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
+- v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
 - v2.x / v3+ 方向：[docs/PLAN-P2.md](docs/PLAN-P2.md) · [docs/PLAN-P3.md](docs/PLAN-P3.md)
-- v1.x 设计与验收：[docs/PLAN-P0.md](docs/PLAN-P0.md)
+- 1.0.0 开发基线（P0）设计与验收：[docs/PLAN-P0.md](docs/PLAN-P0.md)
 
 ## 安装与卸载
 
@@ -136,7 +136,7 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
 - Windows 10/11 的默认应用由系统 `UserChoice` 保护，安装器无法静默夺取常见扩展名的默认查看器；请在“设置 → 应用 → 默认应用”中确认。
-- 安装向导暂为英文；应用内中/英 UI 资源表与自动更新检查按计划推迟到 v2.2 / v2.1。
+- 安装向导暂为英文；应用内中/英 UI 资源表与自动更新检查计划在 v1.2 / v1.1 提供。
 - 日志与崩溃转储会写入 `%LOCALAPPDATA%\image-view\logs`；卸载会一并删除。若需长期保留问题现场，请在卸载前复制该目录。
 
 ## 项目结构
@@ -174,8 +174,8 @@ design/
   gen_ico.py    从 icon-1024.png 生成多尺寸 assets/icon.ico
 docs/
   ROADMAP.md    阶段进度总览与里程碑
-  PLAN-P0.md    v1.x 设计与验收记录
-  PLAN-P1.md    v2.0 计划（M1~M7，只查看）
+  PLAN-P0.md    1.0.0 开发基线（P0）设计与验收记录
+  PLAN-P1.md    v1.0 计划（M1~M7，只查看）
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
 CHANGELOG.md    版本变更记录与语义化版本规范
