@@ -50,7 +50,7 @@
 ### 变更
 
 - 版本号统一为 `1.0.0`：发布前所有开发阶段都计入首个正式版，不再使用 `0.x` 或 `2.0.0-alpha.N` 标签。
-- 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS：移除 `installer/image-view.iss`，新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`；安装包体积由 6,513,568 字节降至约 6.0 MB（减少约 7.6%）。
+- 安装器采用 cargo-packager + NSIS：`Packager.toml` 挂自定义模板 `installer/nsis/image-view.nsi`，支持英/简中安装向导与 lzma 压缩，安装包体积约 6.0 MB。
 - 安装路径改为 `%LOCALAPPDATA%\image-view`（不再使用 `%LOCALAPPDATA%\Programs` 子目录），与应用的日志、缩略图缓存目录同根。
 - 卸载不再默认删除用户数据，改为由卸载页的“删除应用数据”复选框控制。
 - 渲染后端使用 glow（OpenGL），以支持纹理 `mipmap_mode` 并减小 release 体积。

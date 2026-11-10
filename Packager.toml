@@ -47,7 +47,7 @@ installerIcon = "assets/icon.ico"
 languages = ["English", "SimpChinese"]
 displayLanguageSelector = true
 
-# NSIS only accepts lzma, zlib or bzip2 (Inno's lzma2 is not available).
+# NSIS only accepts lzma, zlib or bzip2.
 compression = "lzma"
 
 # Ask the user before deleting app data. $LOCALAPPDATA/image-view is also the

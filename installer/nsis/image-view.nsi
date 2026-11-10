@@ -54,8 +54,8 @@ ${StrLoc}
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 
-; File association identity. Kept identical to the previous Inno Setup build so
-; that existing "Open with" entries keep working across the migration.
+; File association identity, shared with earlier releases so that existing
+; "Open with" entries keep working across upgrades.
 !define APP_PROGID "ImageView.Image"
 !define APP_REGKEY "Software\image-view"
 

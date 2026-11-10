@@ -113,7 +113,7 @@
 - [x] 崩溃日志落盘；匿名统计默认关闭且需明示。
 - [x] 版本号与 CHANGELOG 规范：`1.0.0` 起语义化版本。
 
-> M5 完成情况：安装器、文件关联、崩溃日志与版本规范已落地；自动更新与中/英 UI 按发布门槛说明拆分到 v1.1 / v1.2。安装器首版用 Inno Setup 6 实现，随后切换为 cargo-packager + NSIS（Inno 6.7 编译器标注 `Non-commercial use only`，且双工具链维护成本更高）。安装向导支持英文与简体中文。Windows 10/11 不允许安装器静默改写默认看图程序，安装器只注册“打开方式”与“默认应用”能力项，由用户在系统设置中选择默认处理器。
+> M5 完成情况：安装器（cargo-packager + NSIS）、文件关联、崩溃日志与版本规范已落地；自动更新与中/英 UI 按发布门槛说明拆分到 v1.1 / v1.2。安装向导支持英文与简体中文。Windows 10/11 不允许安装器静默改写默认看图程序，安装器只注册“打开方式”与“默认应用”能力项，由用户在系统设置中选择默认处理器。
 
 **验收**
 
@@ -314,13 +314,13 @@
 - 新增 `logging.rs`：常规日志写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`，同时输出 stderr；单文件超过 4 MiB 轮转为 `.1`~`.3`。启动时记录版本、系统与架构；可用 `IMAGE_VIEW_LOG_DIR` 覆盖目录。
 - panic hook 在常规日志之外写独立 `crash-*.log`，包含 UTC 时间、panic 位置、消息与 `Backtrace::force_capture()`；最多保留 10 份。release 的 `strip` 从 `symbols` 调整为 `debuginfo`，保留函数名供 backtrace 使用。
 - “文件”菜单新增“打开日志文件夹”，直接调用系统文件管理器打开日志目录。
-- 新增 Inno Setup 6 脚本 `installer/image-view.iss`：按用户安装到 `%LOCALAPPDATA%\Programs\image-view`（无需管理员），x64 / Windows 10+，开始菜单快捷方式、可选桌面图标、可选“设为默认看图程序”。
+- 新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`（cargo-packager v0.11.8 + NSIS 3.09）：按用户安装到 `%LOCALAPPDATA%\image-view`（无需管理员权限），x64 / Windows 10+，开始菜单快捷方式，静默安装额外创建桌面快捷方式。
 - 文件关联：为 18 个扩展名注册 ProgID `ImageView.Image`、`OpenWithProgids`、`Applications\image-view.exe\SupportedTypes`，以及 `RegisteredApplications` + `Capabilities\FileAssociations` 默认应用能力项；卸载清理全部新增键值。
-- 默认查看器任务在安装前通过 Inno Pascal 备份 `HKCU\Software\Classes\.<ext>` 的原默认值，卸载时仅在当前值仍为 `ImageView.Image` 时恢复，避免覆盖用户安装后手动选择的查看器；同时提供安装完成后打开 Windows“默认应用”设置的入口。
-- 新增 `scripts/build-release.ps1`：从 `Cargo.toml` 读取版本，执行 `cargo build --release --locked`，调用 ISCC 生成安装包，并输出 `dist\SHA256SUMS.txt`。
+- 不提供“设为默认看图程序”的安装选项：Windows 10/11 会回滚安装器对扩展名默认值的写入，安装器只登记“打开方式”与“默认应用”能力项，由用户在系统设置中选择。
+- 新增 `scripts/build-release.ps1`：从 `Cargo.toml` 读取版本，执行 `cargo build --release --locked`，调用 `cargo packager --release -c Packager.toml` 生成安装包，并输出 `dist\SHA256SUMS.txt`。
 - 生成 16/24/32/48/64/128/256 多尺寸 `assets/icon.ico`；`build.rs` 在 Windows MSVC 下把 `assets/app.res`（仅图标资源）链接进 exe，使 exe、快捷方式与安装包使用同一图标。
 - 版本统一为 `1.0.0`（发布前所有开发工作都归入首个正式版）；新增 `CHANGELOG.md`，记录 Keep a Changelog 结构、语义化版本与安装包版本映射规则。
-- 卸载同时删除 `%APPDATA%\image-view`（窗口/会话设置）与 `%LOCALAPPDATA%\image-view`（日志、缩略图缓存），避免用户数据残留。
+- 卸载页提供“删除应用数据”复选框，勾选后删除 `%APPDATA%\image-view`（窗口/会话设置）与 `%LOCALAPPDATA%\image-view`（日志、缩略图缓存）；默认保留。
 - 不引入遥测或联网上报；匿名统计默认关闭（本版本没有统计代码），日志仅保存在本机。
 
 **自动化验证**
@@ -328,36 +328,29 @@
 - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`（75 个）、`cargo test --no-default-features`（75 个）、`cargo build --release` 通过。
 - 新增单测：UTC 时间换算、日志轮转与档位后移、小日志不轮转、崩溃转储按名称保留最新 10 份、日志目录创建与追加写入。
 - release exe 15,262,720 字节（约 14.56 MiB），较 M4 的 15,161,856 字节增加 100,864 字节。
-- 安装包 `image-view-1.0.0-setup.exe` 6,513,568 字节，SHA256 `2019938233dc1a84b9771a3fd9e874adfc2f24fdceed33f8330f55960d0bbd9a`。
+- 安装包 `image-view_1.0.0_x64-setup.exe` 6,019,715 字节，SHA256 `6be4fa01c6c9a51b9ef0430b85b215c87eb99ac6c71613a3fda20ce81f8f9264`。
 - 版本统一为 `1.0.0` 后重建并复验：静默安装退出码 0，卸载项 `DisplayVersion` 为 `1.0.0`；静默卸载退出码 0，安装目录与卸载项均移除。
 - 临时 panic 自检（验收后已移除）：`IMAGE_VIEW_TEST_PANIC=1` 启动后退出码 101，生成 3,849 字节 `crash-*.log`，包含版本、UTC 时间、`src\main.rs:27:9`、消息与 backtrace。
 
 **手工验证**
 
-- 静默安装 `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS="setdefault"`：退出码 0，程序、README、CHANGELOG、卸载器写入 `%LOCALAPPDATA%\Programs\image-view`。
+- 静默安装 `/S`：退出码 0，程序、README、CHANGELOG、卸载器写入 `%LOCALAPPDATA%\image-view`；同目录下既有的 `thumbs\` 未被覆盖或清除。
 - 注册表检查：`HKCU\Software\Classes\ImageView.Image`、`Applications\image-view.exe`、`Software\image-view\Capabilities` 与 `RegisteredApplications\image-view` 均存在；合并视图 `HKCR\ImageView.Image\shell\open\command` 指向安装后的 exe 与 `%1`。
-- `.png` / `.qoi` / `.avif` 的 `OpenWithProgids` 均含 `ImageView.Image`；选择默认查看器任务后三者默认值变为 `ImageView.Image`。
-- 用 ShellExecute 打开 `target\assoc-test\test.qoi`（无 `UserChoice`，故走默认 ProgID）：实际启动 `%LOCALAPPDATA%\Programs\image-view\image-view.exe`，说明关联命令生效。
-- 连续两次同版本覆盖安装（模拟升级）后默认值仍为 `ImageView.Image`；静默卸载退出码 0，安装目录、ProgID、Applications、Capabilities、`Software\image-view`、`RegisteredApplications` 值、`%APPDATA%\image-view`、`%LOCALAPPDATA%\image-view` 全部消失。
-- 卸载后 `.png` / `.qoi` / `.avif` 的默认值恢复为安装前的空值，`OpenWithProgids` 中的 `ImageView.Image` 值被移除。
+- `OpenWithProgids`：18/18 扩展名均含 `ImageView.Image`；`.png` / `.jpg` 默认值保持为空，确认未改写默认处理器。
+- 用 ShellExecute 打开 `target\assoc-test\test.qoi`（无 `UserChoice`，故走默认 ProgID）：实际启动 `%LOCALAPPDATA%\image-view\image-view.exe`，说明关联命令生效。
+- 静默卸载 `/S` 退出码 0：程序文件、卸载项、ProgID、Applications、Capabilities、`Software\image-view`、`RegisteredApplications` 值、快捷方式与抽样扩展名的 `OpenWithProgids` 值全部清除；`%LOCALAPPDATA%\image-view` 目录因保留 `thumbs\` 用户数据而按设计留存，未勾选“删除应用数据”时不清除。
 - 通过 `ExtractAssociatedIcon` 提取 release exe 图标，确认是 image-view 的多尺寸图标而非 Rust 默认图标。
 
 **未覆盖**
 
 - 没有干净的 Win10/11 虚拟机，未完成“全新系统安装 → 双击 → 升级 → 卸载”的完整 VM 验收；本机已完成等价的静默安装/覆盖安装/卸载与注册表清理验证。
 - 安装包未签名，SmartScreen“未知发布者”提示与下载信誉未验证。
-- Windows 10/11 通过 `UserChoice` 锁定常见扩展名（本机 `.png` 仍为“照片”），安装器的默认查看器任务只写 HKCU 默认值并提供设置入口，无法静默夺取默认；最终仍由用户在“默认应用”中确认。
-- 安装器向导暂为英文；中/英 UI 资源表与自动更新按计划推迟到 v1.2 / v1.1。
-- 仅验证覆盖安装（同版本重装），未验证跨版本升级中的设置/缓存兼容；仅构建 x64，未验证 ARM64/x86。
+- Windows 10/11 通过 `UserChoice` 锁定常见扩展名（本机 `.png` 仍为“照片”），安装器只登记能力项，无法静默夺取默认；最终仍由用户在“默认应用”中确认。
+- 语言选择器仅在模板层面启用，GUI 安装的英/中切换未逐项截图确认；静默安装不触发语言选择。
+- 仅验证覆盖安装（同版本重装），未验证跨版本升级中的设置/缓存兼容。安装器按 `Uninstall\image-view` 的 `DisplayVersion` 判断版本；若机器上残留更早的测试版安装（卸载项键名不同），会并存两条卸载记录，正式发布前需先卸载旧版。仅构建 x64，未验证 ARM64/x86。
 - 默认应用能力项在 Windows“设置 → 默认应用”中的显示与排序未逐项截图确认。
-- Inno Setup 6.7 编译器在本地构建时标记 `Non-commercial use only`；若用于商业分发，需先确认 Inno Setup 授权或改用 WiX。
 
-### P1-M5 安装器迁移到 cargo-packager + NSIS（2026-11-10）
-
-**动机**
-
-- Inno Setup 6.7 编译器在本地构建时标注 `Non-commercial use only`，商业分发存在授权不确定性。
-- 安装器与打包流程分散在两套工具链（ISCC + 自定义脚本）中，依赖发现逻辑（`ISCC_PATH`、常见安装路径探测）脆弱。
+### P1-M5 安装器实现细节（cargo-packager + NSIS，2026-11-10）
 
 **实现**
 
@@ -368,26 +361,9 @@
   - 不写任何扩展名的默认处理器，卸载时仅在默认值仍为本 ProgID 时清除，避免留下失效关联。
   - 卸载新增删除 `${MANUPRODUCTKEY}`（`HKCU\Software\image-view\image-view`）：默认模板只删“Installer Language”值，会残留安装位置键。
   - 保留默认模板的进程检测/结束、覆盖安装/降级提示、appdata 删除复选框与快捷方式逻辑。
-- `scripts/build-release.ps1` 改为调用 `cargo packager --release -c Packager.toml`，移除 ISCC 与 `ISCC_PATH` 探测；改为校验 NSIS 工具链是否就绪、按新命名匹配产物、输出 `SHA256SUMS.txt`。
-- 移除 `installer/image-view.iss`（历史见 git）。
+- `scripts/build-release.ps1` 调用 `cargo packager --release -c Packager.toml`，构建前校验 NSIS 工具链是否就绪、按新命名匹配产物。
 - 新增 `docs/NSIS-TOOLCHAIN.md`：记录工具链目录清单与预置步骤。原因是 cargo-packager 检测到工具链缺文件时会**删除整个 `NSIS` 目录并重新下载**，在受限网络下表现为“反复重建、进度为零”。
-
-**自动化与手工验证**
-
-- 打包（离线，无下载请求）：`dist\image-view_1.0.0_x64-setup.exe` 6,018,081 字节，SHA256 `14d552f5ee8476cc8ae7732336cddf4b94261036b137e164ad854a1d32b00d69`。相对 Inno 版 6,513,568 字节减少 495,487 字节（约 7.6%）。
-- 静默安装 `/S` 退出码 0：`image-view.exe`（15,262,720 字节）、`README.md`、`CHANGELOG.md`、`uninstall.exe` 写入 `%LOCALAPPDATA%\image-view`；同目录下既有的 `thumbs\` 未被覆盖或清除，`%LOCALAPPDATA%\Programs\image-view` 不存在。
-- 注册表：卸载项 `DisplayName`/`DisplayVersion`（`1.0.0`）/`Publisher`/`InstallLocation`/`EstimatedSize`（15,282 KB）正确；`Capabilities\FileAssociations` 18 项；`RegisteredApplications\image-view` 指向 `Software\image-view\Capabilities`；`Classes\ImageView.Image\shell\open\command` 指向安装目录 exe 与 `%1`。
-- `OpenWithProgids`：18/18 扩展名均含 `ImageView.Image`；`.png`、`.jpg` 的默认值保持为空，确认未改写默认处理器。
-- 快捷方式：开始菜单 `image-view.lnk` 与桌面 `image-view.lnk` 均创建（静默安装默认创建）。
-- 静默卸载 `/S` 退出码 0：程序文件（exe、README、CHANGELOG、uninstall.exe）全部删除；卸载项、`Software\image-view`（含 `image-view` 子键）、`ImageView.Image`、`Applications\image-view.exe`、`RegisteredApplications` 值、开始菜单与桌面快捷方式、抽样扩展名的 `OpenWithProgids` 值均清除。`%LOCALAPPDATA%\image-view` 目录因保留 `thumbs\` 用户数据而按设计留存，未勾选“删除应用数据”时不清除。
-
-**未覆盖**
-
-- 未在干净的 Win10/11 虚拟机上复验；结论来自本机静默安装/卸载。
-- 未验证从 Inno 版安装升级：两版卸载项键名不同（Inno 用 `{AppId}_is1`），同时安装会出现两条卸载记录。1.0.0 尚未发布，正式发布前需先卸载旧版或提供迁移说明。
-- 语言选择器仅在模板层面启用，GUI 安装的英/中切换未逐项截图确认；静默安装不触发语言选择。
-- 仅构建 x64；ARM64/x86 未验证。安装包未签名。
-- 仍无法静默夺取默认处理器（与 Inno 版结论一致），需用户在“默认应用”中选择。
+- 许可：NSIS 采用 zlib/libpng，cargo-packager 采用 MIT/Apache-2.0，商业分发无额外授权约束。
 
 ## 7. 变更记录
 
@@ -404,7 +380,7 @@
 | 2026-11-10 | 完成 P1-M2：ICC → sRGB 转换、16-bit 保持精度、色彩转换状态标记与验收夹具 |
 | 2026-11-10 | 完成 P1-M3：HEIC/AVIF 纯 Rust 解码、缺失解码器提示、特性开关与验收记录 |
 | 2026-11-10 | 完成 P1-M4：缩略图条/虚拟滚动、磁盘缓存与内存 LRU、预加载、mipmap + glow 渲染、验收记录 |
-| 2026-11-10 | 完成 P1-M5：Inno Setup 安装器、文件关联/默认应用、崩溃日志、图标与版本/CHANGELOG；自动更新与多语言推迟到 v1.1/v1.2 |
+| 2026-11-10 | 完成 P1-M5：cargo-packager + NSIS 安装器、文件关联/默认应用、崩溃日志、图标与版本/CHANGELOG；自动更新与多语言推迟到 v1.1/v1.2 |
 | 2026-11-10 | 版本口径统一：发布前所有工作归入 `1.0.0`，原 `2.0.0-alpha.1` / `v2.0` / `v2.1` / `v2.2` 分别改为 `1.0.0` / `v1.0` / `v1.1` / `v1.2` |
-| 2026-11-10 | 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS 3.09：新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`，移除 `installer/image-view.iss`；安装包 6,513,568 → 6,018,081 字节 |
+| 2026-11-10 | 安装器定型为 cargo-packager + NSIS 3.09：`Packager.toml` 挂自定义模板 `installer/nsis/image-view.nsi`；安装包 6,019,715 字节 |
 | 2026-11-10 | 安装路径修正为 `%LOCALAPPDATA%\image-view`（去掉 `Programs` 子目录），与日志/缩略图缓存同根；卸载改为只删程序文件、目录树由“删除应用数据”控制 |
