@@ -16,6 +16,14 @@
 - 大图安全阈值：单边 8192、总像素 40MP 自动等比降采样；超过 250MP 的原图直接拒绝解码；预加载只处理 30MP 以下的图片
 - 中文界面（默认深色主题）
 
+## 版本与路线
+
+当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存）。
+
+- 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
+- v2 及后续需求：[docs/PLAN-V2.md](docs/PLAN-V2.md)
+- v1.x 设计与验收：[docs/PLAN.md](docs/PLAN.md)
+
 ## 运行
 
 需要 Rust 1.95+（edition 2024）。
@@ -90,7 +98,9 @@ examples/
 assets/
   icon.png      窗口图标
 docs/
-  PLAN.md       设计与实现方案
+  PLAN.md       v1.x 设计与验收记录
+  PLAN-V2.md    v2 及后续阶段计划（P1/P2/P3）
+  ROADMAP.md    阶段进度总览与里程碑
 ```
 
 ## 开发
