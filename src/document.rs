@@ -6,6 +6,7 @@ use eframe::egui;
 
 use crate::loader::Decoded;
 
+#[derive(Clone)]
 pub struct LoadedImage {
     pub path: PathBuf,
     pub texture: egui::TextureHandle,
@@ -34,6 +35,11 @@ impl LoadedImage {
 
     pub fn texture_size(&self) -> egui::Vec2 {
         egui::vec2(self.display_size[0] as f32, self.display_size[1] as f32)
+    }
+
+    /// 纹理占用的像素数，供缓存估算内存用量。
+    pub fn display_pixels(&self) -> usize {
+        self.display_size[0].saturating_mul(self.display_size[1])
     }
 
     pub fn file_name(&self) -> String {

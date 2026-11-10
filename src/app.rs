@@ -1,14 +1,25 @@
 //! 应用状态与每帧编排。
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Key, Modifiers};
 
+use crate::cache::ImageCache;
 use crate::document::LoadedImage;
 use crate::folder::{self, FolderNav};
-use crate::loader::{Caps, Loader};
+use crate::loader::{Caps, LoadError, LoadResponse, Loader, Purpose};
 use crate::ui;
 use crate::viewer::{self, ViewMode, ViewState};
+
+/// 幻灯片自动前进间隔。
+const SLIDESHOW_INTERVAL: Duration = Duration::from_secs(3);
+
+#[derive(Clone, Copy, Debug)]
+struct Slideshow {
+    /// 下一张的触发时刻。
+    next_at: Instant,
+}
 
 pub struct ImageViewerApp {
     folder: FolderNav,
@@ -25,17 +36,24 @@ pub struct ImageViewerApp {
     show_help: bool,
     fullscreen: bool,
     startup_path: Option<PathBuf>,
+    cache: ImageCache,
+    slideshow: Option<Slideshow>,
+    /// 换图后需要再画一帧，让标题/状态栏的 Fit 百分比与画布同步。
+    needs_repaint: bool,
 }
 
 impl ImageViewerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open_path: Option<PathBuf>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        Self::with_context(cc.egui_ctx.clone(), open_path)
+    }
 
+    fn with_context(ctx: egui::Context, open_path: Option<PathBuf>) -> Self {
         Self {
             folder: FolderNav::default(),
             image: None,
             view: ViewState::default(),
-            loader: Loader::new(cc.egui_ctx.clone()),
+            loader: Loader::new(ctx),
             caps: Caps::default(),
             generation: 0,
             pending: None,
@@ -45,6 +63,9 @@ impl ImageViewerApp {
             show_help: false,
             fullscreen: false,
             startup_path: open_path,
+            cache: ImageCache::default(),
+            slideshow: None,
+            needs_repaint: false,
         }
     }
 
@@ -57,6 +78,7 @@ impl ImageViewerApp {
             ui::Action::ActualSize => self.set_actual_size(ctx),
             ui::Action::ZoomIn => self.zoom_by(ctx, 1.25),
             ui::Action::ZoomOut => self.zoom_by(ctx, 0.8),
+            ui::Action::ToggleSlideshow => self.toggle_slideshow(),
             ui::Action::Help => self.show_help = true,
         }
     }
@@ -72,6 +94,9 @@ impl ImageViewerApp {
     }
 
     fn open_path(&mut self, path: &Path) {
+        // 显式打开文件/目录时停止幻灯片，避免自动翻页打断用户。
+        self.slideshow = None;
+
         if path.is_dir() {
             if let Some(first) = self.folder.open_dir(path) {
                 self.request_load(first);
@@ -99,47 +124,170 @@ impl ImageViewerApp {
             return;
         }
 
-        self.pending = Some(path.clone());
         self.error = None;
         self.error_path = None;
+
+        // 缓存命中：直接显示；同时推进代号，让在途解码结果全部过期，
+        // 防止较慢的旧请求在新图片显示后覆盖它。
+        if let Some(image) = self.cache.get(&path) {
+            log::debug!("cache hit {}", path.display());
+            self.generation = self.loader.cancel_pending();
+            self.pending = None;
+            self.show_image(image);
+            return;
+        }
+
+        self.pending = Some(path.clone());
         self.generation = self.loader.request(path, self.caps.clone());
+    }
+
+    /// 显示一张已解码的图片，并安排相邻图片的预加载。
+    fn show_image(&mut self, image: LoadedImage) {
+        let path = image.path.clone();
+        self.view = ViewState::default();
+        // 当前图片始终入缓存，回翻时可直接命中。
+        self.cache.insert(image.clone(), &path);
+        self.image = Some(image);
+        self.error = None;
+        self.error_path = None;
+        // 视图重置后 Fit 需要下一帧才能用画布尺寸重算。
+        self.needs_repaint = true;
+        self.update_preloads();
+    }
+
+    /// 预加载当前图片的前后邻居；已缓存或不存在时跳过。
+    fn update_preloads(&mut self) {
+        let Some(index) = self.folder.index else {
+            return;
+        };
+
+        let mut neighbors = Vec::with_capacity(2);
+        if index > 0 {
+            neighbors.push(self.folder.files[index - 1].clone());
+        }
+        if let Some(next) = self.folder.files.get(index + 1) {
+            neighbors.push(next.clone());
+        }
+
+        for path in neighbors {
+            if self.cache.contains(&path) || !path.is_file() {
+                continue;
+            }
+            self.loader
+                .preload(path, self.caps.clone(), self.generation);
+        }
     }
 
     fn step(&mut self, delta: isize) {
         if let Some(path) = self.folder.step(delta) {
+            // 手动翻页后重新计时，避免刚切到下一张就被自动翻走。
+            if let Some(slideshow) = &mut self.slideshow {
+                slideshow.next_at = Instant::now() + SLIDESHOW_INTERVAL;
+            }
             self.request_load(path);
+        }
+    }
+
+    fn toggle_slideshow(&mut self) {
+        if self.slideshow.is_some() {
+            self.slideshow = None;
+        } else if self.image.is_some() && self.folder.can_next() {
+            self.slideshow = Some(Slideshow {
+                next_at: Instant::now() + SLIDESHOW_INTERVAL,
+            });
+        }
+    }
+
+    /// 驱动幻灯片：到点后前进一步；到最后一张自动停止（不循环）。
+    fn tick_slideshow(&mut self, ctx: &egui::Context) {
+        let Some(slideshow) = self.slideshow else {
+            return;
+        };
+
+        // 仍在加载时稍后重试，避免把翻页请求堆积起来。
+        if self.pending.is_some() {
+            ctx.request_repaint_after(Duration::from_millis(250));
+            return;
+        }
+
+        let now = Instant::now();
+        if now < slideshow.next_at {
+            ctx.request_repaint_after(slideshow.next_at - now);
+            return;
+        }
+
+        if self.folder.can_next() {
+            self.step(1);
+            ctx.request_repaint_after(SLIDESHOW_INTERVAL);
+        } else {
+            self.slideshow = None;
+            ctx.request_repaint();
         }
     }
 
     fn poll_loader(&mut self, ctx: &egui::Context) {
         while let Some(response) = self.loader.try_recv() {
-            if response.generation != self.generation {
-                // 快速翻页时丢弃旧结果。
-                continue;
+            match response.purpose {
+                Purpose::Open => self.handle_open_result(ctx, response),
+                Purpose::Preload => self.handle_preload_result(ctx, response),
             }
+        }
+    }
 
-            self.pending = None;
-            let path = response.path;
-            match response.result {
-                Ok(decoded) => {
-                    log::info!(
-                        "loaded {} ({}×{})",
+    fn handle_open_result(&mut self, ctx: &egui::Context, response: LoadResponse) {
+        if response.generation != self.generation {
+            // 快速翻页/缓存命中时丢弃已过期的结果。
+            return;
+        }
+
+        self.pending = None;
+        let path = response.path;
+        match response.result {
+            Ok(decoded) => {
+                log::info!(
+                    "loaded {} ({}×{})",
+                    path.display(),
+                    decoded.source_size[0],
+                    decoded.source_size[1]
+                );
+                self.show_image(LoadedImage::from_decoded(ctx, path, decoded));
+            }
+            Err(error) => {
+                log::error!("failed to load {}: {error}", path.display());
+                self.error = Some(error.to_string());
+                self.error_path = Some(path);
+                // 加载失败时停下，不让错误横幅和自动翻页互相打断。
+                self.slideshow = None;
+            }
+        }
+    }
+
+    fn handle_preload_result(&mut self, ctx: &egui::Context, response: LoadResponse) {
+        // 预加载结果只入缓存，不影响当前显示；直接接受而不校验代号，
+        // 这样快速翻页时已经解码完成的邻居仍然可复用。
+        match response.result {
+            Ok(decoded) => {
+                let path = response.path;
+                // 忽略旧目录的结果，避免挤占当前目录的缓存。
+                let wanted = self.folder.files.iter().any(|file| file == &path);
+                if wanted && !self.cache.contains(&path) {
+                    log::debug!(
+                        "preloaded {} ({}×{})",
                         path.display(),
                         decoded.source_size[0],
                         decoded.source_size[1]
                     );
-                    self.image = Some(LoadedImage::from_decoded(ctx, path, decoded));
-                    self.view = ViewState::default();
-                    self.error = None;
-                    self.error_path = None;
-                    // 标题与状态栏在画布之前计算，补一帧让 Fit 百分比立即同步。
-                    ctx.request_repaint();
+                    let image = LoadedImage::from_decoded(ctx, path.clone(), decoded);
+                    let current = self.image.as_ref().map(|image| image.path.clone());
+                    self.cache
+                        .insert(image, current.as_deref().unwrap_or(&path));
                 }
-                Err(error) => {
-                    log::error!("failed to load {}: {error}", path.display());
-                    self.error = Some(error.to_string());
-                    self.error_path = Some(path);
-                }
+            }
+            Err(LoadError::PreloadSkipped { w, h }) => {
+                log::debug!("preload skipped {} ({}×{})", response.path.display(), w, h);
+            }
+            Err(error) => {
+                log::debug!("preload failed {}: {error}", response.path.display());
             }
         }
     }
@@ -170,6 +318,10 @@ impl ImageViewerApp {
             }
             if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::ArrowRight)) {
                 self.step(1);
+            }
+
+            if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Space)) {
+                self.toggle_slideshow();
             }
 
             let zoom_in = ctx.input_mut(|input| {
@@ -298,6 +450,7 @@ impl eframe::App for ImageViewerApp {
         self.handle_dropped_files(ctx);
         self.handle_shortcuts(ctx);
         self.poll_loader(ctx);
+        self.tick_slideshow(ctx);
 
         // 标题/工具栏在画布之前绘制；先用上一帧画布尺寸重算 Fit，
         // 避免加载或旋转后标题短暂显示上一张/上一个角度的百分比。
@@ -312,6 +465,10 @@ impl eframe::App for ImageViewerApp {
         }
 
         self.sync_title(ctx);
+
+        if std::mem::take(&mut self.needs_repaint) {
+            ctx.request_repaint();
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -319,6 +476,7 @@ impl eframe::App for ImageViewerApp {
             can_prev: self.folder.can_prev(),
             can_next: self.folder.can_next(),
             has_image: self.image.is_some(),
+            slideshow: self.slideshow.is_some(),
             zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
         };
         if let Some(action) = ui::toolbar(ui, &toolbar_state) {
@@ -339,6 +497,7 @@ impl eframe::App for ImageViewerApp {
             position: self.image.as_ref().and_then(|_| self.folder.position()),
             downscaled: self.image.as_ref().is_some_and(|image| image.downscaled),
             loading: self.pending.is_some(),
+            slideshow: self.slideshow.is_some(),
         };
         ui::status_bar(ui, &status);
 
@@ -400,5 +559,137 @@ mod tests {
     fn rotate_shortcut_ignores_other_keys() {
         assert_eq!(rotation_for(Key::F, Modifiers::NONE), 0);
         assert_eq!(rotation_for(Key::F, Modifiers::SHIFT), 0);
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "image-view-app-test-{}-{tag}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    fn fixture(ctx: &egui::Context, path: &Path) -> LoadedImage {
+        LoadedImage::from_decoded(
+            ctx,
+            path.to_path_buf(),
+            crate::loader::Decoded {
+                size: [2, 2],
+                source_size: [2, 2],
+                rgba: vec![255; 2 * 2 * 4],
+            },
+        )
+    }
+
+    #[test]
+    fn cached_image_is_shown_without_pending_decode() {
+        let dir = temp_dir("cache-hit");
+        let path = dir.join("a.png");
+        std::fs::write(&path, b"fixture").expect("write fixture");
+
+        let ctx = egui::Context::default();
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None);
+        app.folder = FolderNav {
+            dir: dir.clone(),
+            files: vec![path.clone()],
+            index: Some(0),
+        };
+        app.cache.insert(fixture(&ctx, &path), &path);
+        app.pending = Some(path.clone());
+
+        app.request_load(path.clone());
+
+        assert!(app.pending.is_none(), "缓存命中不应再排队解码");
+        assert_eq!(
+            app.image.as_ref().map(|image| image.path.as_path()),
+            Some(path.as_path())
+        );
+        assert_eq!(app.generation, 1, "命中时应推进代号使在途结果过期");
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn slideshow_stops_at_the_last_image() {
+        let dir = temp_dir("slideshow-end");
+        let first = dir.join("a.png");
+        let last = dir.join("b.png");
+        for path in [&first, &last] {
+            std::fs::write(path, b"fixture").expect("write fixture");
+        }
+
+        let ctx = egui::Context::default();
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None);
+        app.folder = FolderNav {
+            dir: dir.clone(),
+            files: vec![first.clone(), last.clone()],
+            index: Some(0),
+        };
+        app.image = Some(fixture(&ctx, &first));
+
+        app.toggle_slideshow();
+        assert!(app.slideshow.is_some());
+
+        // 到达最后一张：切换会停止，并且不能重新启动。
+        app.folder.index = Some(1);
+        app.toggle_slideshow();
+        assert!(app.slideshow.is_none());
+        app.toggle_slideshow();
+        assert!(app.slideshow.is_none(), "最后一张不应启动幻灯片");
+
+        // 即使手动置为运行中，下一次触发也会自动停止。
+        app.slideshow = Some(Slideshow {
+            next_at: Instant::now(),
+        });
+        app.tick_slideshow(&ctx);
+        assert!(app.slideshow.is_none(), "到最后一张应自动停止");
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn manual_navigation_resets_slideshow_timer_and_uses_cache() {
+        let dir = temp_dir("slideshow-step");
+        let first = dir.join("a.png");
+        let second = dir.join("b.png");
+        for path in [&first, &second] {
+            std::fs::write(path, b"fixture").expect("write fixture");
+        }
+
+        let ctx = egui::Context::default();
+        let mut app = ImageViewerApp::with_context(ctx.clone(), None);
+        app.folder = FolderNav {
+            dir: dir.clone(),
+            files: vec![first.clone(), second.clone()],
+            index: Some(0),
+        };
+        app.image = Some(fixture(&ctx, &first));
+        app.cache.insert(fixture(&ctx, &first), &first);
+        app.cache.insert(fixture(&ctx, &second), &first);
+
+        let started = Instant::now();
+        app.slideshow = Some(Slideshow { next_at: started });
+
+        app.step(1);
+
+        let slideshow = app.slideshow.expect("幻灯片仍在运行");
+        assert!(
+            slideshow.next_at >= started + SLIDESHOW_INTERVAL,
+            "手动翻页应重新计时"
+        );
+        assert!(app.pending.is_none(), "相邻图片应命中缓存");
+        assert_eq!(app.folder.index, Some(1));
+        assert_eq!(
+            app.image.as_ref().map(|image| image.path.as_path()),
+            Some(second.as_path())
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 }

@@ -17,6 +17,8 @@ pub struct Caps {
     pub max_pixels: usize,
     /// 原图总像素上限，防止解压炸弹。
     pub max_source_pixels: u64,
+    /// 预加载允许的原图像素上限；超过则跳过，避免大图拖慢翻页。
+    pub preload_max_source_pixels: u64,
 }
 
 impl Default for Caps {
@@ -25,6 +27,7 @@ impl Default for Caps {
             max_side: 8192,
             max_pixels: 40_000_000,
             max_source_pixels: 250_000_000,
+            preload_max_source_pixels: 30_000_000,
         }
     }
 }
@@ -67,17 +70,30 @@ pub enum LoadError {
     TooLarge { w: u32, h: u32 },
     #[error("解码超出内存限制")]
     OutOfMemory,
+    /// 预加载遇到大图时主动放弃；不会展示给用户。
+    #[error("预加载已跳过（原图 {w}×{h} 过大）")]
+    PreloadSkipped { w: u32, h: u32 },
 }
 
+/// 请求类型：打开当前图片，或后台预加载相邻图片。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Purpose {
+    Open,
+    Preload,
+}
+
+#[derive(Clone)]
 struct Request {
     generation: u64,
     path: PathBuf,
     caps: Caps,
+    purpose: Purpose,
 }
 
 pub struct LoadResponse {
     pub generation: u64,
     pub path: PathBuf,
+    pub purpose: Purpose,
     pub result: Result<Decoded, LoadError>,
 }
 
@@ -95,22 +111,39 @@ impl Loader {
         std::thread::Builder::new()
             .name("image-decoder".to_owned())
             .spawn(move || {
-                while let Ok(mut request) = rx_request.recv() {
-                    // latest-wins：翻页很快时只解码队列中最新的一条。
-                    while let Ok(newer) = rx_request.try_recv() {
-                        request = newer;
+                let mut pending: Vec<Request> = Vec::new();
+                loop {
+                    if pending.is_empty() {
+                        match rx_request.recv() {
+                            Ok(request) => pending.push(request),
+                            Err(_) => break,
+                        }
                     }
 
-                    let result = decode(&request.path, &request.caps);
+                    // 打开请求优先于预加载；预加载只是填充缓存，不能挡住翻页。
+                    let index = pending
+                        .iter()
+                        .position(|request| request.purpose == Purpose::Open)
+                        .unwrap_or(0);
+                    let request = pending.remove(index);
+
+                    let result = decode(&request.path, &request.caps, request.purpose);
                     let response = LoadResponse {
                         generation: request.generation,
                         path: request.path,
+                        purpose: request.purpose,
                         result,
                     };
                     if tx_response.send(response).is_err() {
                         break;
                     }
                     ctx.request_repaint();
+
+                    let mut incoming = Vec::new();
+                    while let Ok(request) = rx_request.try_recv() {
+                        incoming.push(request);
+                    }
+                    merge_pending(&mut pending, incoming);
                 }
             })
             .expect("无法启动解码线程");
@@ -122,19 +155,62 @@ impl Loader {
         }
     }
 
+    /// 请求打开图片；返回本次请求的代号，主线程据此丢弃过期结果。
     pub fn request(&mut self, path: PathBuf, caps: Caps) -> u64 {
         self.next_generation += 1;
-        let generation = self.next_generation;
-        let _ = self.tx.send(Request {
+        self.send(Request {
+            generation: self.next_generation,
+            path,
+            caps,
+            purpose: Purpose::Open,
+        });
+        self.next_generation
+    }
+
+    /// 后台预加载相邻图片；结果只用于填充缓存，不影响当前显示。
+    pub fn preload(&self, path: PathBuf, caps: Caps, generation: u64) {
+        self.send(Request {
             generation,
             path,
             caps,
+            purpose: Purpose::Preload,
         });
-        generation
+    }
+
+    /// 不使用解码线程地推进代号，使所有在途结果过期（缓存命中时使用）。
+    pub fn cancel_pending(&mut self) -> u64 {
+        self.next_generation += 1;
+        self.next_generation
+    }
+
+    fn send(&self, request: Request) {
+        let _ = self.tx.send(request);
     }
 
     pub fn try_recv(&self) -> Option<LoadResponse> {
         self.rx.try_recv().ok()
+    }
+}
+
+/// 合并解码线程的积压请求。
+///
+/// - 新的打开请求覆盖所有待办（快速翻页时只解码最后一张）；
+/// - 只有预加载时按路径去重后追加，保持先后顺序。
+fn merge_pending(pending: &mut Vec<Request>, incoming: Vec<Request>) {
+    if let Some(index) = incoming
+        .iter()
+        .rposition(|request| request.purpose == Purpose::Open)
+    {
+        let open = incoming[index].clone();
+        pending.clear();
+        pending.push(open);
+        return;
+    }
+
+    for request in incoming {
+        if !pending.iter().any(|queued| queued.path == request.path) {
+            pending.push(request);
+        }
     }
 }
 
@@ -167,12 +243,20 @@ fn map_decode_error(error: image::ImageError) -> LoadError {
     }
 }
 
-fn decode(path: &Path, caps: &Caps) -> Result<Decoded, LoadError> {
+fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
     // 先只读头部尺寸，拒绝解压炸弹，避免为超大图分配完整缓冲。
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
     let (width, height) = reader.into_dimensions()?;
-    if u64::from(width) * u64::from(height) > caps.max_source_pixels {
+    let source_pixels = u64::from(width) * u64::from(height);
+    if source_pixels > caps.max_source_pixels {
         return Err(LoadError::TooLarge {
+            w: width,
+            h: height,
+        });
+    }
+    // 预加载只挑小图，避免后台解码大图拖慢用户翻页。
+    if purpose == Purpose::Preload && source_pixels > caps.preload_max_source_pixels {
+        return Err(LoadError::PreloadSkipped {
             w: width,
             h: height,
         });
@@ -288,7 +372,7 @@ mod tests {
         let path = dir.join("oriented.jpg");
         write_oriented_jpeg(&path, 6); // 6 = 顺时针 90°
 
-        let decoded = decode(&path, &Caps::default()).expect("decode oriented jpeg");
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode oriented jpeg");
         assert_eq!(decoded.source_size, [20, 40]);
         assert_eq!(decoded.size, [20, 40]);
 
@@ -299,6 +383,89 @@ mod tests {
             rgba.get_pixel(0, 39).0[2] > 200,
             "bottom-left should be blue"
         );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    fn request(path: &str, purpose: Purpose) -> Request {
+        Request {
+            generation: 1,
+            path: PathBuf::from(path),
+            caps: Caps::default(),
+            purpose,
+        }
+    }
+
+    fn paths(requests: &[Request]) -> Vec<String> {
+        requests
+            .iter()
+            .map(|request| request.path.display().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn backlog_keeps_only_the_latest_open() {
+        let mut pending = vec![];
+        merge_pending(
+            &mut pending,
+            vec![
+                request("a.jpg", Purpose::Open),
+                request("b.jpg", Purpose::Preload),
+                request("c.jpg", Purpose::Open),
+            ],
+        );
+
+        assert_eq!(paths(&pending), ["c.jpg"]);
+    }
+
+    #[test]
+    fn new_open_request_cancels_queued_preloads() {
+        let mut pending = vec![request("b.jpg", Purpose::Preload)];
+        merge_pending(&mut pending, vec![request("a.jpg", Purpose::Open)]);
+
+        assert_eq!(paths(&pending), ["a.jpg"]);
+    }
+
+    #[test]
+    fn preloads_are_deduplicated_and_keep_order() {
+        let mut pending = vec![request("next.jpg", Purpose::Preload)];
+        merge_pending(
+            &mut pending,
+            vec![
+                request("prev.jpg", Purpose::Preload),
+                request("next.jpg", Purpose::Preload),
+            ],
+        );
+
+        assert_eq!(paths(&pending), ["next.jpg", "prev.jpg"]);
+    }
+
+    #[test]
+    fn queued_open_is_not_replaced_by_preloads() {
+        let mut pending = vec![request("a.jpg", Purpose::Open)];
+        merge_pending(&mut pending, vec![request("b.jpg", Purpose::Preload)]);
+
+        assert_eq!(paths(&pending), ["a.jpg", "b.jpg"]);
+    }
+
+    #[test]
+    fn oversized_preload_is_skipped_but_open_succeeds() {
+        let dir = temp_dir("preload-skip");
+        let path = dir.join("small.png");
+        image::RgbaImage::from_pixel(40, 20, image::Rgba([10, 20, 30, 255]))
+            .save(&path)
+            .expect("write png");
+
+        let caps = Caps {
+            preload_max_source_pixels: 100,
+            ..Caps::default()
+        };
+
+        assert!(matches!(
+            decode(&path, &caps, Purpose::Preload),
+            Err(LoadError::PreloadSkipped { .. })
+        ));
+        assert!(decode(&path, &caps, Purpose::Open).is_ok());
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }

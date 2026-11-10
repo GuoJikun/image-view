@@ -11,6 +11,7 @@ pub enum Action {
     ActualSize,
     ZoomIn,
     ZoomOut,
+    ToggleSlideshow,
     Help,
 }
 
@@ -18,6 +19,7 @@ pub struct ToolbarState {
     pub can_prev: bool,
     pub can_next: bool,
     pub has_image: bool,
+    pub slideshow: bool,
     pub zoom_percent: Option<f32>,
 }
 
@@ -90,6 +92,19 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                 action = Some(Action::ZoomIn);
             }
 
+            ui.separator();
+
+            if ui
+                .add_enabled(
+                    state.has_image && state.can_next,
+                    egui::Button::new("幻灯片").selected(state.slideshow),
+                )
+                .on_hover_text("每 3 秒自动前进 (Space)")
+                .clicked()
+            {
+                action = Some(Action::ToggleSlideshow);
+            }
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("帮助").clicked() {
                     action = Some(Action::Help);
@@ -108,6 +123,7 @@ pub struct StatusState {
     pub position: Option<(usize, usize)>,
     pub downscaled: bool,
     pub loading: bool,
+    pub slideshow: bool,
 }
 
 pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
@@ -138,6 +154,9 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
                 if state.loading {
                     ui.spinner();
                     ui.label("加载中…");
+                }
+                if state.slideshow {
+                    ui.label("幻灯片中");
                 }
                 if state.downscaled {
                     ui.label(
@@ -202,6 +221,7 @@ pub fn help_window(ctx: &egui::Context, open: &mut bool) {
                     for (key, action) in [
                         ("Ctrl+O", "打开文件"),
                         ("← / →", "上一张 / 下一张"),
+                        ("Space", "开始 / 停止幻灯片"),
                         ("+ / -", "放大 / 缩小"),
                         ("0", "适配窗口"),
                         ("1", "100%"),
