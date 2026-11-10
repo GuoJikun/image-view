@@ -74,6 +74,8 @@ src/
   document.rs   当前图片与 GPU 纹理
   loader.rs     后台解码线程、阈值检查、降采样
   folder.rs     目录扫描、自然排序、上一张/下一张
+examples/
+  gen_fixtures.rs  生成手工测试用的图片夹具（开发用）
 assets/
   icon.png      窗口图标
 docs/
@@ -88,6 +90,8 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 cargo build --release
 ```
+
+手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。
 
 - 设计细节与取舍见 `docs/PLAN.md`。
 - 渲染后端默认使用 wgpu；若在老显卡驱动上遇到问题，可启用 eframe 的 `glow` 特性并切换 `NativeOptions.renderer`。

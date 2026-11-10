@@ -2,12 +2,12 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | v0.1（草案） |
+| 文档版本 | v1.0（P0 实施完成） |
 | 日期 | 2026-11-10 |
 | 目标平台 | Windows 10/11 x64 优先，代码保持 macOS / Linux 可编译 |
 | 技术栈 | Rust 2024 + eframe/egui 0.37 + image 0.25 |
 | 预估工期 | 5 ~ 6.5 个工作日（单人） |
-| 当前状态 | 待确认（见 §13） |
+| 当前状态 | P0 已完成；手工矩阵与性能实测记录见 §9.5 |
 
 ---
 
@@ -135,7 +135,7 @@
 
 - EXIF 方向自动校正（`kamadak-exif` + `DynamicImage::apply_orientation`）。
 - 顺时针/逆时针旋转 90°（`R` / `Shift+R`）。
-- 全屏（`F11`）、无边框沉浸模式。
+- 全屏（`F11`）已提前实现；无边框沉浸模式待做。
 - 幻灯片（间隔 3s，空格暂停）。
 - 相邻图片预加载与 LRU 纹理缓存（3 张）。
 - 记住窗口大小/位置、上次目录、视图偏好。
@@ -163,7 +163,7 @@
 | `0` | 适配窗口 | 双击画布也可切换 |
 | `1` | 100% | |
 | `F` | 切换适配 / 100% | |
-| `F11` | 全屏 | P1 |
+| `F11` | 全屏 | 已提前实现（原 P1） |
 | `R` | 旋转 90° | P1 |
 | `Space` | 幻灯片暂停/继续 | P1 |
 | `Esc` | 退出全屏 / 关闭帮助 | |
@@ -546,7 +546,7 @@ pub enum LoadError {
 - decoder 返回 `Result<Decoded, LoadError>`；主线程转成中文横幅。
 - 日志：`log::error!` 记录路径与原始错误；`RUST_LOG=image_view=debug` 可看耗时。
 - 不 panic：所有 `unwrap` 仅用于“构造时不可能失败”的场景，并用注释说明。
-- 文件不存在/被移动：翻页时重新扫描目录并跳过失效项。
+- 文件不存在/被移动：翻页时跳过失效项，不重新扫描目录；新增文件需重新打开目录才能看到。
 
 ### 5.7 窗口、DPI、字体与主题
 
@@ -682,68 +682,68 @@ components = ["rustfmt", "clippy"]
 
 ### M0 脚手架（0.5 d）
 
-- [ ] `cargo init --name image-view`，初始化 git 与 `.gitignore`（`/target`）。
-- [ ] 配置 `Cargo.toml` 依赖与 release profile。
-- [ ] `main.rs`：`NativeOptions`（1100×760、最小尺寸、拖放开启）、`run_native`。
-- [ ] `app.rs`：空 `App` 实现，深色主题，中央显示占位文字（验证中文字体）。
-- [ ] `assets/icon.png` 占位 + 窗口图标。
-- [ ] 跑通 `cargo run`，确认 wgpu 正常工作。
+- [x] `cargo init --name image-view`，初始化 git 与 `.gitignore`（`/target`）。
+- [x] 配置 `Cargo.toml` 依赖与 release profile。
+- [x] `main.rs`：`NativeOptions`（1100×760、最小尺寸、拖放开启）、`run_native`。
+- [x] `app.rs`：空 `App` 实现，深色主题，中央显示占位文字（验证中文字体）。
+- [x] `assets/icon.png` 占位 + 窗口图标。
+- [x] 跑通 `cargo run`，确认 wgpu 正常工作。
 
 **验收**：空窗口可缩放/关闭；中文占位不显示方块；`cargo clippy` 无警告。
 
 ### M1 打开与显示（1 d）
 
-- [ ] `loader.rs`：先实现同步 `decode()` + 阈值常量 + 降采样函数（接口按 `request/poll` 设计，M4 换线程不换签名）。
-- [ ] `document.rs`：`LoadedImage`，`ColorImage::from_rgba_unmultiplied` + `ctx.load_texture`。
-- [ ] 入口：`Ctrl+O`（rfd）、CLI 参数、拖放（`ctx.input(|i| i.raw.dropped_files)`）。
-- [ ] `viewer.rs`：仅 Fit 显示 + 深色背景 + 无图占位。
-- [ ] `ui.rs`：底部状态栏（文件名/尺寸/缩放）。
-- [ ] 错误横幅与日志。
+- [x] `loader.rs`：先实现同步 `decode()` + 阈值常量 + 降采样函数（接口按 `request/poll` 设计，M4 换线程不换签名）。
+- [x] `document.rs`：`LoadedImage`，`ColorImage::from_rgba_unmultiplied` + `ctx.load_texture`。
+- [x] 入口：`Ctrl+O`（rfd）、CLI 参数、拖放（`ctx.input(|i| i.raw.dropped_files)`）。
+- [x] `viewer.rs`：仅 Fit 显示 + 深色背景 + 无图占位。
+- [x] `ui.rs`：底部状态栏（文件名/尺寸/缩放）。
+- [x] 错误横幅与日志。
 
 **验收**：打开 24MP JPEG 显示正确；损坏文件不崩溃；中文/空格路径正常。
 
 ### M2 缩放与平移（1 d）
 
-- [ ] `ViewState` 数学 + 单元测试（锚点、钳制、Fit、边界 DPI）。
-- [ ] 滚轮/捏合缩放；光标锚点。
-- [ ] 拖拽平移；边界钳制；拖拽进入 Manual。
-- [ ] 双击、`F`、`0`、`1`、工具栏按钮切换模式。
-- [ ] 状态栏百分比（相对纹理）；窗口 resize 行为。
-- [ ] 100% 物理像素 1:1 在 125%/150%/200% DPI 下验证。
+- [x] `ViewState` 数学 + 单元测试（锚点、钳制、Fit、边界 DPI）。
+- [x] 滚轮/捏合缩放；光标锚点。
+- [x] 拖拽平移；边界钳制；拖拽进入 Manual。
+- [x] 双击、`F`、`0`、`1`、工具栏按钮切换模式。
+- [x] 状态栏百分比（相对纹理）；窗口 resize 行为。
+- [x] 100% 物理像素 1:1 在 125%/150%/200% DPI 下验证（125% 实机验证；150%/200% 由 `scale_respects_dpi` 单元测试覆盖，未切换系统缩放实测）。
 
 **验收**：锚点不漂移；平移不出界；模式切换无跳变。
 
 ### M3 目录导航与全部入口（0.5~1 d）
 
-- [ ] `folder.rs`：扫描、过滤、`natord` 排序、定位索引。
-- [ ] 上一张/下一张（按钮 + `←/→`），首尾禁用。
-- [ ] 拖放多文件/目录策略；CLI 目录参数。
-- [ ] 窗口标题同步（去重）。
-- [ ] 状态栏序号 `3/128`。
+- [x] `folder.rs`：扫描、过滤、`natord` 排序、定位索引。
+- [x] 上一张/下一张（按钮 + `←/→`），首尾禁用。
+- [x] 拖放多文件/目录策略；CLI 目录参数。
+- [x] 窗口标题同步（去重）。
+- [x] 状态栏序号 `3/128`。
 
 **验收**：自然排序正确；快速翻页无残留；标题同步。
 
 ### M4 异步加载与大图保护（1 d）
 
-- [ ] `loader.rs` 改为常驻 worker + `mpsc` + `generation`。
-- [ ] latest-wins：worker 解码前排空请求队列。
-- [ ] 主线程 `poll_loader`：丢弃过期结果、上传纹理、清空 pending。
-- [ ] 加载 spinner；错误与过期结果处理。
-- [ ] 上限：`MAX_SOURCE_PIXELS` / `MAX_TEXTURE_SIDE`（读 `ctx.input(|i| i.max_texture_side)`）/ `MAX_TEXTURE_PIXELS`。
-- [ ] `image::Limits` 限制解压内存；先读尺寸再解码。
-- [ ] 状态栏“已降采样”提示。
+- [x] `loader.rs` 改为常驻 worker + `mpsc` + `generation`。
+- [x] latest-wins：worker 解码前排空请求队列。
+- [x] 主线程 `poll_loader`：丢弃过期结果、上传纹理、清空 pending。
+- [x] 加载 spinner；错误与过期结果处理。
+- [x] 上限：`MAX_SOURCE_PIXELS` / `MAX_TEXTURE_SIDE`（读 `ctx.input(|i| i.max_texture_side)`）/ `MAX_TEXTURE_PIXELS`。
+- [x] `image::Limits` 限制解压内存；先读尺寸再解码。
+- [x] 状态栏“已降采样”提示。
 
 **验收**：100MP 图片打开时 UI 可交互；连按 `→` 只显示最后一张；内存峰值符合预算。
 
 ### M5 打磨与验收（1 d）
 
-- [ ] 帮助窗口/快捷键提示；按钮 tooltip。
-- [ ] 透明棋盘格的视觉打磨（缩放时的格子尺寸、与大图边界的对齐）。
-- [ ] 加载失败后的重试/关闭横幅。
-- [ ] 完整的 §9.2 手工测试矩阵。
-- [ ] release 构建，记录 exe 体积与启动时间。
-- [ ] 写 README（运行方式、快捷键、支持格式、已知限制）。
-- [ ] 代码整理：模块可见性、注释、`#[allow]` 清理。
+- [x] 帮助窗口/快捷键提示；按钮 tooltip。
+- [x] 透明棋盘格的视觉打磨（缩放时的格子尺寸、与大图边界的对齐）。
+- [x] 加载失败后的重试/关闭横幅。
+- [x] 完整的 §9.2 手工测试矩阵（环境受限项见 §9.5）。
+- [x] release 构建，记录 exe 体积与启动时间。
+- [x] 写 README（运行方式、快捷键、支持格式、已知限制）。
+- [x] 代码整理：模块可见性、注释、`#[allow]` 清理。
 
 **验收**：§1.4 DoD 全部通过。
 
@@ -803,6 +803,55 @@ cargo build --release
 ```
 
 可选 CI：GitHub Actions `windows-latest`，缓存 `~/.cargo` 与 `target`，跑上述四条。
+
+### 9.5 实施与验证记录（2026-11-10）
+
+**环境**：Windows 11 Pro 10.0.26300 · i5-11400 · 32 GB · NVIDIA GT 720（wgpu/Vulkan）· 单显示器 125% 缩放 · rustc 1.99.1。
+
+**质量门禁**：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`（17 个单元测试）、`cargo build --release` 全部通过；release exe 约 16.8 MB。
+
+**功能矩阵**（release 构建，启动后核对窗口标题/截图）：
+
+| 类别 | 结果 |
+| --- | --- |
+| 格式 | PNG（透明/16-bit）、JPEG（彩色/灰度）、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR 均正常打开；CMYK JPEG 缺少夹具，未覆盖 |
+| 尺寸 | 1×1、100×100、320×240、1920×1080、6000×4000、10000×10000 正常；20000×15000（300MP，仅文件头）被安全上限拒绝并显示横幅 |
+| 异常文件 | 0 字节 PNG、截断 JPEG、伪装 `.png` 文本、拒绝读取（ACL）均显示错误横幅且不崩溃；真实 PNG 改名为 `.txt` 可正常打开 |
+| 路径 | 中文、空格、`#`、329 字符长路径、UNC（`\\localhost\C$\...` 文件与目录）均正常 |
+| 目录 | 10001 个文件、仅含隐藏文件、空目录均正常；隐藏文件会被扫描到，空目录提示无图片 |
+| 交互 | 快速连按 `→` 只显示最后一张；首张或后续图片解码中按 `→` 均会切换目标，过期结果被丢弃（从未显示中间图）；缩放/平移边界由单元测试与截图确认 |
+| DPI | 125% 下 Fit 与 100% 语义正确（100% 已逐像素核对） |
+| 加载 | 加载中切换目标正常；加载中关闭窗口未单独验证 |
+
+**性能实测**：
+
+| 指标 | 预算 | 实测 | 结论 |
+| --- | --- | --- | --- |
+| 冷启动到窗口可见 | ≤ 600 ms | 5 次中位数 337 ms（322~470） | 达标 |
+| 12MP JPEG 打开（进程启动到标题） | ≤ 350 ms | 413 ms，扣除约 340 ms 空启动后约 70 ms | 达标 |
+| 24MP JPEG 打开（进程启动到标题） | ≤ 600 ms | 474~495 ms（含启动） | 达标 |
+| 100MP JPEG 打开 | ≤ 4 s | 3.5 / 4.4 / 3.5 s | 中位数达标，偶发 4.4 s |
+| 缩放/平移帧率（24MP，100%，连续重绘） | 60 fps | p50 16.68 ms（60.0 fps），p95 18.06 ms | 达标 |
+| 空闲 CPU | ≈ 0% | 10 秒平均 0.00% | 达标 |
+| 24MP 专用工作集 | ≤ 250 MB | 259.9 MB（空界面基线 130.8 MB） | 略超 10 MB |
+| 40MP 显示上限（100MP 降采样后） | ≤ 450 MB | 284.2 MB | 达标 |
+| 目录扫描 | 2 万文件 ≤ 100 ms | 10001 个文件 8.4 ms（debug 构建） | 达标（见下方优化） |
+
+扫描优化：原先逐项 `Path::is_file()` 会为每个目录项额外查询元数据，10001 个文件耗时 278 ms；改用 `DirEntry::file_type()` 复用目录枚举属性后降至 8.4 ms，2 万文件约 17 ms。
+
+**未验证项（受环境限制）**：
+
+- 150% / 200% 系统缩放与跨显示器拖动：仅单显示器 125%，缩放数学由 `scale_respects_dpi` 覆盖。
+- macOS / Linux 编译：本机只安装了 `x86_64-pc-windows-msvc` 目标。
+- 真实网络 UNC 共享、管理员权限下的拖放（UIPI）、加载过程中关闭窗口。
+- 60 fps 在 release 下未直接插桩；上表为 debug（opt-level 1）连续重绘结果，release 不应更差。
+
+**与设计文档的偏差**：
+
+- 棋盘格格子为 24 pt（设计稿写 8 px），与当前窗口和图像缩放比例配合更自然。
+- 错误横幅按钮为“关闭”/“重试”，帮助按钮为“帮助”，未使用 `×`/`?` 符号。
+- 未单独定义 `LoadError::UnsupportedFormat`；无法猜测格式时统一归入 `Decode` 错误文案。
+- `F11` 全屏已实现（原计划列为 P1 的可选项）；无边框沉浸模式仍未做。
 
 ---
 
