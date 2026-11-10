@@ -1,0 +1,53 @@
+# Packaging configuration for cargo-packager.
+#
+# Build the Windows installer with:
+#   cargo packager --release
+# or through scripts\build-release.ps1.
+#
+# Format reference: https://docs.rs/cargo-packager/latest/cargo_packager/config/struct.Config.html
+# Keys are camelCase because the config is deserialized with
+# `deny_unknown_fields`, so `before-packaging-command` is rejected.
+#
+# The NSIS toolchain is provisioned once into %LOCALAPPDATA%\.cargo-packager.
+# cargo-packager deletes and re-downloads that whole directory if any required
+# file is missing, so never remove individual files from it.
+
+name = "image-view"
+productName = "image-view"
+version = "1.0.0"
+identifier = "io.github.guojikun.image-view"
+description = "Lightweight Rust image viewer"
+publisher = "image-view"
+copyright = "Copyright (c) image-view contributors"
+category = "Photography"
+
+outDir = "dist"
+binariesDir = "target/release"
+beforePackagingCommand = "cargo build --release --locked"
+
+binaries = [{ path = "image-view", main = true }]
+icons = ["assets/icon.ico"]
+
+# README and CHANGELOG are copied next to the executable.
+resources = ["README.md", "CHANGELOG.md"]
+
+formats = ["nsis"]
+
+[nsis]
+# Per-user install into %LOCALAPPDATA%\Programs\image-view, no administrator
+# rights required. Same location as the previous Inno Setup build.
+installMode = "currentUser"
+
+# Project-owned script: the cargo-packager default template plus file
+# association registration and uninstall cleanup.
+template = "installer/nsis/image-view.nsi"
+
+installerIcon = "assets/icon.ico"
+languages = ["English", "SimpChinese"]
+displayLanguageSelector = true
+
+# NSIS only accepts lzma, zlib or bzip2 (Inno's lzma2 is not available).
+compression = "lzma"
+
+# Ask the user before deleting %LOCALAPPDATA%\image-view and %APPDATA%\image-view.
+appdataPaths = ["$LOCALAPPDATA/image-view", "$APPDATA/image-view"]

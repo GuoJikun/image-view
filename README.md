@@ -33,17 +33,17 @@
 
 ## 安装与卸载
 
-Windows 10/11 x64 可用仓库内的 Inno Setup 脚本生成安装包：
+Windows 10/11 x64 用 cargo-packager 与 NSIS 生成安装包：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 ```
 
-产物位于 `dist\`：`image-view-<version>-setup.exe` 与 `SHA256SUMS.txt`。
+产物位于 `dist\`：`image-view_<version>_x64-setup.exe` 与 `SHA256SUMS.txt`。
 
-- **安装**：按用户安装到 `%LOCALAPPDATA%\Programs\image-view`，无需管理员权限；创建开始菜单快捷方式，可选桌面图标与“设为默认看图程序”。安装向导暂为英文。
-- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF 的“打开方式”和 Windows“默认应用”能力项。Windows 10/11 不允许安装器静默改写默认查看器；勾选“设为默认看图程序”会写入用户级默认值并打开系统“默认应用”设置，最终仍需在系统设置中确认。
-- **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、注册表关联、`%APPDATA%\image-view`（设置）与 `%LOCALAPPDATA%\image-view`（日志与缩略图缓存）。
+- **安装**：按用户安装到 `%LOCALAPPDATA%\Programs\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
+- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
+- **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册；用户数据（`%APPDATA%\image-view` 设置、`%LOCALAPPDATA%\image-view` 日志与缩略图缓存）由卸载页的复选框决定，默认保留。
 - **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
 
 ## 运行
@@ -167,7 +167,9 @@ assets/
   app.rc        图标资源定义
   app.res       编译后的 Windows 资源
 installer/
-  image-view.iss  Inno Setup 安装器脚本（按用户安装、文件关联、卸载清理）
+  nsis/
+    image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
+Packager.toml       cargo-packager 打包配置（NSIS 格式与安装器参数）
 scripts/
   build-release.ps1  构建 release exe、安装包与 SHA256
 design/
@@ -178,6 +180,7 @@ docs/
   PLAN-P1.md    v1.0 计划（M1~M7，只查看）
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
+  NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
 CHANGELOG.md    版本变更记录与语义化版本规范
 ```
 
@@ -191,7 +194,7 @@ cargo build --release
 powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1   # exe + 安装包 + SHA256
 ```
 
-`build-release.ps1` 需要 Inno Setup 6（`iscc.exe` 在 PATH 中，或设置 `ISCC_PATH`）。发布前还应运行 `cargo fmt --check` 与 `cargo test --no-default-features`。
+`build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --check` 与 `cargo test --no-default-features`。
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
 

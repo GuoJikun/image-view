@@ -80,6 +80,7 @@ P2 不阻塞 v1.0；P3 为探索性方向，进入开发前需拆成 P1/P2 级�
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
+| 2026-11-10 | 安装器迁移到 cargo-packager + NSIS 3.09：定制 `installer/nsis/image-view.nsi`、新增 `Packager.toml` 与 `docs/NSIS-TOOLCHAIN.md`，移除 Inno 脚本；离线打包 6,018,723 字节（较 Inno 版 -7.6%），静默安装/卸载验证零残留 | 本次提交 |
 | 2026-11-10 | P1-M5 发布工程：Inno Setup 按用户安装、18 类扩展名关联/默认应用、日志与崩溃转储、版本 `1.0.0` 与 CHANGELOG；75 个单测，exe 15,262,720 字节，安装包 6,513,568 字节 | `70c8a6d` |
 | 2026-11-10 | 版本口径统一：发布前所有工作归入 `1.0.0`，文档与安装包同步更新；重建安装包 6,513,568 字节 | 本次提交 |
 | 2026-11-10 | P1-M4 缩略图条与渲染质量：虚拟滚动、磁盘缓存/内存 LRU、预加载、mipmap + glow；70 个单测，release 15,161,856 字节 | 本次提交 |
@@ -127,4 +128,5 @@ cargo build --release
 | [PLAN-P1.md](PLAN-P1.md) | P1（v1.0）：M1~M7 里程碑、验收与发布门槛（只查看） |
 | [PLAN-P2.md](PLAN-P2.md) | P2（v2.x）：专业能力、编辑（M8）与架构增强 |
 | [PLAN-P3.md](PLAN-P3.md) | P3（v3+）：长期方向（探索性、未排期） |
+| [NSIS-TOOLCHAIN.md](NSIS-TOOLCHAIN.md) | cargo-packager 的 NSIS 工具链预置、校验与网络受限排障 |
 | [ROADMAP.md](ROADMAP.md) | 本文件：阶段状态、里程碑看板与更新规则 |

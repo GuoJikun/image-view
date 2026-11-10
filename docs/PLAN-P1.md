@@ -106,14 +106,14 @@
 
 > 安装器与文件关联是 v1.0 的硬性门槛；自动更新与多语言可后续补。
 
-- [x] 安装器（Inno Setup 6）：安装、卸载、开始菜单、按用户安装、可选“设为默认看图程序”。
+- [x] 安装器（cargo-packager v0.11.8 + NSIS 3.09）：安装、卸载、开始菜单、按用户安装、文件关联与“默认应用”能力项。
 - [x] 文件关联：注册支持的扩展名、ProgID、`OpenWithProgids`、`Applications` 与“默认应用”能力项，资源管理器“打开方式”可用。
 - [ ] 自动更新：检查发布清单、下载、哈希/签名校验、失败回滚；默认手动确认（推迟到 v1.1）。
 - [ ] 多语言：中/英 UI 资源表（轻量方案优先，如自写 `fl!` 宏或 `rust-i18n`；推迟到 v1.2）。
 - [x] 崩溃日志落盘；匿名统计默认关闭且需明示。
 - [x] 版本号与 CHANGELOG 规范：`1.0.0` 起语义化版本。
 
-> M5 完成情况：安装器、文件关联、崩溃日志与版本规范已落地；自动更新与中/英 UI 按发布门槛说明拆分到 v1.1 / v1.2。安装器向导暂为英文，应用界面仍为中文。Windows 10/11 不允许安装器静默改写默认看图程序，安装器注册“打开方式”和“默认应用”能力项，并提供系统设置入口。
+> M5 完成情况：安装器、文件关联、崩溃日志与版本规范已落地；自动更新与中/英 UI 按发布门槛说明拆分到 v1.1 / v1.2。安装器首版用 Inno Setup 6 实现，随后切换为 cargo-packager + NSIS（Inno 6.7 编译器标注 `Non-commercial use only`，且双工具链维护成本更高）。安装向导支持英文与简体中文。Windows 10/11 不允许安装器静默改写默认看图程序，安装器只注册“打开方式”与“默认应用”能力项，由用户在系统设置中选择默认处理器。
 
 **验收**
 
@@ -352,6 +352,43 @@
 - 默认应用能力项在 Windows“设置 → 默认应用”中的显示与排序未逐项截图确认。
 - Inno Setup 6.7 编译器在本地构建时标记 `Non-commercial use only`；若用于商业分发，需先确认 Inno Setup 授权或改用 WiX。
 
+### P1-M5 安装器迁移到 cargo-packager + NSIS（2026-11-10）
+
+**动机**
+
+- Inno Setup 6.7 编译器在本地构建时标注 `Non-commercial use only`，商业分发存在授权不确定性。
+- 安装器与打包流程分散在两套工具链（ISCC + 自定义脚本）中，依赖发现逻辑（`ISCC_PATH`、常见安装路径探测）脆弱。
+
+**实现**
+
+- 新增 `Packager.toml`：`formats = ["nsis"]`、`installMode = "currentUser"`、`template = "installer/nsis/image-view.nsi"`、`installerIcon`、`languages = ["English","SimpChinese"]`、`displayLanguageSelector`、`compression = "lzma"`、`appdataPaths`。
+- 新增 `installer/nsis/image-view.nsi`：以 cargo-packager v0.11.8 默认模板为基线定制。
+  - 安装路径改为 `%LOCALAPPDATA%\Programs\image-view`，与 Inno 版一致（默认模板为 `%LOCALAPPDATA%\image-view`）。
+  - 文件关联改为自有注册段（`RegisterFileAssociations` / `un.UnregisterFileAssociations`）：ProgID `ImageView.Image`、`OpenWithProgids`、`Applications\image-view.exe`、`Capabilities\FileAssociations`、`RegisteredApplications`，覆盖同样的 18 个扩展名。
+  - 不写任何扩展名的默认处理器，卸载时仅在默认值仍为本 ProgID 时清除，避免留下失效关联。
+  - 卸载新增删除 `${MANUPRODUCTKEY}`（`HKCU\Software\image-view\image-view`）：默认模板只删“Installer Language”值，会残留安装位置键。
+  - 保留默认模板的进程检测/结束、覆盖安装/降级提示、appdata 删除复选框与快捷方式逻辑。
+- `scripts/build-release.ps1` 改为调用 `cargo packager --release -c Packager.toml`，移除 ISCC 与 `ISCC_PATH` 探测；改为校验 NSIS 工具链是否就绪、按新命名匹配产物、输出 `SHA256SUMS.txt`。
+- 移除 `installer/image-view.iss`（历史见 git）。
+- 新增 `docs/NSIS-TOOLCHAIN.md`：记录工具链目录清单与预置步骤。原因是 cargo-packager 检测到工具链缺文件时会**删除整个 `NSIS` 目录并重新下载**，在受限网络下表现为“反复重建、进度为零”。
+
+**自动化与手工验证**
+
+- 打包（离线，无下载请求）：`dist\image-view_1.0.0_x64-setup.exe` 6,018,723 字节，SHA256 `c2849a54df7b3a57e017e9cefd81683d24ee03e4cb3fe5581fa30b856a6e01eb`。相对 Inno 版 6,513,568 字节减少 494,845 字节（约 7.6%）。
+- 静默安装 `/S` 退出码 0：`image-view.exe`（15,262,720 字节）、`README.md`、`CHANGELOG.md`、`uninstall.exe` 写入 `%LOCALAPPDATA%\Programs\image-view`。
+- 注册表：卸载项 `DisplayName`/`DisplayVersion`（`1.0.0`）/`Publisher`/`InstallLocation`/`EstimatedSize`（15,282 KB）正确；`Capabilities\FileAssociations` 18 项；`RegisteredApplications\image-view` 指向 `Software\image-view\Capabilities`；`Classes\ImageView.Image\shell\open\command` 指向安装目录 exe 与 `%1`。
+- `OpenWithProgids`：18/18 扩展名均含 `ImageView.Image`；`.png`、`.jpg` 的默认值保持为空，确认未改写默认处理器。
+- 快捷方式：开始菜单 `image-view.lnk` 与桌面 `image-view.lnk` 均创建（静默安装默认创建）。
+- 静默卸载 `/S` 退出码 0，以下项全部清除：安装目录、卸载项、`Software\image-view`（含 `image-view` 子键）、`ImageView.Image`、`Applications\image-view.exe`、`RegisteredApplications` 值、开始菜单与桌面快捷方式、抽样扩展名的 `OpenWithProgids` 值。
+
+**未覆盖**
+
+- 未在干净的 Win10/11 虚拟机上复验；结论来自本机静默安装/卸载。
+- 未验证从 Inno 版安装升级：两版卸载项键名不同（Inno 用 `{AppId}_is1`），同时安装会出现两条卸载记录。1.0.0 尚未发布，正式发布前需先卸载旧版或提供迁移说明。
+- 语言选择器仅在模板层面启用，GUI 安装的英/中切换未逐项截图确认；静默安装不触发语言选择。
+- 仅构建 x64；ARM64/x86 未验证。安装包未签名。
+- 仍无法静默夺取默认处理器（与 Inno 版结论一致），需用户在“默认应用”中选择。
+
 ## 7. 变更记录
 
 | 日期 | 变更 |
@@ -369,3 +406,4 @@
 | 2026-11-10 | 完成 P1-M4：缩略图条/虚拟滚动、磁盘缓存与内存 LRU、预加载、mipmap + glow 渲染、验收记录 |
 | 2026-11-10 | 完成 P1-M5：Inno Setup 安装器、文件关联/默认应用、崩溃日志、图标与版本/CHANGELOG；自动更新与多语言推迟到 v1.1/v1.2 |
 | 2026-11-10 | 版本口径统一：发布前所有工作归入 `1.0.0`，原 `2.0.0-alpha.1` / `v2.0` / `v2.1` / `v2.2` 分别改为 `1.0.0` / `v1.0` / `v1.1` / `v1.2` |
+| 2026-11-10 | 安装器从 Inno Setup 6 迁移到 cargo-packager + NSIS 3.09：新增 `Packager.toml` 与 `installer/nsis/image-view.nsi`，移除 `installer/image-view.iss`；安装包 6,513,568 → 6,018,723 字节 |
