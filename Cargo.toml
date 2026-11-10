@@ -15,7 +15,18 @@ heic = [
 ]
 
 [dependencies]
-eframe = { version = "0.37", features = ["persistence"] }
+# 使用 glow（OpenGL）而非默认 wgpu：egui-wgpu 不支持纹理 mipmap_mode。
+eframe = { version = "0.37", default-features = false, features = [
+    "persistence",
+    "glow",
+    "default_fonts",
+    "system_fonts",
+    "clipboard",
+    "accesskit",
+    "links",
+    "wayland",
+    "x11",
+] }
 egui = "0.37"
 image = { version = "0.25.10", default-features = false, features = [
     "png",

@@ -8,6 +8,7 @@ mod fileops;
 mod folder;
 mod loader;
 mod settings;
+mod thumbs;
 mod ui;
 mod viewer;
 

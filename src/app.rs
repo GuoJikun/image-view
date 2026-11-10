@@ -1,5 +1,6 @@
 //! 应用状态与每帧编排。
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -11,6 +12,7 @@ use crate::fileops;
 use crate::folder::{self, FolderNav, SortOrder};
 use crate::loader::{Caps, LoadError, LoadResponse, Loader, Purpose};
 use crate::settings::Settings;
+use crate::thumbs::{self, ThumbnailCache, ThumbnailLoader};
 use crate::ui;
 use crate::viewer::{self, ViewMode, ViewState};
 
@@ -50,6 +52,17 @@ pub struct ImageViewerApp {
     session_restored: bool,
     /// 状态栏短提示：文本与过期时刻。
     notice: Option<(String, Instant)>,
+    /// 缩略图内存 LRU，与主纹理缓存预算分离。
+    thumbnails: ThumbnailCache,
+    thumbnail_loader: ThumbnailLoader,
+    thumbnail_generation: u64,
+    /// 上次请求的完整目标集合，用于避免每帧重复发送。
+    thumbnail_focus: Vec<PathBuf>,
+    thumbnail_failed: HashSet<PathBuf>,
+    /// 下一帧把当前项滚动到缩略图条中央。
+    thumbnail_follow: bool,
+    /// 上次重置缩略图作用域的目录。
+    thumbnail_dir: PathBuf,
 }
 
 impl ImageViewerApp {
@@ -67,7 +80,7 @@ impl ImageViewerApp {
             },
             image: None,
             view: ViewState::default(),
-            loader: Loader::new(ctx),
+            loader: Loader::new(ctx.clone()),
             caps: Caps::default(),
             generation: 0,
             pending: None,
@@ -83,6 +96,13 @@ impl ImageViewerApp {
             settings,
             session_restored: false,
             notice: None,
+            thumbnails: ThumbnailCache::default(),
+            thumbnail_loader: ThumbnailLoader::new(ctx),
+            thumbnail_generation: 0,
+            thumbnail_focus: Vec::new(),
+            thumbnail_failed: HashSet::new(),
+            thumbnail_follow: true,
+            thumbnail_dir: PathBuf::new(),
         }
     }
 
@@ -121,8 +141,10 @@ impl ImageViewerApp {
 
         if path.is_dir() {
             if let Some(first) = self.folder.open_dir(path) {
+                self.reset_thumbnail_scope();
                 self.request_load(first);
             } else {
+                self.reset_thumbnail_scope();
                 self.error = Some(format!("目录中没有支持的图片：{}", path.display()));
                 self.error_path = None;
             }
@@ -136,6 +158,7 @@ impl ImageViewerApp {
         }
 
         self.folder.set_file(path);
+        self.reset_thumbnail_scope();
         self.request_load(path.to_path_buf());
     }
 
@@ -154,6 +177,7 @@ impl ImageViewerApp {
             .folder
             .restore(&dir, file.as_deref(), self.settings.sort)
         {
+            self.reset_thumbnail_scope();
             self.request_load(path);
         }
     }
@@ -161,7 +185,110 @@ impl ImageViewerApp {
     fn set_sort(&mut self, order: SortOrder) {
         self.folder.set_sort(order);
         self.settings.sort = order;
+        self.thumbnail_follow = true;
         self.update_preloads();
+    }
+
+    /// 目录变化时丢弃旧目录的缩略图请求；文件名列表变化无需重置。
+    fn reset_thumbnail_scope(&mut self) {
+        if self.thumbnail_dir == self.folder.dir {
+            return;
+        }
+        self.thumbnail_dir = self.folder.dir.clone();
+        self.thumbnail_generation += 1;
+        self.thumbnail_focus.clear();
+        self.thumbnail_failed.clear();
+        self.thumbnail_loader.cancel(self.thumbnail_generation);
+        self.thumbnail_follow = true;
+    }
+
+    /// 点击缩略图后切换到指定索引，并复用翻页/缓存逻辑。
+    fn select_index(&mut self, index: usize) {
+        if self.folder.index == Some(index) {
+            return;
+        }
+        if let Some(path) = self.folder.select(index) {
+            if let Some(slideshow) = &mut self.slideshow {
+                slideshow.next_at = Instant::now() + SLIDESHOW_INTERVAL;
+            }
+            self.thumbnail_follow = true;
+            self.request_load(path);
+        }
+    }
+
+    fn poll_thumbnails(&mut self, ctx: &egui::Context) {
+        while let Some(response) = self.thumbnail_loader.try_recv() {
+            if response.generation != self.thumbnail_generation {
+                continue;
+            }
+
+            match response.result {
+                Ok(data) => {
+                    if data.size[0] == 0 || data.size[1] == 0 {
+                        continue;
+                    }
+                    let color = egui::ColorImage::from_rgba_unmultiplied(data.size, &data.rgba);
+                    let texture = ctx.load_texture(
+                        format!("thumb:{}", response.path.display()),
+                        color,
+                        thumbs::texture_options(),
+                    );
+                    self.thumbnails.insert(response.path, texture);
+                }
+                Err(error) => {
+                    log::debug!("缩略图解码失败 {}：{error}", response.path.display());
+                    self.thumbnail_failed.insert(response.path);
+                }
+            }
+        }
+    }
+
+    /// 当前项优先，随后前后各 3 张，最后补视口内其余缩略图。
+    fn warm_thumbnails(&mut self, visible: std::ops::Range<usize>) {
+        let Some(current) = self.folder.index else {
+            return;
+        };
+
+        let mut candidates = Vec::new();
+        candidates.push(current);
+        for offset in 1..=3 {
+            if let Some(index) = current.checked_sub(offset) {
+                candidates.push(index);
+            }
+            if let Some(index) = current.checked_add(offset)
+                && index < self.folder.files.len()
+            {
+                candidates.push(index);
+            }
+        }
+        candidates.extend(visible);
+
+        let mut seen = HashSet::new();
+        let mut desired = Vec::new();
+        for index in candidates {
+            let Some(path) = self.folder.files.get(index) else {
+                continue;
+            };
+            if seen.insert(path.clone()) {
+                desired.push(path.clone());
+            }
+        }
+
+        if desired == self.thumbnail_focus {
+            return;
+        }
+        self.thumbnail_focus = desired.clone();
+
+        let missing = desired
+            .into_iter()
+            .filter(|path| {
+                !self.thumbnails.contains(path)
+                    && !self.thumbnail_failed.contains(path)
+                    && path.is_file()
+            })
+            .collect();
+        self.thumbnail_loader
+            .focus(self.thumbnail_generation, missing);
     }
 
     fn current_path(&self) -> Option<PathBuf> {
@@ -205,6 +332,8 @@ impl ImageViewerApp {
         log::info!("已移到回收站：{}", path.display());
         self.slideshow = None;
         self.cache.remove(&path);
+        self.thumbnails.remove(&path);
+        self.thumbnail_failed.remove(&path);
         self.image = None;
         self.view = ViewState::default();
         self.set_notice(format!("已移到回收站：{name}"));
@@ -273,6 +402,7 @@ impl ImageViewerApp {
         self.error_path = None;
         // 视图重置后 Fit 需要下一帧才能用画布尺寸重算。
         self.needs_repaint = true;
+        self.thumbnail_follow = true;
         self.update_preloads();
     }
 
@@ -611,6 +741,7 @@ impl eframe::App for ImageViewerApp {
         self.handle_dropped_files(ctx);
         self.handle_shortcuts(ctx);
         self.poll_loader(ctx);
+        self.poll_thumbnails(ctx);
         self.tick_slideshow(ctx);
         self.tick_notice(ctx);
 
@@ -670,6 +801,25 @@ impl eframe::App for ImageViewerApp {
             notice: self.notice.as_ref().map(|(text, _)| text.clone()),
         };
         ui::status_bar(ui, &status);
+
+        if !self.folder.files.is_empty() {
+            let output = thumbs::strip(
+                ui,
+                thumbs::StripState {
+                    files: &self.folder.files,
+                    current: self.folder.index,
+                    cache: &mut self.thumbnails,
+                    follow: self.thumbnail_follow,
+                },
+            );
+            if output.followed {
+                self.thumbnail_follow = false;
+            }
+            if let Some(index) = output.clicked {
+                self.select_index(index);
+            }
+            self.warm_thumbnails(output.visible);
+        }
 
         if let Some(action) = self.canvas(ui) {
             self.handle_action(ui.ctx(), action);

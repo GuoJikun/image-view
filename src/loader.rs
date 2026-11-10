@@ -309,6 +309,17 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
     }
 }
 
+/// 按缩略图尺寸解码；复用主图路径的格式分派、ICC 转换与错误类型。
+pub(crate) fn decode_thumbnail(path: &Path) -> Result<Decoded, LoadError> {
+    let side = crate::thumbs::MAX_SIDE as usize;
+    let caps = Caps {
+        max_side: side,
+        max_pixels: side * side,
+        ..Caps::default()
+    };
+    decode(path, &caps, Purpose::Open)
+}
+
 /// 解码前的统一尺寸检查：拒绝解压炸弹，并让预加载只挑小图。
 fn check_source_limits(
     width: u32,
@@ -561,6 +572,21 @@ mod tests {
         bytes.extend_from_slice(&app1);
         bytes.extend_from_slice(&jpeg[2..]);
         std::fs::write(path, bytes).expect("write jpeg");
+    }
+
+    #[test]
+    fn thumbnail_decode_limits_the_longest_side() {
+        let dir = temp_dir("thumbnail");
+        let path = dir.join("wide.png");
+        image::RgbImage::from_pixel(400, 200, image::Rgb([10, 20, 30]))
+            .save(&path)
+            .expect("write png");
+
+        let decoded = decode_thumbnail(&path).expect("decode thumbnail");
+        assert_eq!(decoded.size, [crate::thumbs::MAX_SIDE as usize, 64]);
+        assert_eq!(decoded.rgba.len(), decoded.size[0] * decoded.size[1] * 4);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 
     #[test]

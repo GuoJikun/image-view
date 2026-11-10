@@ -10,18 +10,20 @@
 - 读取 JPEG/TIFF/PNG/WebP/HEIC/AVIF 内嵌 ICC profile 并转换到 sRGB；16-bit PNG/TIFF 在转换与缩放阶段保持精度，最终以 8-bit 纹理显示
 - 以光标为锚点的滚轮 / 触控板缩放，鼠标拖拽平移，双击在「适配」与「100%」之间切换
 - 同一目录内上一张 / 下一张（按文件名自然排序，不循环），可切换按修改时间排序
+- 底部缩略图条：懒加载 + 虚拟滚动，点击跳转，方向键/点击后自动居中当前项；缩略图使用独立内存 LRU（512 张、最长边 128 px）与磁盘缓存（`%LOCALAPPDATA%\image-view\thumbs`，上限 256 MB）
 - 记住窗口位置/大小/最大化、上次目录与图片、排序方式；无参数启动时恢复上次会话
 - `Delete` 删除到系统回收站，`Ctrl+Shift+C` 复制路径，“文件”菜单或右键菜单可在资源管理器中定位
 - 幻灯片：按 `Space` 每 3 秒自动前进，到最后一张自动停止
-- 相邻图片预加载 + 最近使用（LRU）纹理缓存，最多 3 张，回翻立即显示
+- 相邻图片预加载 + 最近使用（LRU）主图纹理缓存，最多 3 张，回翻立即显示；缩略图预取当前项前后各 3 张
+- 主图与缩略图纹理使用 mipmap + LINEAR：缩小查看更平滑，100% 附近仍保持清晰
 - 状态栏：文件名、原图尺寸/显示尺寸与位深、缩放百分比、序号、加载与降采样提示；可在“文件”菜单开启色彩转换标记
-- 后台单线程解码，打开请求优先于预加载；快速翻页时只保留最新请求，旧结果自动丢弃
+- 后台单线程解码，打开请求优先于预加载；快速翻页时只保留最新请求，旧结果自动丢弃；缩略图使用独立后台线程，避免阻塞主图
 - 大图安全阈值：单边 8192、总像素 40MP 自动等比降采样；超过 250MP 的原图直接拒绝解码；预加载只处理 30MP 以下的图片
 - 中文界面（默认深色主题）
 
 ## 版本与路线
 
-当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存），并已完成 v2.0 的 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）与 P1-M3（HEIC / AVIF）。默认构建包含 HEIC/AVIF 解码器，release exe 约 20.1 MB。
+当前为 v1.1 功能集（P0 + EXIF/旋转/全屏 + 幻灯片/预加载缓存），并已完成 v2.0 的 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）与 P1-M4（缩略图条与渲染质量）。默认构建包含 HEIC/AVIF 解码器，渲染后端为 glow，release exe 约 14.5 MiB。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v2.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -67,7 +69,7 @@ image-view [PATH]
 | 按键 | 功能 |
 | --- | --- |
 | `Ctrl+O` | 打开文件 |
-| `←` / `→` | 上一张 / 下一张 |
+| `←` / `→` | 上一张 / 下一张（缩略图条同步居中） |
 | `Ctrl+Shift+C` | 复制当前图片路径 |
 | `Delete` | 移到回收站 |
 | `Space` | 开始 / 停止幻灯片（3 秒间隔） |
@@ -80,6 +82,8 @@ image-view [PATH]
 | `R` | 顺时针旋转 90° |
 | `Shift+R` | 逆时针旋转 90° |
 | `Esc` | 退出全屏 / 关闭帮助窗口 |
+
+光标位于缩略图条时，滚轮横向滚动缩略图；点击缩略图直接跳转到对应图片。
 
 ## 支持的格式
 
@@ -102,7 +106,10 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - 设置与窗口状态保存在 `%APPDATA%\image-view\data\app.ron`；文件损坏或版本过旧时自动回退默认值。
 - 排序按修改时间读取文件元数据；网络盘或权限受限时，无法读取时间的文件排在最后。
 - 删除只支持系统回收站；回收站不可用（如部分网络盘）时会提示错误并保留原文件。
-- 纹理缓存最多保留 3 张图片（总像素 ≤ 72M，约 288 MB），内存占用会随打开的图片增加。
+- 主图纹理缓存最多保留 3 张图片（总像素 ≤ 72M，约 288 MB）；缩略图另有 512 张 LRU，与主图预算分离。
+- 缩略图磁盘缓存位于 `%LOCALAPPDATA%\image-view\thumbs`，按路径、修改时间、文件长度与目标尺寸缓存 QOI；超过 256 MB 时启动阶段删除最旧文件，可安全手动清空。
+- 缩略图最长边为 128 px，适合 2× DPI 与常规缩放；极大目录下缩略图条只绘制视口附近卡片，但目录扫描本身仍是一次性完成。
+- mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。glow（OpenGL）为主要渲染后端，老显卡驱动异常时需回退到旧版本或自行切换后端。
 - 幻灯片到最后一张停止，不循环；手动翻页会重置 3 秒计时。
 - 预加载会跳过超过 30 MP 的图片（仅影响速度，不影响正常打开）。
 - 16-bit 图片以 8-bit 纹理显示（色彩转换阶段仍保留 16-bit 精度）；10-bit/HDR 输出不在当前版本范围内。
@@ -118,14 +125,16 @@ src/
   viewer.rs     缩放/平移数学与画布绘制
   document.rs   当前图片与 GPU 纹理
   cache.rs      最近使用（LRU）纹理缓存
-  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样、HEIC/AVIF 分派
+  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样、HEIC/AVIF 分派、缩略图尺寸解码
   color.rs      ICC profile 解析、sRGB 转换与 16-bit 精度保持
-  folder.rs     目录扫描、自然排序/时间排序、上一张/下一张
+  thumbs.rs     缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
+  folder.rs     目录扫描、自然排序/时间排序、上一张/下一张、缩略图选中
   settings.rs   持久化设置：窗口状态、上次会话与排序方式
   fileops.rs    回收站删除与在资源管理器中定位
 examples/
   gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
   color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
+  thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
 assets/
   icon.png      窗口图标
 docs/
@@ -145,7 +154,7 @@ cargo clippy --all-targets -- -D warnings
 cargo build --release
 ```
 
-手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。
+手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
 
 - 设计细节与取舍见 `docs/PLAN-P0.md`。
-- 渲染后端默认使用 wgpu；若在老显卡驱动上遇到问题，可启用 eframe 的 `glow` 特性并切换 `NativeOptions.renderer`。
+- 渲染后端使用 eframe 的 glow（OpenGL）；从 wgpu 切换是为了支持纹理 `mipmap_mode`，同时减小 release 体积。

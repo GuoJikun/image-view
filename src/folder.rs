@@ -190,6 +190,15 @@ impl FolderNav {
             .map(PathBuf::as_path)
     }
 
+    /// 直接选中指定下标（例如点击缩略图）；越界时保持原选择。
+    pub fn select(&mut self, index: usize) -> Option<PathBuf> {
+        if index >= self.files.len() {
+            return None;
+        }
+        self.index = Some(index);
+        self.current().map(Path::to_path_buf)
+    }
+
     /// 前进/后退一张；到达边界时返回 `None`（不循环）。
     /// 已删除/移动的文件会从列表中移除，并继续沿同一方向查找。
     pub fn step(&mut self, delta: isize) -> Option<PathBuf> {
@@ -294,6 +303,25 @@ mod tests {
         assert_eq!(names, ["a.png"]);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn select_changes_current_only_for_valid_index() {
+        let nav_files = vec![
+            PathBuf::from("a.png"),
+            PathBuf::from("b.png"),
+            PathBuf::from("c.png"),
+        ];
+        let mut nav = FolderNav {
+            files: nav_files.clone(),
+            index: Some(0),
+            ..Default::default()
+        };
+
+        assert_eq!(nav.select(2), Some(PathBuf::from("c.png")));
+        assert_eq!(nav.index, Some(2));
+        assert_eq!(nav.select(9), None);
+        assert_eq!(nav.index, Some(2), "越界不应改变当前选择");
     }
 
     #[test]

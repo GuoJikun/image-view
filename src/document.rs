@@ -25,7 +25,7 @@ impl LoadedImage {
         let texture = ctx.load_texture(
             format!("image:{}", path.display()),
             color_image,
-            egui::TextureOptions::LINEAR,
+            egui::TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)),
         );
 
         Self {
