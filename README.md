@@ -24,7 +24,7 @@
 
 ## 版本与路线
 
-当前版本为 **v1.0.0（未发布）**。发布前所有开发工作都归入 `1.0.0`：P0 查看基线，以及 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）。默认构建包含 HEIC/AVIF 解码器，渲染后端为 glow，release exe 约 14.6 MiB。1.0.0 仍在开发中：图库/搜索/对比（M6）尚未开始，GIF/WebP 动画（M7）计划在首个版本之后提供；自动更新与中/英 UI 也将在发布后以 v1.1 / v1.2 补齐。
+当前版本为 **v1.0.0（未发布）**。发布前所有开发工作都归入 `1.0.0`：P0 查看基线，以及 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）。默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow，release exe 约 16.3 MiB。1.0.0 仍在开发中：图库/搜索/对比（M6）尚未开始，GIF/WebP 动画（M7）计划在首个版本之后提供；自动更新与中/英 UI 也将在发布后以 v1.1 / v1.2 补齐。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -42,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 产物位于 `dist\`：`image-view_<version>_x64-setup.exe` 与 `SHA256SUMS.txt`。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
-- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
+- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
 - **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册。程序目录同时存放用户数据（`logs\` 日志、`thumbs\` 缩略图缓存），卸载默认保留；勾选卸载页的“删除应用数据”会一并清除，设置文件 `%APPDATA%\image-view` 同理由该选项控制。
 - **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
 
@@ -58,12 +58,13 @@ cargo run --release -- "D:\photos"      # 打开目录中第一张图片
 
 构建产物位于 `target\release\image-view.exe`，可自行复制到任意位置使用。
 
-HEIC/AVIF 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
+HEIC/AVIF 与 SVG 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
 
 ```powershell
-cargo build --release --no-default-features                     # 不含 HEIC/AVIF
+cargo build --release --no-default-features                     # 不含 HEIC/AVIF/SVG
 cargo build --release --no-default-features --features avif     # 仅 AVIF
 cargo build --release --no-default-features --features heic     # 仅 HEIC/HEIF
+cargo build --release --no-default-features --features svg      # 仅 SVG（resvg 光栅化）
 ```
 
 未包含对应解码器的构建打开这类文件时，会显示“解码器未包含在此构建中”的明确提示，不会崩溃。
@@ -107,9 +108,11 @@ image-view [PATH]
 
 ## 支持的格式
 
-PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF。
+PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG。
 
 HEIC/AVIF 默认启用，使用纯 Rust 解码器（`imgalifier-heif` / `imgalifier-avif`），不依赖 libheif 或系统 DLL。`.heif` 扩展名按 HEIC 处理。
+
+SVG 默认启用，使用 `resvg`（usvg + tiny-skia）光栅化，同样为纯 Rust、无系统 DLL：先解析出 `width`/`height`（缺失时回退 `viewBox`，两者都没有时按规范用 300×150）并做 250 MP 原图上限检查，再直接渲染到目标尺寸——矢量缩放即渲染，不会先画成位图再重采样。`.svgz`（gzip 压缩）暂不支持。
 
 JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
 
@@ -119,6 +122,8 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - HEIC/AVIF 若只带 nclx 色彩原色（如未内嵌 ICC 的 Display P3），暂不进行色域转换；内嵌 ICC 会经 LCMS 转换到 sRGB。iPhone 照片通常内嵌 ICC。
 - HEIC/AVIF 的 10/12-bit 源图由解码器内部转换为 8-bit 纹理；状态栏位深标记只区分通用解码路径的 8/16-bit。
 - HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估；AVIF（AV1）不在此列。
+- SVG 只渲染静态内容：不支持动画、脚本与事件；文字使用系统字体，缺少指定字体时回退到可用字体，嵌入式 Web 字体不加载。
+- SVG 按声明的固有尺寸（`width`/`height`/`viewBox`，逻辑像素）做上限检查，超过 250 MP 会被拒绝打开；`.svgz`（gzip 压缩）不在支持列表内。
 - 旋转仅作用于当前查看，不写回文件，切换图片后重置。
 - 动图只显示第一帧。
 - 超大图会被降采样后再显示，此时「100%」是相对降采样后的纹理，状态栏会同时标注原图尺寸。
@@ -149,7 +154,7 @@ src/
   viewer.rs     缩放/平移数学与画布绘制
   document.rs   当前图片与 GPU 纹理
   cache.rs      最近使用（LRU）纹理缓存
-  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样、HEIC/AVIF 分派、缩略图尺寸解码
+  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样、HEIC/AVIF/SVG 分派、SVG 光栅化、缩略图尺寸解码
   color.rs      ICC profile 解析、sRGB 转换与 16-bit 精度保持
   thumbs.rs     缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
   folder.rs     目录扫描、自然排序/时间排序、上一张/下一张、缩略图选中

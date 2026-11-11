@@ -453,6 +453,7 @@ Function RegisterFileAssociations
   !insertmacro RegisterExt ".avif"
   !insertmacro RegisterExt ".heic"
   !insertmacro RegisterExt ".heif"
+  !insertmacro RegisterExt ".svg"
 FunctionEnd
 
 Function un.UnregisterFileAssociations
@@ -474,6 +475,7 @@ Function un.UnregisterFileAssociations
   !insertmacro UnregisterExt ".avif"
   !insertmacro UnregisterExt ".heic"
   !insertmacro UnregisterExt ".heif"
+  !insertmacro UnregisterExt ".svg"
 
   DeleteRegKey SHCTX "Software\Classes\${APP_PROGID}"
   DeleteRegKey SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe"

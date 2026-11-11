@@ -85,8 +85,14 @@ pub enum LoadError {
     #[cfg(feature = "heic")]
     #[error("HEIC 解码失败：{0}")]
     Heic(String),
+    #[cfg(feature = "svg")]
+    #[error("SVG 解析失败：{0}")]
+    Svg(String),
     /// 仅在关闭对应 feature 的构建中构造。
-    #[cfg_attr(all(feature = "avif", feature = "heic"), allow(dead_code))]
+    #[cfg_attr(
+        all(feature = "avif", feature = "heic", feature = "svg"),
+        allow(dead_code)
+    )]
     #[error("{format} 解码器未包含在此构建中；请使用启用该特性的版本打开 .{extension} 文件")]
     MissingDecoder {
         format: &'static str,
@@ -94,12 +100,13 @@ pub enum LoadError {
     },
 }
 
-/// 按扩展名选择解码器；HEIC/AVIF 不走 `image` 的通用读取路径。
+/// 按扩展名选择解码器；HEIC/AVIF 不走 `image` 的通用读取路径，SVG 走光栅化。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Format {
     Standard,
     Avif,
     Heic,
+    Svg,
 }
 
 fn format_for(path: &Path) -> Format {
@@ -110,16 +117,21 @@ fn format_for(path: &Path) -> Format {
         {
             Format::Heic
         }
+        Some(extension) if extension.eq_ignore_ascii_case("svg") => Format::Svg,
         _ => Format::Standard,
     }
 }
 
 /// 仅在关闭对应 feature 的构建中调用。
-#[cfg_attr(all(feature = "avif", feature = "heic"), allow(dead_code))]
+#[cfg_attr(
+    all(feature = "avif", feature = "heic", feature = "svg"),
+    allow(dead_code)
+)]
 fn missing_decoder(path: &Path, format: Format) -> LoadError {
     let (label, fallback) = match format {
         Format::Avif => ("AVIF", "avif"),
         Format::Heic => ("HEIC", "heic"),
+        Format::Svg => ("SVG", "svg"),
         Format::Standard => ("图片", "img"),
     };
     let extension = path
@@ -306,6 +318,7 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
         Format::Standard => decode_standard(path, caps, purpose),
         Format::Avif => decode_avif(path, caps, purpose),
         Format::Heic => decode_heic(path, caps, purpose),
+        Format::Svg => decode_svg(path, caps, purpose),
     }
 }
 
@@ -457,6 +470,128 @@ fn decode_heic(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Lo
 #[cfg(not(feature = "heic"))]
 fn decode_heic(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
     Err(missing_decoder(path, Format::Heic))
+}
+
+/// 共享的系统字体库；只在第一次解码 SVG 时扫描系统字体。
+#[cfg(feature = "svg")]
+fn shared_fontdb() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
+    use std::sync::OnceLock;
+
+    static FONTDB: OnceLock<std::sync::Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();
+    FONTDB
+        .get_or_init(|| {
+            let mut database = resvg::usvg::fontdb::Database::new();
+            database.load_system_fonts();
+            log::debug!("已载入 {} 个系统字体", database.len());
+            std::sync::Arc::new(database)
+        })
+        .clone()
+}
+
+/// SVG 的固有尺寸（逻辑像素）→ 参与限额检查的整数像素。
+#[cfg(feature = "svg")]
+fn svg_pixels(value: f32) -> u32 {
+    if !value.is_finite() || value < 1.0 {
+        1
+    } else {
+        value.round().min(u32::MAX as f32) as u32
+    }
+}
+
+/// SVG 不能像位图那样「解码即得像素」：先解析出树与固有尺寸，
+/// 按 `Caps` 做尺寸检查，再直接光栅化到目标尺寸（矢量缩放即渲染，无需二次重采样）。
+#[cfg(feature = "svg")]
+fn decode_svg(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    use resvg::tiny_skia;
+
+    let data = std::fs::read(path)?;
+    let tree = parse_svg(path, &data)?;
+
+    // usvg 的尺寸解析：优先 width/height，缺失时回退 viewBox；再缺失会按内容边界推导，
+    // 与规范的 300×150 默认视口不一致，因此自行检测并覆盖（内容坐标不受影响）。
+    let declared = tree.size();
+    let intrinsic: [f32; 2] = if has_intrinsic_size(&data) {
+        [declared.width(), declared.height()]
+    } else {
+        [300.0, 150.0]
+    };
+    let width = svg_pixels(intrinsic[0]);
+    let height = svg_pixels(intrinsic[1]);
+    check_source_limits(width, height, caps, purpose)?;
+
+    let source_size = [width as usize, height as usize];
+    let target = target_size(source_size, caps.max_side, caps.max_pixels);
+    let target_w = target[0] as u32;
+    let target_h = target[1] as u32;
+
+    let mut pixmap = tiny_skia::Pixmap::new(target_w, target_h).ok_or(LoadError::OutOfMemory)?;
+    let scale_x = target_w as f32 / intrinsic[0];
+    let scale_y = target_h as f32 / intrinsic[1];
+    {
+        let mut render_target = pixmap.as_mut();
+        resvg::render(
+            &tree,
+            tiny_skia::Transform::from_scale(scale_x, scale_y),
+            &mut render_target,
+        );
+    }
+
+    // tiny-skia 输出预乘 alpha，纹理管线需要非预乘的 sRGB RGBA。
+    let rgba = pixmap.take_demultiplied();
+
+    Ok(Decoded {
+        size: target,
+        source_size,
+        rgba,
+        source_depth: 8,
+        color: ColorInfo::default(),
+    })
+}
+
+/// 解析 SVG 树：外链资源按文件所在目录解析，相对尺寸按规范的 300×150 默认视口推导。
+#[cfg(feature = "svg")]
+fn parse_svg(path: &Path, data: &[u8]) -> Result<resvg::usvg::Tree, LoadError> {
+    use resvg::usvg;
+
+    let options = usvg::Options {
+        // 相对外链按 SVG 所在目录解析；usvg 只读本地文件，不发网络请求。
+        resources_dir: path.parent().map(Path::to_path_buf),
+        fontdb: shared_fontdb(),
+        // 规范的默认替换尺寸：尺寸属性为相对值时按 300×150 推导。
+        default_size: usvg::Size::from_wh(300.0, 150.0).unwrap(),
+        ..usvg::Options::default()
+    };
+
+    match usvg::Tree::from_data(data, &options) {
+        Ok(tree) => Ok(tree),
+        Err(usvg::Error::SvgzFeatureNotEnabled) => Err(LoadError::Svg(
+            "暂不支持 gzip 压缩的 SVGZ，请解压为 .svg 后再打开".to_owned(),
+        )),
+        Err(error) => Err(LoadError::Svg(error.to_string())),
+    }
+}
+
+/// 根元素是否声明了 `width`/`height`/`viewBox`；三者都没有时按规范套用 300×150 默认视口。
+#[cfg(feature = "svg")]
+fn has_intrinsic_size(data: &[u8]) -> bool {
+    use resvg::usvg::roxmltree;
+
+    let Ok(text) = std::str::from_utf8(data) else {
+        return true; // 非 UTF-8（如 gzip）交给解析报错，此处不做推断
+    };
+    let Ok(document) = roxmltree::Document::parse(text) else {
+        return true;
+    };
+    let Some(root) = document.root().children().find(|node| node.is_element()) else {
+        return true;
+    };
+    root.attributes()
+        .any(|attribute| matches!(attribute.name(), "width" | "height" | "viewBox"))
+}
+
+#[cfg(not(feature = "svg"))]
+fn decode_svg(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+    Err(missing_decoder(path, Format::Svg))
 }
 
 /// 解码后的公共出口：降采样、位深记录与 ICC → sRGB 转换。
@@ -776,6 +911,8 @@ mod tests {
         assert_eq!(format_for(Path::new("a.AVIF")), Format::Avif);
         assert_eq!(format_for(Path::new("a.heic")), Format::Heic);
         assert_eq!(format_for(Path::new("a.HEIF")), Format::Heic);
+        assert_eq!(format_for(Path::new("a.SVG")), Format::Svg);
+        assert_eq!(format_for(Path::new("a.svg")), Format::Svg);
         assert_eq!(format_for(Path::new("a.png")), Format::Standard);
         assert_eq!(format_for(Path::new("no-extension")), Format::Standard);
     }
@@ -839,6 +976,228 @@ mod tests {
     fn heic_without_decoder_reports_missing_decoder() {
         let dir = temp_dir("heic-missing");
         let path = dir.join("photo.heif");
+        std::fs::write(&path, b"").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::MissingDecoder { .. })
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    /// 写入一个完整的 SVG 文档。
+    #[cfg(feature = "svg")]
+    fn write_svg(path: &Path, document: &str) {
+        std::fs::write(path, document).expect("write svg");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_is_rasterized_at_declared_size() {
+        let dir = temp_dir("svg");
+        let path = dir.join("rect.svg");
+        write_svg(
+            &path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#ff0000"/></svg>"##,
+        );
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode svg");
+        assert_eq!(decoded.source_size, [40, 20]);
+        assert_eq!(decoded.size, [40, 20]);
+        assert_eq!(decoded.rgba.len(), 40 * 20 * 4);
+        assert_eq!(decoded.source_depth, 8);
+
+        // 中心像素应为纯红且不透明（预乘 alpha 已还原）。
+        let offset = (10 * 40 + 20) * 4;
+        assert_eq!(&decoded.rgba[offset..offset + 4], &[255, 0, 0, 255]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_is_rasterized_down_to_caps_without_resampling() {
+        let dir = temp_dir("svg-scale");
+        let path = dir.join("big.svg");
+        write_svg(
+            &path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#00ff00"/></svg>"##,
+        );
+
+        let caps = Caps {
+            max_side: 64,
+            max_pixels: 1024,
+            ..Caps::default()
+        };
+        let decoded = decode(&path, &caps, Purpose::Open).expect("decode svg");
+
+        // 原尺寸只用于记录与限额检查，光栅化直接落在目标尺寸上。
+        assert_eq!(decoded.source_size, [400, 200]);
+        assert_eq!(decoded.size, target_size([400, 200], 64, 1024));
+        assert!(decoded.size[0] < 400);
+        assert_eq!(decoded.rgba.len(), decoded.size[0] * decoded.size[1] * 4);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_declared_size_is_checked_against_source_limit() {
+        let dir = temp_dir("svg-limit");
+        let path = dir.join("huge.svg");
+        write_svg(
+            &path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200"/></svg>"##,
+        );
+
+        let caps = Caps {
+            max_source_pixels: 1_000,
+            ..Caps::default()
+        };
+        assert!(matches!(
+            decode(&path, &caps, Purpose::Open),
+            Err(LoadError::TooLarge { w: 400, h: 200 })
+        ));
+
+        let preload_caps = Caps {
+            preload_max_source_pixels: 1_000,
+            ..Caps::default()
+        };
+        assert!(matches!(
+            decode(&path, &preload_caps, Purpose::Preload),
+            Err(LoadError::PreloadSkipped { .. })
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_without_width_and_height_falls_back_to_view_box() {
+        let dir = temp_dir("svg-viewbox");
+        let path = dir.join("viewbox.svg");
+        write_svg(
+            &path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30"><rect width="60" height="30" fill="#0000ff"/></svg>"##,
+        );
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode svg");
+        assert_eq!(decoded.source_size, [60, 30]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_without_any_size_uses_default_viewport() {
+        let dir = temp_dir("svg-default");
+        let path = dir.join("default.svg");
+        // 内容只有 10×10，规范要求视口仍是 300×150（usvg 会按内容边界推导成 10×10）。
+        write_svg(
+            &path,
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10" fill="#ff0000"/></svg>"##,
+        );
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode svg");
+        assert_eq!(decoded.source_size, [300, 150]);
+        assert_eq!(decoded.size, [300, 150]);
+        assert_eq!(decoded.rgba.len(), 300 * 150 * 4);
+
+        // 内容按原坐标落在左上角，视口其余部分透明。
+        assert_eq!(&decoded.rgba[0..4], &[255, 0, 0, 255]);
+        let empty = (100 * 300 + 200) * 4;
+        assert_eq!(&decoded.rgba[empty..empty + 4], &[0, 0, 0, 0]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn intrinsic_size_detection_looks_at_root_attributes() {
+        let sizeless =
+            r##"<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>"##;
+        assert!(!has_intrinsic_size(sizeless.as_bytes()));
+
+        let with_viewbox =
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30"><rect/></svg>"##;
+        assert!(has_intrinsic_size(with_viewbox.as_bytes()));
+
+        let with_height = r##"<svg xmlns="http://www.w3.org/2000/svg" height="20"><rect/></svg>"##;
+        assert!(has_intrinsic_size(with_height.as_bytes()));
+
+        // 属性出现在内层元素上不算根元素声明了尺寸。
+        let inner_only = r##"<svg xmlns="http://www.w3.org/2000/svg"><g viewBox="0 0 1 1"><rect width="1" height="1"/></g></svg>"##;
+        assert!(!has_intrinsic_size(inner_only.as_bytes()));
+
+        // 解析不了的输入不做推断，交给后续解析报错。
+        assert!(has_intrinsic_size(b""));
+        assert!(has_intrinsic_size(b"\xff\xfe<svg/>"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn repo_icon_svg_rasterizes_with_content() {
+        // 用仓库自带的真实图标（1024×1024，含 viewBox 与多段路径）做端到端校验。
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("design/icon-master.svg");
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode icon svg");
+
+        assert_eq!(decoded.source_size, [1024, 1024]);
+        assert_eq!(decoded.size, [1024, 1024]);
+        assert_eq!(decoded.rgba.len(), 1024 * 1024 * 4);
+        assert!(
+            decoded
+                .rgba
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|pixel| pixel[3] > 0),
+            "渲染结果不应全透明"
+        );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn gzip_compressed_svg_content_is_accepted() {
+        // usvg 默认启用 svgz：`.svg` 文件内部若为 gzip 数据也能解出（`.svgz` 扩展名仍不进白名单）。
+        let dir = temp_dir("svg-gzip");
+        let path = dir.join("packed.svg");
+        const GZIP_SVG: [u8; 105] = [
+            31, 139, 8, 0, 0, 0, 0, 0, 0, 10, 117, 204, 75, 10, 128, 48, 12, 5, 192, 171, 148, 184,
+            55, 207, 186, 147, 182, 151, 81, 251, 129, 250, 193, 6, 227, 241, 197, 3, 184, 30, 24,
+            215, 238, 100, 158, 173, 238, 205, 83, 22, 57, 39, 102, 85, 237, 117, 236, 143, 43,
+            177, 5, 192, 237, 78, 100, 180, 44, 146, 61, 89, 144, 201, 107, 73, 89, 60, 13, 160,
+            224, 174, 117, 150, 31, 52, 177, 212, 234, 169, 3, 98, 4, 136, 131, 251, 170, 240, 2,
+            106, 86, 75, 44, 114, 0, 0, 0,
+        ];
+        std::fs::write(&path, GZIP_SVG).expect("write fixture");
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode gzip svg");
+        assert_eq!(decoded.source_size, [20, 10]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn corrupt_svg_reports_parse_error() {
+        let dir = temp_dir("svg-corrupt");
+        let path = dir.join("broken.svg");
+        std::fs::write(&path, b"<svg xmlns='http://www.w3.org/2000/svg'>").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::Svg(_))
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn svg_without_decoder_reports_missing_decoder() {
+        let dir = temp_dir("svg-missing");
+        let path = dir.join("drawing.svg");
         std::fs::write(&path, b"").expect("write fixture");
 
         assert!(matches!(

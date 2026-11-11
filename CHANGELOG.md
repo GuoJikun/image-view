@@ -32,8 +32,9 @@
 
 #### 格式与色彩
 
-- 支持 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF。
+- 支持 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG。
 - HEIC/AVIF 使用纯 Rust 解码器，默认开启，可通过 Cargo 特性单独裁剪。
+- SVG 由 `resvg`（usvg + tiny-skia）光栅化：按声明尺寸（或 `viewBox`、缺省 300×150）做上限检查后直接渲染到目标尺寸，同样是纯 Rust、无系统 DLL，`svg` 特性默认开启。
 - 读取 JPEG/TIFF/PNG/WebP/HEIC/AVIF 内嵌 ICC profile 并转换到 sRGB；16-bit PNG/TIFF 在转换与缩放阶段保持精度。
 - 状态栏显示文件名、原图/显示尺寸与位深、缩放百分比、序号、加载与降采样提示；可开启色彩转换标记。
 
@@ -42,7 +43,7 @@
 - 记住窗口位置/大小/最大化、上次目录与图片、排序方式；无参数启动恢复上次会话。
 - 日志写入 `%LOCALAPPDATA%\image-view\logs`，单文件 4 MiB 轮转、保留 3 份历史；panic 额外生成带 backtrace 的 `crash-*.log`（最多 10 份）；“文件 → 打开日志文件夹”可直接定位。
 - NSIS 安装包（cargo-packager v0.11.8 + NSIS 3.09），按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；提供开始菜单快捷方式，静默安装额外创建桌面快捷方式；安装向导支持英文与简体中文。
-- 文件关联：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF 的 ProgID、`OpenWithProgids`、`Applications` 与 Windows“默认应用”能力项；不改写任何扩展名的默认处理器，卸载时清理，不残留注册表项。
+- 文件关联：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的 ProgID、`OpenWithProgids`、`Applications` 与 Windows“默认应用”能力项；不改写任何扩展名的默认处理器，卸载时清理，不残留注册表项。
 - 卸载删除程序文件、快捷方式、卸载项与文件关联注册；程序目录同时存放 `logs\`、`thumbs\` 用户数据，与 `%APPDATA%\image-view` 设置一并由卸载页复选框控制，默认保留。
 - 多尺寸 `assets/icon.ico` 链接进 exe，安装包、快捷方式与资源管理器使用同一图标。
 - `scripts/build-release.ps1` 一键构建 release exe、安装包与 SHA256 校验文件；引入本 CHANGELOG 与语义化版本规范。
@@ -66,3 +67,4 @@
 - 不包含遥测、统计或自动联网上报；日志与崩溃转储仅保存在本机。
 - 未在干净 Win10/11 虚拟机上完成安装、升级、卸载的完整验收；本地已完成安装/静默卸载与注册表清理验证。
 - HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估。
+- SVG 仅渲染静态内容（无动画/脚本），文字使用系统字体；`.svgz`（gzip 压缩）暂不支持。

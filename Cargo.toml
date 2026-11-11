@@ -6,13 +6,14 @@ rust-version = "1.95"
 description = "轻量级 Rust 桌面图片查看器"
 
 [features]
-default = ["avif", "heic"]
+default = ["avif", "heic", "svg"]
 avif = ["dep:imgalifier-avif", "dep:imgalifier-heif"]
 heic = [
     "dep:imgalifier-heif",
     "imgalifier-heif/hevc",
     "imgalifier-heif/unci-compression",
 ]
+svg = ["dep:resvg"]
 
 [dependencies]
 # 使用 glow（OpenGL）而非默认 wgpu：egui-wgpu 不支持纹理 mipmap_mode。
@@ -55,6 +56,8 @@ lcms2 = "6.2"
 bytemuck = "1"
 imgalifier-avif = { version = "0.1", optional = true }
 imgalifier-heif = { version = "0.1", optional = true, default-features = false }
+# SVG 光栅化（含 usvg + tiny-skia），纯 Rust、无系统 DLL；默认特性已含 text/system-fonts/raster-images。
+resvg = { version = "0.49", optional = true }
 
 [profile.release]
 lto = "thin"
