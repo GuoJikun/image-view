@@ -18,11 +18,12 @@ pub const MAX_ENTRIES: usize = 512;
 /// 磁盘缓存预算；超过后删除最旧的文件。
 const DISK_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
 
-const STRIP_HEIGHT: f32 = 96.0;
-const ITEM_WIDTH: f32 = 84.0;
-const ITEM_GAP: f32 = 6.0;
+const STRIP_HEIGHT: f32 = 88.0;
+const ITEM_WIDTH: f32 = 76.0;
+const ITEM_HEIGHT: f32 = 56.0;
+const ITEM_GAP: f32 = 9.0;
 const ITEM_STEP: f32 = ITEM_WIDTH + ITEM_GAP;
-const ITEM_PADDING: f32 = 5.0;
+const ITEM_PADDING: f32 = 2.0;
 /// 每批缩略图并行解码线程数；限制峰值内存（大图解码缓冲较大）。
 const DECODE_THREADS: usize = 2;
 
@@ -440,12 +441,13 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
         return output;
     }
 
-    egui::Panel::bottom("thumbnail_strip")
+    let palette = crate::theme::palette(ui.ctx());
+    let panel = egui::Panel::bottom("thumbnail_strip")
         .exact_size(STRIP_HEIGHT)
         .frame(
             egui::Frame::NONE
-                .fill(egui::Color32::from_gray(24))
-                .inner_margin(egui::Margin::symmetric(8, 6)),
+                .fill(palette.strip)
+                .inner_margin(egui::Margin::symmetric(8, 16)),
         )
         .show(ui, |ui| {
             // 缩略图条只有横向滚动，滚轮直接横向移动。
@@ -479,28 +481,28 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
                             egui::Sense::click(),
                         );
                         let selected = current == Some(index);
-                        let background = if selected {
-                            egui::Color32::from_rgb(52, 78, 112)
-                        } else if response.hovered() {
-                            egui::Color32::from_gray(52)
-                        } else {
-                            egui::Color32::from_gray(38)
-                        };
                         let painter = ui.painter();
-                        painter.rect_filled(rect, egui::CornerRadius::same(3), background);
+
+                        painter.rect_filled(rect, egui::CornerRadius::same(6), palette.tile);
+                        if response.hovered() && !selected {
+                            painter.rect_filled(rect, egui::CornerRadius::same(6), palette.hover);
+                        }
 
                         if let Some(texture) = cache.get(&files[index]) {
                             let texture_size = texture.size_vec2();
                             if texture_size.x > 0.0 && texture_size.y > 0.0 {
+                                // 缩略图按 cover 填满卡片，再裁掉圆角外的部分。
                                 let available = rect.shrink(ITEM_PADDING).size();
                                 let scale = (available.x / texture_size.x)
-                                    .min(available.y / texture_size.y);
-                                painter.image(
+                                    .max(available.y / texture_size.y);
+                                let image_rect = egui::Rect::from_center_size(
+                                    rect.center(),
+                                    texture_size * scale,
+                                );
+                                let clipped = painter.with_clip_rect(rect.shrink(1.0));
+                                clipped.image(
                                     texture.id(),
-                                    egui::Rect::from_center_size(
-                                        rect.center(),
-                                        texture_size * scale,
-                                    ),
+                                    image_rect,
                                     egui::Rect::from_min_max(
                                         egui::pos2(0.0, 0.0),
                                         egui::pos2(1.0, 1.0),
@@ -514,16 +516,22 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
                                 egui::Align2::CENTER_CENTER,
                                 "…",
                                 egui::FontId::proportional(18.0),
-                                egui::Color32::from_gray(120),
+                                palette.text3,
                             );
                         }
 
+                        painter.rect_stroke(
+                            rect,
+                            egui::CornerRadius::same(6),
+                            egui::Stroke::new(1.0, palette.tile_border),
+                            egui::StrokeKind::Inside,
+                        );
                         if selected {
                             painter.rect_stroke(
-                                rect,
-                                egui::CornerRadius::same(3),
-                                egui::Stroke::new(2.0, egui::Color32::from_rgb(120, 180, 240)),
-                                egui::StrokeKind::Inside,
+                                rect.expand(3.0),
+                                egui::CornerRadius::same(9),
+                                egui::Stroke::new(2.0, palette.accent),
+                                egui::StrokeKind::Middle,
                             );
                         }
 
@@ -541,13 +549,20 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
                 });
         });
 
+    let rect = panel.response.rect;
+    ui.painter().hline(
+        rect.x_range(),
+        rect.top() + 0.5,
+        egui::Stroke::new(1.0, palette.border),
+    );
+
     output
 }
 
 fn item_rect(origin: egui::Pos2, index: usize) -> egui::Rect {
     egui::Rect::from_min_size(
         origin + egui::vec2(index as f32 * ITEM_STEP, 0.0),
-        egui::vec2(ITEM_WIDTH, STRIP_HEIGHT - 12.0),
+        egui::vec2(ITEM_WIDTH, ITEM_HEIGHT),
     )
 }
 
@@ -679,7 +694,7 @@ mod tests {
 
     #[test]
     fn visible_range_virtualizes_large_lists() {
-        assert_eq!(visible_range(0.0, 800.0, 3000), 0..10);
+        assert_eq!(visible_range(0.0, 800.0, 3000), 0..11);
         let middle = visible_range(ITEM_STEP * 1000.0, 800.0, 3000);
         assert!(middle.start >= 999);
         assert!(middle.end > middle.start);

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::folder::SortOrder;
+use crate::theme::ThemeSetting;
 
 /// 设置 schema 版本。不兼容变更时递增，旧版本记录一律回退默认值。
 pub const CURRENT_VERSION: u32 = 1;
@@ -26,6 +27,10 @@ pub struct Settings {
     pub sort: SortOrder,
     /// 状态栏是否显示“已色彩转换”标记（默认关闭）。
     pub show_color_status: bool,
+    /// 主题偏好：跟随系统 / 浅色 / 深色。
+    pub theme: ThemeSetting,
+    /// 是否显示底部缩略图条（默认显示）。
+    pub show_thumbnails: bool,
 }
 
 impl Default for Settings {
@@ -36,6 +41,8 @@ impl Default for Settings {
             last_file: None,
             sort: SortOrder::default(),
             show_color_status: false,
+            theme: ThemeSetting::default(),
+            show_thumbnails: true,
         }
     }
 }
@@ -105,6 +112,8 @@ mod tests {
             last_file: Some(PathBuf::from(r"D:\photos\a.jpg")),
             sort: SortOrder::ModifiedNewest,
             show_color_status: true,
+            theme: ThemeSetting::Dark,
+            show_thumbnails: false,
         }
     }
 

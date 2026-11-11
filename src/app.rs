@@ -13,6 +13,7 @@ use crate::folder::{self, FolderNav, SortOrder};
 use crate::loader::{Caps, LoadError, LoadResponse, Loader, Purpose};
 use crate::logging;
 use crate::settings::Settings;
+use crate::theme::{self, ThemeSetting};
 use crate::thumbs::{self, ThumbnailCache, ThumbnailLoader};
 use crate::ui;
 use crate::viewer::{self, ViewMode, ViewState};
@@ -22,6 +23,9 @@ const SLIDESHOW_INTERVAL: Duration = Duration::from_secs(3);
 
 /// 状态栏短提示的停留时间。
 const NOTICE_DURATION: Duration = Duration::from_secs(4);
+
+/// 全屏时工具栏中央文件名的淡出时间。
+const FULLSCREEN_TITLE_DURATION: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug)]
 struct Slideshow {
@@ -64,16 +68,21 @@ pub struct ImageViewerApp {
     thumbnail_follow: bool,
     /// 上次重置缩略图作用域的目录。
     thumbnail_dir: PathBuf,
+    /// 全屏时工具栏中央标题的显示截止时刻。
+    fullscreen_title_until: Option<Instant>,
+    /// 上次应用的主题偏好，避免每帧重装样式。
+    applied_theme: Option<ThemeSetting>,
 }
 
 impl ImageViewerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, open_path: Option<PathBuf>) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
         let settings = Settings::load(cc.storage);
         Self::with_context(cc.egui_ctx.clone(), open_path, settings)
     }
 
     fn with_context(ctx: egui::Context, open_path: Option<PathBuf>, settings: Settings) -> Self {
+        theme::apply(&ctx, settings.theme);
+        let applied_theme = Some(settings.theme);
         Self {
             folder: FolderNav {
                 sort: settings.sort,
@@ -104,6 +113,8 @@ impl ImageViewerApp {
             thumbnail_failed: HashSet::new(),
             thumbnail_follow: true,
             thumbnail_dir: PathBuf::new(),
+            fullscreen_title_until: None,
+            applied_theme,
         }
     }
 
@@ -113,7 +124,6 @@ impl ImageViewerApp {
             ui::Action::Prev => self.step(-1),
             ui::Action::Next => self.step(1),
             ui::Action::Fit => self.view.reset_fit(),
-            ui::Action::ActualSize => self.set_actual_size(ctx),
             ui::Action::ZoomIn => self.zoom_by(ctx, 1.25),
             ui::Action::ZoomOut => self.zoom_by(ctx, 0.8),
             ui::Action::ToggleSlideshow => self.toggle_slideshow(),
@@ -124,6 +134,14 @@ impl ImageViewerApp {
             ui::Action::OpenLogs => self.open_logs(),
             ui::Action::SetSort(order) => self.set_sort(order),
             ui::Action::SetShowColorStatus(show) => self.settings.show_color_status = show,
+            ui::Action::ToggleThumbnails => {
+                self.settings.show_thumbnails = !self.settings.show_thumbnails;
+            }
+            ui::Action::SetTheme(setting) => {
+                self.settings.theme = setting;
+                theme::apply(ctx, setting);
+                self.applied_theme = Some(setting);
+            }
         }
     }
 
@@ -384,6 +402,50 @@ impl ImageViewerApp {
         }
     }
 
+    /// 全屏时在工具栏中央显示“文件名 · 序号”；3 秒无操作后淡出，移动鼠标唤回。
+    fn fullscreen_title(&mut self, ctx: &egui::Context) -> Option<(String, f32)> {
+        if !self.fullscreen {
+            self.fullscreen_title_until = None;
+            return None;
+        }
+        self.image.as_ref()?;
+
+        let now = Instant::now();
+        let active = ctx.input(|input| {
+            input.pointer.delta().length_sq() > 0.0
+                || input.pointer.any_click()
+                || input.events.iter().any(|event| {
+                    matches!(
+                        event,
+                        egui::Event::Key {
+                            pressed: true,
+                            repeat: false,
+                            ..
+                        }
+                    )
+                })
+        });
+        if active {
+            self.fullscreen_title_until = Some(now + FULLSCREEN_TITLE_DURATION);
+        }
+
+        let until = self.fullscreen_title_until?;
+        if now >= until {
+            self.fullscreen_title_until = None;
+            return None;
+        }
+        let remaining = until - now;
+        ctx.request_repaint_after(remaining.min(Duration::from_millis(60)));
+        let alpha = (remaining.as_secs_f32() / 0.6).clamp(0.0, 1.0);
+
+        let image = self.image.as_ref()?;
+        let title = match self.folder.position() {
+            Some((index, total)) => format!("{}  ·  {index} / {total}", image.file_name()),
+            None => image.file_name(),
+        };
+        Some((title, alpha))
+    }
+
     fn request_load(&mut self, path: PathBuf) {
         if !path.is_file() {
             self.error = Some(format!("文件不存在：{}", path.display()));
@@ -634,12 +696,18 @@ impl ImageViewerApp {
 
         if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::F11)) {
             self.fullscreen = !self.fullscreen;
+            if self.fullscreen {
+                self.fullscreen_title_until = Some(Instant::now() + FULLSCREEN_TITLE_DURATION);
+            } else {
+                self.fullscreen_title_until = None;
+            }
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.fullscreen));
         }
 
         if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape)) {
             if self.fullscreen {
                 self.fullscreen = false;
+                self.fullscreen_title_until = None;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
             } else {
                 self.show_help = false;
@@ -693,16 +761,21 @@ impl ImageViewerApp {
             .map(LoadedImage::texture_size)
             .unwrap_or(egui::Vec2::ZERO);
         let has_image = self.image.is_some();
+        let palette = theme::palette(ui.ctx());
         let mut action = None;
+        let mut open_clicked = false;
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(egui::Color32::from_gray(18)))
+            .frame(egui::Frame::NONE.fill(palette.canvas))
             .show(ui, |ui| {
-                let response = viewer::canvas(ui, &mut self.view, texture, image_size);
+                let output = viewer::canvas(ui, &mut self.view, texture, image_size, &palette);
+                if output.open_clicked {
+                    open_clicked = true;
+                }
                 if !has_image {
                     return;
                 }
-                response.context_menu(|ui| {
+                output.response.context_menu(|ui| {
                     if ui.button("复制路径  Ctrl+Shift+C").clicked() {
                         action = Some(ui::Action::CopyPath);
                         ui.close();
@@ -713,10 +786,7 @@ impl ImageViewerApp {
                     }
                     ui.separator();
                     if ui
-                        .button(
-                            egui::RichText::new("移到回收站  Delete")
-                                .color(egui::Color32::from_rgb(240, 120, 120)),
-                        )
+                        .button(egui::RichText::new("移到回收站  Delete").color(palette.danger))
                         .clicked()
                     {
                         action = Some(ui::Action::Delete);
@@ -725,12 +795,16 @@ impl ImageViewerApp {
                 });
             });
 
+        if open_clicked {
+            self.open_dialog();
+        }
+
         action
     }
 
     fn sync_title(&mut self, ctx: &egui::Context) {
         let title = match &self.image {
-            Some(image) => image.window_title(self.view.zoom * 100.0),
+            Some(image) => image.window_title(),
             None => "图片查看器".to_owned(),
         };
 
@@ -743,6 +817,11 @@ impl ImageViewerApp {
 
 impl eframe::App for ImageViewerApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.applied_theme != Some(self.settings.theme) {
+            theme::apply(ctx, self.settings.theme);
+            self.applied_theme = Some(self.settings.theme);
+        }
+
         let max_texture_side = ctx.input(|input| input.max_texture_side);
         if max_texture_side > 0 {
             self.caps = Caps::from_texture_side(max_texture_side);
@@ -782,14 +861,18 @@ impl eframe::App for ImageViewerApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let center_title = self.fullscreen_title(ui.ctx());
         let toolbar_state = ui::ToolbarState {
             can_prev: self.folder.can_prev(),
             can_next: self.folder.can_next(),
             has_image: self.image.is_some(),
             slideshow: self.slideshow.is_some(),
+            show_thumbnails: self.settings.show_thumbnails,
             sort: self.folder.sort,
             zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
             show_color_status: self.settings.show_color_status,
+            theme: self.settings.theme,
+            center_title,
         };
         if let Some(action) = ui::toolbar(ui, &toolbar_state) {
             self.handle_action(ui.ctx(), action);
@@ -803,9 +886,8 @@ impl eframe::App for ImageViewerApp {
         }
 
         let status = ui::StatusState {
-            file_name: self.image.as_ref().map(LoadedImage::file_name),
             dimensions: self.image.as_ref().map(LoadedImage::dimensions_text),
-            zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
+            format: self.image.as_ref().map(LoadedImage::format_label),
             position: self.image.as_ref().and_then(|_| self.folder.position()),
             downscaled: self.image.as_ref().is_some_and(|image| image.downscaled),
             loading: self.pending.is_some(),
@@ -819,7 +901,7 @@ impl eframe::App for ImageViewerApp {
         };
         ui::status_bar(ui, &status);
 
-        if !self.folder.files.is_empty() {
+        if self.settings.show_thumbnails && !self.folder.files.is_empty() {
             let output = thumbs::strip(
                 ui,
                 thumbs::StripState {

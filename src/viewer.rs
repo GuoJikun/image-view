@@ -1,9 +1,15 @@
 //! 视图变换（缩放/平移）与画布绘制。
 
-use eframe::egui::{self, Color32, Rect, Sense, Vec2};
+use eframe::egui::{self, Color32, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Vec2};
+
+use crate::icons::{self, Icon};
+use crate::theme::Palette;
 
 pub const MIN_ZOOM: f32 = 0.01; // 1%
 pub const MAX_ZOOM: f32 = 32.0; // 3200%
+
+/// Fit 模式图片四周留 5% 呼吸空间。
+const FIT_PADDING: f32 = 0.9;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ViewMode {
@@ -66,7 +72,9 @@ impl ViewState {
         if image.x <= 0.0 || image.y <= 0.0 {
             return 1.0;
         }
-        let fit = (view.x * pixels_per_point / image.x).min(view.y * pixels_per_point / image.y);
+        let usable = view * FIT_PADDING;
+        let fit =
+            (usable.x * pixels_per_point / image.x).min(usable.y * pixels_per_point / image.y);
         fit.clamp(MIN_ZOOM, 1.0)
     }
 
@@ -145,29 +153,33 @@ impl ViewState {
     }
 }
 
+/// 画布输出：原画布响应，以及空状态主按钮是否被点击。
+pub struct CanvasOutput {
+    pub response: egui::Response,
+    pub open_clicked: bool,
+}
+
 /// 绘制画布并处理缩放/平移输入。
 pub fn canvas(
     ui: &mut egui::Ui,
     view: &mut ViewState,
     texture: Option<&egui::TextureHandle>,
     image_size: Vec2,
-) -> egui::Response {
+    palette: &Palette,
+) -> CanvasOutput {
     let rect = ui.max_rect();
     let response = ui.allocate_rect(rect, Sense::click_and_drag());
     let painter = ui.painter();
 
-    painter.rect_filled(rect, egui::CornerRadius::ZERO, Color32::from_gray(18));
+    painter.rect_filled(rect, egui::CornerRadius::ZERO, palette.canvas);
     view.last_view = rect.size();
 
     let Some(texture) = texture else {
-        painter.text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "拖入图片，或按 Ctrl+O 打开",
-            egui::FontId::proportional(18.0),
-            Color32::from_gray(140),
-        );
-        return response;
+        let open_clicked = empty_state(ui, rect, palette);
+        return CanvasOutput {
+            response,
+            open_clicked,
+        };
     };
 
     let pixels_per_point = ui.ctx().pixels_per_point();
@@ -241,7 +253,71 @@ pub fn canvas(
         }
     }
 
-    response
+    CanvasOutput {
+        response,
+        open_clicked: false,
+    }
+}
+
+/// 空状态：中心图标 + 标题 + 说明 + 强调色主按钮。
+fn empty_state(ui: &mut egui::Ui, rect: Rect, palette: &Palette) -> bool {
+    let painter = ui.painter();
+    let center = rect.center();
+
+    let icon_rect = Rect::from_center_size(center - Vec2::new(0.0, 42.0), Vec2::splat(60.0));
+    painter.rect(
+        icon_rect,
+        CornerRadius::same(15),
+        Color32::from_white_alpha(15),
+        Stroke::new(1.0, Color32::from_white_alpha(31)),
+        StrokeKind::Inside,
+    );
+    icons::paint(
+        painter,
+        Rect::from_center_size(icon_rect.center(), Vec2::splat(26.0)),
+        Icon::Sidebar,
+        Color32::from_white_alpha(128),
+    );
+
+    painter.text(
+        center + Vec2::new(0.0, 8.0),
+        egui::Align2::CENTER_CENTER,
+        "还没有打开图片",
+        FontId::proportional(15.0),
+        Color32::from_white_alpha(217),
+    );
+    painter.text(
+        center + Vec2::new(0.0, 30.0),
+        egui::Align2::CENTER_CENTER,
+        "拖入文件，或按 Ctrl+O 选择",
+        FontId::proportional(12.0),
+        Color32::from_white_alpha(115),
+    );
+
+    let button = Rect::from_center_size(center + Vec2::new(0.0, 62.0), Vec2::new(124.0, 32.0));
+    let response = ui.interact(
+        button,
+        ui.scope_id().with("empty_state_open"),
+        Sense::click(),
+    );
+    let fill = if response.is_pointer_button_down_on() {
+        palette.accent.linear_multiply(0.9)
+    } else if response.hovered() {
+        palette.accent.linear_multiply(1.08)
+    } else {
+        palette.accent
+    };
+    ui.painter()
+        .rect_filled(button, CornerRadius::same(7), fill);
+    ui.painter().text(
+        button.center(),
+        egui::Align2::CENTER_CENTER,
+        "打开图片…",
+        FontId::proportional(12.5),
+        Color32::WHITE,
+    );
+
+    response.clicked()
 }
 
 /// 用带旋转 UV 的四边形绘制纹理，避免为了旋转重新上传纹理。
@@ -334,7 +410,7 @@ mod tests {
     fn fit_zoom_uses_the_tighter_dimension() {
         approx(
             ViewState::fit_zoom(vec2(1000.0, 800.0), vec2(4000.0, 3000.0), 1.0),
-            0.25,
+            0.225,
         );
     }
 
@@ -441,7 +517,7 @@ mod tests {
             ..Default::default()
         };
         state.update_fit(vec2(1000.0, 800.0), vec2(4000.0, 3000.0), 1.0);
-        approx(state.zoom, 0.2);
+        approx(state.zoom, 0.18);
     }
 
     #[test]

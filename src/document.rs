@@ -56,13 +56,16 @@ impl LoadedImage {
     }
 
     /// 窗口标题：仅在内容变化时由调用方发送。
-    pub fn window_title(&self, zoom_percent: f32) -> String {
-        format_title(
-            &self.file_name(),
-            self.source_size,
-            zoom_percent,
-            self.downscaled,
-        )
+    pub fn window_title(&self) -> String {
+        format_title(&self.file_name(), self.downscaled)
+    }
+
+    /// 文件格式（扩展名大写），用于状态栏。
+    pub fn format_label(&self) -> String {
+        self.path
+            .extension()
+            .map(|extension| extension.to_string_lossy().to_ascii_uppercase())
+            .unwrap_or_default()
     }
 
     pub fn dimensions_text(&self) -> String {
@@ -90,20 +93,11 @@ impl LoadedImage {
     }
 }
 
-pub fn format_title(
-    file_name: &str,
-    source_size: [usize; 2],
-    zoom_percent: f32,
-    downscaled: bool,
-) -> String {
-    let mut title = format!(
-        "{file_name} — {}×{} ({zoom_percent:.0}%)",
-        source_size[0], source_size[1]
-    );
+pub fn format_title(file_name: &str, downscaled: bool) -> String {
+    let mut title = format!("{file_name} — 图片查看器");
     if downscaled {
         title.push_str(" · 已降采样");
     }
-    title.push_str(" — 图片查看器");
     title
 }
 
@@ -112,17 +106,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn title_contains_name_size_and_zoom() {
-        assert_eq!(
-            format_title("a.jpg", [6000, 4000], 67.4, false),
-            "a.jpg — 6000×4000 (67%) — 图片查看器"
-        );
+    fn title_contains_name() {
+        assert_eq!(format_title("a.jpg", false), "a.jpg — 图片查看器");
     }
 
     #[test]
     fn title_marks_downscaled_images() {
-        let title = format_title("big.png", [20000, 10000], 25.0, true);
+        let title = format_title("big.png", true);
         assert!(title.contains("已降采样"));
-        assert!(title.contains("20000×10000"));
+        assert!(title.contains("big.png"));
     }
 }
