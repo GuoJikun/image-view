@@ -26,7 +26,7 @@
 
 ## 版本与路线
 
-当前版本为 **v1.1.0（开发中）**。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。图库/搜索/对比（M6）将在 `1.1.0` 提供，GIF/WebP 动画（M7）计划在 `1.2.0` 提供。
+当前版本为 **v1.2.0（开发中）**。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -56,6 +56,16 @@ git push origin v1.0.0
 - **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
 - **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册。程序目录同时存放用户数据（`logs\` 日志、`thumbs\` 缩略图缓存），卸载默认保留；勾选卸载页的“删除应用数据”会一并清除，设置文件 `%APPDATA%\image-view` 同理由该选项控制。
 - **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
+
+### Linux（Debian/Ubuntu）
+
+`.deb` 必须在 Linux 环境中构建（Windows 版 cargo-packager 不包含 deb 后端）。WSL2 下进入仓库后运行：
+
+```bash
+bash scripts/build-deb.sh
+```
+
+产物为 `dist/image-view_<version>_amd64.deb`。依赖、桌面入口与文件关联位于 `Packager.toml` 的 `[deb]` / `[[fileAssociations]]`，完整步骤见 [docs/BUILD-DEB.md](docs/BUILD-DEB.md)。
 
 ## 自动更新
 
@@ -189,16 +199,18 @@ examples/
   color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
   thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
 assets/
-  icon.png      窗口图标
+  icon.png      窗口图标（64×64）
+  icon-256.png  deb 用的 256×256 图标
   icon.ico      多尺寸应用图标（安装包 / exe）
   app.rc        图标资源定义
   app.res       编译后的 Windows 资源
 installer/
   nsis/
     image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
-Packager.toml       cargo-packager 打包配置（NSIS 格式与安装器参数）
+Packager.toml       cargo-packager 打包配置（NSIS / deb、依赖与文件关联）
 scripts/
   build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
+  build-deb.sh       在 Linux/WSL2 中构建 .deb
 .github/
   workflows/
     release.yml      推送 v* 标签时自动构建并发布
@@ -211,6 +223,7 @@ docs/
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
   NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
+  BUILD-DEB.md       WSL2/Linux 构建 .deb 的依赖、步骤与配置说明
 CHANGELOG.md    各发布版本的用户可见变更
 ```
 

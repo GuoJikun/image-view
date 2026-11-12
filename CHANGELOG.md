@@ -2,6 +2,14 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
+## [1.2.0] - 2026-11-12
+
+新增 Debian/Ubuntu 打包支持。
+
+### 新增
+
+- 新增 Linux `.deb` 打包配置与 `scripts/build-deb.sh`：包含运行时依赖、桌面入口、MIME 文件关联与 64/256 px 图标；构建步骤见 `docs/BUILD-DEB.md`。
+
 ## [1.1.0] - 2026-11-12
 
 更新体验改进：发布说明按 Markdown 渲染，下载支持系统代理与取消，更新窗口更紧凑。

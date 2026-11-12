@@ -4,6 +4,11 @@
 #   cargo packager --release
 # or through scripts\build-release.ps1.
 #
+# Build the Linux .deb with:
+#   cargo packager --release -c Packager.toml --formats deb
+# This requires a Linux host (WSL2 or a Linux container); cargo-packager does
+# not include the deb bundler in its Windows build.
+#
 # Format reference: https://docs.rs/cargo-packager/latest/cargo_packager/config/struct.Config.html
 # Keys are camelCase because the config is deserialized with
 # `deny_unknown_fields`, so `before-packaging-command` is rejected.
@@ -14,24 +19,128 @@
 
 name = "image-view"
 productName = "image-view"
-version = "1.1.0"
+version = "1.2.0"
 identifier = "io.github.guojikun.image-view"
 description = "Lightweight Rust image viewer"
+longDescription = """
+A lightweight image viewer built with eframe/egui.
+Opens PNG, JPEG, GIF, WebP, BMP, TIFF, ICO, QOI, TGA, PNM, HDR, EXR, DDS,
+AVIF, HEIC/HEIF and SVG, with ICC color management and 16-bit image support.
+"""
 publisher = "image-view"
 copyright = "Copyright (c) image-view contributors"
 category = "Photography"
+# Debian's Maintainer field comes from `authors`; keep a real contact here.
+authors = ["GuoJikun <guojikun@users.noreply.github.com>"]
+homepage = "https://github.com/GuoJikun/image-view"
 
 outDir = "dist"
 binariesDir = "target/release"
 beforePackagingCommand = "cargo build --release --locked"
 
 binaries = [{ path = "image-view", main = true }]
-icons = ["assets/icon.ico"]
+# NSIS uses icon.ico. The deb bundler only consumes PNGs and installs each
+# image into the matching hicolor size, so keep the PNG sizes here.
+icons = ["assets/icon.ico", "assets/icon.png", "assets/icon-256.png"]
 
-# README and CHANGELOG are copied next to the executable.
+# README and CHANGELOG are copied next to the executable (NSIS) or into
+# /usr/lib/image-view (deb).
 resources = ["README.md", "CHANGELOG.md"]
 
 formats = ["nsis"]
+
+[deb]
+# cargo-packager has no "$auto" dependency mode, so the Linux runtime libraries
+# are listed explicitly. Revisit this list if the GUI stack changes.
+section = "graphics"
+priority = "optional"
+packageName = "image-view"
+depends = [
+    "libc6",
+    "libgcc-s1",
+    "libx11-6",
+    "libxcb1",
+    "libxkbcommon0",
+    "libxkbcommon-x11-0",
+    "libxrandr2",
+    "libxcursor1",
+    "libxi6",
+    "libwayland-client0",
+    "libgl1",
+    "libegl1",
+    "libfontconfig1",
+]
+
+# MIME associations used to generate the deb's .desktop file. The NSIS
+# template registers the same extensions itself, so these entries only affect
+# Linux packages.
+[[fileAssociations]]
+extensions = ["png"]
+mimeType = "image/png"
+
+[[fileAssociations]]
+extensions = ["jpg", "jpeg"]
+mimeType = "image/jpeg"
+
+[[fileAssociations]]
+extensions = ["gif"]
+mimeType = "image/gif"
+
+[[fileAssociations]]
+extensions = ["webp"]
+mimeType = "image/webp"
+
+[[fileAssociations]]
+extensions = ["bmp"]
+mimeType = "image/bmp"
+
+[[fileAssociations]]
+extensions = ["tif", "tiff"]
+mimeType = "image/tiff"
+
+[[fileAssociations]]
+extensions = ["ico"]
+mimeType = "image/vnd.microsoft.icon"
+
+[[fileAssociations]]
+extensions = ["qoi"]
+mimeType = "image/qoi"
+
+[[fileAssociations]]
+extensions = ["tga"]
+mimeType = "image/x-tga"
+
+[[fileAssociations]]
+extensions = ["pnm"]
+mimeType = "image/x-portable-anymap"
+
+[[fileAssociations]]
+extensions = ["hdr"]
+mimeType = "image/vnd.radiance"
+
+[[fileAssociations]]
+extensions = ["exr"]
+mimeType = "image/x-exr"
+
+[[fileAssociations]]
+extensions = ["dds"]
+mimeType = "image/vnd-ms.dds"
+
+[[fileAssociations]]
+extensions = ["avif"]
+mimeType = "image/avif"
+
+[[fileAssociations]]
+extensions = ["heic"]
+mimeType = "image/heic"
+
+[[fileAssociations]]
+extensions = ["heif"]
+mimeType = "image/heif"
+
+[[fileAssociations]]
+extensions = ["svg"]
+mimeType = "image/svg+xml"
 
 [nsis]
 # Per-user install into %LOCALAPPDATA%\image-view, no administrator rights
