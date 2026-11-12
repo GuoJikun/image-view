@@ -211,7 +211,7 @@ docs/
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
   NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
-CHANGELOG.md    版本变更记录与语义化版本规范
+CHANGELOG.md    各发布版本的用户可见变更
 ```
 
 ## 开发
