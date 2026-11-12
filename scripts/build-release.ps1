@@ -27,7 +27,9 @@
     CHANGELOG.md.
 
 .PARAMETER DownloadBaseUrl
-    Base URL for the installer. The default points at the latest GitHub Release.
+    Base URL for the installer. Defaults to this exact version's GitHub Release
+    (releases/download/vX.Y.Z), so the generated manifest keeps working after a
+    newer release is published. Pass this only to point at a mirror.
 
 .PARAMETER AllowNsisDownload
     Let cargo-packager download its NSIS toolchain when
@@ -42,7 +44,7 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipInstaller,
     [string]$Notes,
-    [string]$DownloadBaseUrl = 'https://github.com/GuoJikun/image-view/releases/latest/download',
+    [string]$DownloadBaseUrl,
     [switch]$AllowNsisDownload
 )
 
@@ -152,9 +154,19 @@ try {
     if (-not $Notes) {
         $Notes = Get-ChangelogSection -Path (Join-Path $root 'CHANGELOG.md') -Version $version
     }
+
+    # Pin the installer to this version's tag. With `releases/latest/download` an
+    # older manifest would resolve to the newest release, which no longer contains
+    # this version's installer once a newer version is published.
+    $baseUrl = if ($DownloadBaseUrl) {
+        $DownloadBaseUrl.TrimEnd('/')
+    } else {
+        "https://github.com/GuoJikun/image-view/releases/download/v$version"
+    }
+
     $manifest = [ordered]@{
         version = $version
-        url     = '{0}/{1}' -f $DownloadBaseUrl.TrimEnd('/'), $setup.Name
+        url     = '{0}/{1}' -f $baseUrl, $setup.Name
         sha256  = $hash
         notes   = $Notes
     }
