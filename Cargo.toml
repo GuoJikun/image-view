@@ -83,6 +83,12 @@ eframe = { version = "0.37", default-features = false, features = [
     "wayland",
     "x11",
 ] }
+# GNOME/Mutter 与 WSLg 的 Weston 都不提供 xdg-decoration 服务端装饰。缺少这个特性时，
+# SCTK 会退回 fallback frame：标题栏简陋，关闭按钮是一个实心方块。开启 winit 的
+# Adwaita 客户端装饰后，三个窗口按钮改用正常图标绘制。
+winit = { version = "0.30", default-features = false, features = [
+    "wayland-csd-adwaita",
+] }
 rfd = { version = "0.18", default-features = false, features = [
     "xdg-portal",
     "wayland",

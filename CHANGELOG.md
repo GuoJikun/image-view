@@ -10,6 +10,10 @@
 
 - 新增 macOS `.dmg` 打包配置与 `scripts/build-macos.sh`：仅构建 arm64，包含最低系统版本、DMG 窗口布局、文件关联、64～1024 px 图标与可选的签名/公证流程；构建与验证步骤见 `docs/BUILD-MACOS.md`。
 
+### 修复
+
+- Linux（Wayland）：启用 Adwaita 客户端装饰。GNOME/Mutter 与 WSLg 的 Weston 不提供服务端装饰，此前会退回 SCTK 的 fallback frame，关闭按钮显示为实心方块；现在标题栏的最小化、最大化、关闭按钮均为正常图标。
+
 ## [1.2.0] - 2026-11-12
 
 新增 Debian/Ubuntu 打包支持。
