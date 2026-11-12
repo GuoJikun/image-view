@@ -43,6 +43,15 @@ powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 
 产物位于 `dist\`：`image-view_<version>_x64-setup.exe`、`update.json` 与 `SHA256SUMS.txt`。把安装包和 `update.json` 一起上传到 GitHub Release，应用即可通过 `releases/latest/download/update.json` 发现新版本。
 
+推送版本标签会触发 GitHub Actions 发布（`.github/workflows/release.yml`）：
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+工作流只接受以 `v` 开头且与 `Cargo.toml` / `Packager.toml` 版本一致的标签（例如 `v1.0.0`），随后构建安装包、`update.json` 与校验文件，并自动创建 GitHub Release。
+
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
 - **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
 - **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册。程序目录同时存放用户数据（`logs\` 日志、`thumbs\` 缩略图缓存），卸载默认保留；勾选卸载页的“删除应用数据”会一并清除，设置文件 `%APPDATA%\image-view` 同理由该选项控制。
@@ -190,6 +199,9 @@ installer/
 Packager.toml       cargo-packager 打包配置（NSIS 格式与安装器参数）
 scripts/
   build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
+.github/
+  workflows/
+    release.yml      推送 v* 标签时自动构建并发布
 design/
   gen_ico.py    从 icon-1024.png 生成多尺寸 assets/icon.ico
 docs/

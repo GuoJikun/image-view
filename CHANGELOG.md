@@ -49,6 +49,7 @@
 - 卸载删除程序文件、快捷方式、卸载项与文件关联注册；程序目录同时存放 `logs\`、`thumbs\` 用户数据，与 `%APPDATA%\image-view` 设置一并由卸载页复选框控制，默认保留。
 - 多尺寸 `assets/icon.ico` 链接进 exe，安装包、快捷方式与资源管理器使用同一图标。
 - `scripts/build-release.ps1` 一键构建 release exe、安装包、`update.json` 更新清单与 SHA256 校验文件；更新清单的发布说明默认取自本 CHANGELOG 对应版本章节。
+- 新增 `.github/workflows/release.yml`：只有推送以 `v` 开头且与 `Cargo.toml` / `Packager.toml` 版本一致的标签时才执行构建，随后上传安装包、`update.json` 与校验文件并创建 GitHub Release。
 
 #### 自动更新与多语言
 

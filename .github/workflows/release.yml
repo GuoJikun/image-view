@@ -1,0 +1,113 @@
+name: Release
+
+# Only build and publish when a version tag is pushed. Tags must start with "v".
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag and version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if (-not $tag.StartsWith('v') -or $tag.Length -lt 2) {
+            throw "Release tag must start with 'v' (got '$tag')."
+          }
+
+          $cargoToml = Get-Content -LiteralPath 'Cargo.toml' -Raw -Encoding UTF8
+          if ($cargoToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+            throw 'Cannot read the package version from Cargo.toml.'
+          }
+          $version = $Matches[1]
+
+          if ($tag -ne "v$version") {
+            throw "Tag '$tag' does not match Cargo.toml version '$version' (expected 'v$version')."
+          }
+
+          $packagerToml = Get-Content -LiteralPath 'Packager.toml' -Raw -Encoding UTF8
+          if ($packagerToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+            throw 'Cannot read the package version from Packager.toml.'
+          }
+          if ($Matches[1] -ne $version) {
+            throw "Packager.toml version '$($Matches[1])' does not match Cargo.toml version '$version'."
+          }
+
+          Write-Host "Releasing image-view v$version"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Cache cargo-packager
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-packager.exe
+          key: cargo-packager-0.11.8-${{ runner.os }}
+
+      - name: Install cargo-packager
+        shell: pwsh
+        run: |
+          if (-not (Get-Command cargo-packager -ErrorAction SilentlyContinue)) {
+            cargo install cargo-packager --version 0.11.8 --locked
+          }
+          cargo-packager --version
+
+      - name: Locate NSIS toolchain directory
+        shell: pwsh
+        run: |
+          "NSIS_TOOLCHAIN_DIR=$env:LOCALAPPDATA\.cargo-packager" >> $env:GITHUB_ENV
+
+      - name: Cache NSIS toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NSIS_TOOLCHAIN_DIR }}
+          key: cargo-packager-nsis-3.09-${{ runner.os }}
+
+      - name: Build installer, manifest and checksums
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -AllowNsisDownload
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-view-${{ github.ref_name }}
+          path: |
+            dist/image-view_*_x64-setup.exe
+            dist/update.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: image-view ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/image-view_*_x64-setup.exe
+            dist/update.json
+            dist/SHA256SUMS.txt

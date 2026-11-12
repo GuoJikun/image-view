@@ -29,6 +29,11 @@
 .PARAMETER DownloadBaseUrl
     Base URL for the installer. The default points at the latest GitHub Release.
 
+.PARAMETER AllowNsisDownload
+    Let cargo-packager download its NSIS toolchain when
+    %LOCALAPPDATA%\.cargo-packager\NSIS is missing. Intended for CI runners
+    with unrestricted network access.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 #>
@@ -37,7 +42,8 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipInstaller,
     [string]$Notes,
-    [string]$DownloadBaseUrl = 'https://github.com/GuoJikun/image-view/releases/latest/download'
+    [string]$DownloadBaseUrl = 'https://github.com/GuoJikun/image-view/releases/latest/download',
+    [switch]$AllowNsisDownload
 )
 
 # Extract the "## [version]" section from CHANGELOG.md for update.json notes.
@@ -116,7 +122,10 @@ try {
 
     $nsis = Join-Path $env:LOCALAPPDATA '.cargo-packager\NSIS\Bin\makensis.exe'
     if (-not (Test-Path -LiteralPath $nsis)) {
-        throw "NSIS toolchain missing at $nsis. cargo-packager would try to download it; provision the files first (see docs\NSIS-TOOLCHAIN.md)."
+        if (-not $AllowNsisDownload) {
+            throw "NSIS toolchain missing at $nsis. cargo-packager would try to download it; provision the files first (see docs\NSIS-TOOLCHAIN.md) or pass -AllowNsisDownload."
+        }
+        Write-Host 'NSIS toolchain missing; cargo-packager will download it.'
     }
 
     $dist = Join-Path $root 'dist'

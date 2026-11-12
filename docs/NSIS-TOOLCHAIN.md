@@ -92,7 +92,15 @@ HTTPS_PROXY=http://127.0.0.1:10808 cargo packager --release
 
 代理需支持 HTTP CONNECT；纯 SOCKS5 端口不一定被 `reqwest` 接受。
 
-## 6. 维护约定
+## 6. GitHub Actions
+
+`.github/workflows/release.yml` 在 Windows runner 上使用 `scripts\build-release.ps1 -AllowNsisDownload`：
+
+- 首次运行由 cargo-packager 自行下载 NSIS 3.09 及插件到 `%LOCALAPPDATA%\.cargo-packager`，后续通过 `actions/cache` 复用该目录。
+- 工作流仅在推送 `v*` 标签时触发，并校验标签与 `Cargo.toml` / `Packager.toml` 的版本一致。
+- 产物为安装包、`update.json` 与 `SHA256SUMS.txt`，同时上传为工作流 artifact 并附加到 GitHub Release。
+
+## 7. 维护约定
 
 - 不要单独删除或替换 `NSIS` 目录内的文件；升级 NSIS 版本时应整目录替换，并同步更新本文件的清单。
 - `installer/nsis/image-view.nsi` 由项目维护，升级 cargo-packager 后需对照其默认模板检查占位符是否新增（例如 `{{...}}` 变量、`{{#each}}` 段落）。
