@@ -955,6 +955,8 @@ mod tests {
 
     #[test]
     fn missing_decoder_error_mentions_format_and_extension() {
+        // 断言的是中文文案；固定语言，避免在英文系统（如 CI）上按系统语言输出英文。
+        i18n::set_language(i18n::Language::Zh);
         let error = missing_decoder(Path::new("photo.HEIF"), Format::Heic);
         let text = error.to_string();
         assert!(text.contains("HEIC"), "实际：{text}");
