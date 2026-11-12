@@ -5,8 +5,10 @@ use eframe::egui::{
 };
 
 use crate::folder::SortOrder;
+use crate::i18n::{self, Key, Language};
 use crate::icons::{self, Icon};
 use crate::theme::{self, Palette, ThemeSetting};
+use crate::update::{Manifest, UpdateState, Updater};
 
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
@@ -23,9 +25,12 @@ pub enum Action {
     CopyPath,
     Delete,
     OpenLogs,
+    CheckUpdate,
     SetSort(SortOrder),
     SetShowColorStatus(bool),
     SetTheme(ThemeSetting),
+    SetLanguage(Language),
+    SetCheckUpdatesOnStartup(bool),
 }
 
 pub struct ToolbarState {
@@ -38,14 +43,16 @@ pub struct ToolbarState {
     pub zoom_percent: Option<f32>,
     pub show_color_status: bool,
     pub theme: ThemeSetting,
+    pub language: Language,
+    pub check_updates_on_startup: bool,
     /// 全屏且系统标题栏隐藏时，在工具栏中央显示的文件名与淡出透明度。
     pub center_title: Option<(String, f32)>,
 }
 
 fn sort_label(order: SortOrder) -> &'static str {
     match order {
-        SortOrder::Name => "名称",
-        SortOrder::ModifiedNewest => "修改时间",
+        SortOrder::Name => i18n::t(Key::SortName),
+        SortOrder::ModifiedNewest => i18n::t(Key::SortModified),
     }
 }
 
@@ -68,7 +75,7 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                 if open.clicked() {
                     action = Some(Action::Open);
                 }
-                open.on_hover_text("打开图片 (Ctrl+O)");
+                open.on_hover_text(i18n::t(Key::OpenTooltip));
 
                 ui.add_space(10.0);
                 divider(ui, &palette);
@@ -85,7 +92,7 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                 if prev.clicked() {
                     action = Some(Action::Prev);
                 }
-                prev.on_hover_text("上一张 (←)");
+                prev.on_hover_text(i18n::t(Key::PrevTooltip));
 
                 let next = icon_button(
                     ui,
@@ -98,11 +105,11 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                 if next.clicked() {
                     action = Some(Action::Next);
                 }
-                next.on_hover_text("下一张 (→)");
+                next.on_hover_text(i18n::t(Key::NextTooltip));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let more = icon_button(ui, Icon::Ellipsis, &palette, true, false, false);
-                    more.clone().on_hover_text("更多操作");
+                    more.clone().on_hover_text(i18n::t(Key::MoreActions));
                     overflow_menu(&more, state, &palette, &mut action);
 
                     ui.add_space(12.0);
@@ -137,7 +144,7 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                     if slideshow.clicked() {
                         action = Some(Action::ToggleSlideshow);
                     }
-                    slideshow.on_hover_text("幻灯片 (Space)");
+                    slideshow.on_hover_text(i18n::t(Key::SlideshowTooltip));
 
                     ui.add_space(4.0);
                     let thumbnails = icon_button(
@@ -151,7 +158,7 @@ pub fn toolbar(ui: &mut egui::Ui, state: &ToolbarState) -> Option<Action> {
                     if thumbnails.clicked() {
                         action = Some(Action::ToggleThumbnails);
                     }
-                    thumbnails.on_hover_text("显示/隐藏缩略图条");
+                    thumbnails.on_hover_text(i18n::t(Key::ThumbnailsTooltip));
                 });
             });
 
@@ -250,11 +257,16 @@ fn divider(ui: &mut egui::Ui, palette: &Palette) {
 }
 
 fn sort_button(ui: &mut egui::Ui, palette: &Palette, sort: SortOrder) -> Response {
-    let width = match sort {
-        SortOrder::Name => 62.0,
-        SortOrder::ModifiedNewest => 84.0,
-    };
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::click());
+    let label = sort_label(sort);
+    let text_width = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), FontId::proportional(12.0), palette.text)
+        .size()
+        .x;
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new((text_width + 38.0).max(62.0), 30.0),
+        Sense::click(),
+    );
 
     if ui.is_rect_visible(rect) {
         let background = if response.is_pointer_button_down_on() {
@@ -271,7 +283,7 @@ fn sort_button(ui: &mut egui::Ui, palette: &Palette, sort: SortOrder) -> Respons
         ui.painter().text(
             rect.left_center() + Vec2::new(9.0, 0.0),
             Align2::LEFT_CENTER,
-            sort_label(sort),
+            label,
             FontId::proportional(12.0),
             palette.text,
         );
@@ -414,15 +426,15 @@ fn zoom_segment(
     if minus.clicked() {
         *action = Some(Action::ZoomOut);
     }
-    minus.on_hover_text("缩小 (-)");
+    minus.on_hover_text(i18n::t(Key::ZoomOutTooltip));
     if plus.clicked() {
         *action = Some(Action::ZoomIn);
     }
-    plus.on_hover_text("放大 (+)");
+    plus.on_hover_text(i18n::t(Key::ZoomInTooltip));
     if value.clicked() {
         *action = Some(Action::Fit);
     }
-    value.on_hover_text("适配窗口 (0)");
+    value.on_hover_text(i18n::t(Key::FitTooltip));
 }
 
 fn overflow_menu(
@@ -435,7 +447,10 @@ fn overflow_menu(
         ui.set_min_width(216.0);
 
         if ui
-            .add_enabled(state.has_image, egui::Button::new("在资源管理器中显示"))
+            .add_enabled(
+                state.has_image,
+                egui::Button::new(i18n::t(Key::RevealInExplorer)),
+            )
             .clicked()
         {
             *action = Some(Action::RevealInExplorer);
@@ -444,7 +459,7 @@ fn overflow_menu(
         if ui
             .add_enabled(
                 state.has_image,
-                egui::Button::new("复制路径    Ctrl+Shift+C"),
+                egui::Button::new(i18n::t(Key::CopyPathMenu)),
             )
             .clicked()
         {
@@ -458,7 +473,7 @@ fn overflow_menu(
             .add_enabled(
                 state.has_image,
                 egui::Button::new(
-                    egui::RichText::new("移到回收站    Delete").color(palette.danger),
+                    egui::RichText::new(i18n::t(Key::MoveToTrashMenu)).color(palette.danger),
                 ),
             )
             .clicked()
@@ -471,13 +486,13 @@ fn overflow_menu(
 
         let mut show_color_status = state.show_color_status;
         if ui
-            .checkbox(&mut show_color_status, "显示色彩转换标记")
+            .checkbox(&mut show_color_status, i18n::t(Key::ShowColorStatus))
             .changed()
         {
             *action = Some(Action::SetShowColorStatus(show_color_status));
         }
 
-        ui.menu_button("主题", |ui| {
+        ui.menu_button(i18n::t(Key::ThemeMenu), |ui| {
             for setting in [
                 ThemeSetting::System,
                 ThemeSetting::Light,
@@ -493,13 +508,37 @@ fn overflow_menu(
             }
         });
 
+        ui.menu_button(i18n::t(Key::LanguageMenu), |ui| {
+            for language in [Language::System, Language::Zh, Language::En] {
+                if ui
+                    .selectable_label(state.language == language, language.label())
+                    .clicked()
+                {
+                    *action = Some(Action::SetLanguage(language));
+                    ui.close();
+                }
+            }
+        });
+
+        let mut check_updates = state.check_updates_on_startup;
+        if ui
+            .checkbox(&mut check_updates, i18n::t(Key::UpdateStartup))
+            .changed()
+        {
+            *action = Some(Action::SetCheckUpdatesOnStartup(check_updates));
+        }
+
         ui.separator();
 
-        if ui.button("打开日志文件夹").clicked() {
+        if ui.button(i18n::t(Key::CheckUpdates)).clicked() {
+            *action = Some(Action::CheckUpdate);
+            ui.close();
+        }
+        if ui.button(i18n::t(Key::OpenLogsFolder)).clicked() {
             *action = Some(Action::OpenLogs);
             ui.close();
         }
-        if ui.button("快捷键…").clicked() {
+        if ui.button(i18n::t(Key::ShortcutsEllipsis)).clicked() {
             *action = Some(Action::Help);
             ui.close();
         }
@@ -540,7 +579,7 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
 
                 if state.dimensions.is_none() && state.position.is_none() {
                     ui.label(
-                        egui::RichText::new("未打开图片")
+                        egui::RichText::new(i18n::t(Key::NoImage))
                             .size(11.0)
                             .color(palette.text3),
                     );
@@ -559,7 +598,7 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
                 if state.downscaled {
                     dot(ui);
                     ui.label(small(
-                        "已降采样".to_owned(),
+                        i18n::t(Key::Downscaled).to_owned(),
                         Color32::from_rgb(230, 160, 50),
                     ));
                 }
@@ -572,7 +611,10 @@ pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
                         ui.label(small(notice.clone(), palette.success));
                     }
                     if state.slideshow {
-                        ui.label(small("幻灯片中".to_owned(), palette.text2));
+                        ui.label(small(
+                            i18n::t(Key::SlideshowRunning).to_owned(),
+                            palette.text2,
+                        ));
                     }
                     if state.loading {
                         ui.spinner();
@@ -619,7 +661,9 @@ pub fn error_banner(ui: &mut egui::Ui, error: &mut Option<String>, can_retry: bo
                     if ui
                         .add(
                             egui::Button::new(
-                                egui::RichText::new("关闭").size(11.5).color(palette.text2),
+                                egui::RichText::new(i18n::t(Key::Close))
+                                    .size(11.5)
+                                    .color(palette.text2),
                             )
                             .frame(false),
                         )
@@ -631,7 +675,9 @@ pub fn error_banner(ui: &mut egui::Ui, error: &mut Option<String>, can_retry: bo
                         && ui
                             .add(
                                 egui::Button::new(
-                                    egui::RichText::new("重试").size(11.5).color(palette.danger),
+                                    egui::RichText::new(i18n::t(Key::Retry))
+                                        .size(11.5)
+                                        .color(palette.danger),
                                 )
                                 .frame(false),
                             )
@@ -661,7 +707,7 @@ pub fn help_window(ctx: &egui::Context, open: &mut bool) {
         return;
     }
 
-    egui::Window::new("快捷键")
+    egui::Window::new(i18n::t(Key::HelpTitle))
         .open(open)
         .collapsible(false)
         .resizable(false)
@@ -672,19 +718,19 @@ pub fn help_window(ctx: &egui::Context, open: &mut bool) {
                 .spacing([28.0, 6.0])
                 .show(ui, |ui| {
                     for (key, action) in [
-                        ("Ctrl+O", "打开文件"),
-                        ("← / →", "上一张 / 下一张"),
-                        ("Space", "开始 / 停止幻灯片"),
-                        ("+ / -", "放大 / 缩小"),
-                        ("0", "适配窗口"),
+                        ("Ctrl+O", i18n::t(Key::HelpOpen)),
+                        ("← / →", i18n::t(Key::HelpNavigate)),
+                        ("Space", i18n::t(Key::HelpSlideshow)),
+                        ("+ / -", i18n::t(Key::HelpZoom)),
+                        ("0", i18n::t(Key::HelpFit)),
                         ("1", "100%"),
-                        ("F", "切换适配 / 100%"),
-                        ("R", "顺时针旋转 90°"),
-                        ("Shift+R", "逆时针旋转 90°"),
-                        ("Ctrl+Shift+C", "复制当前图片路径"),
-                        ("Delete", "移到回收站"),
-                        ("F11", "全屏"),
-                        ("Esc", "退出全屏 / 关闭帮助"),
+                        ("F", i18n::t(Key::HelpToggleFit)),
+                        ("R", i18n::t(Key::HelpRotateCw)),
+                        ("Shift+R", i18n::t(Key::HelpRotateCcw)),
+                        ("Ctrl+Shift+C", i18n::t(Key::HelpCopyPath)),
+                        ("Delete", i18n::t(Key::HelpTrash)),
+                        ("F11", i18n::t(Key::HelpFullscreen)),
+                        ("Esc", i18n::t(Key::HelpEscape)),
                     ] {
                         ui.monospace(key);
                         ui.label(action);
@@ -692,4 +738,175 @@ pub fn help_window(ctx: &egui::Context, open: &mut bool) {
                     }
                 });
         });
+}
+
+/// 更新窗口返回的用户操作。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UpdateCommand {
+    Check,
+    Download(Manifest),
+    Install(std::path::PathBuf),
+}
+
+/// 软件更新窗口；`state` 由 `app` 每帧轮询后台任务后传入。
+pub fn update_window(
+    ctx: &egui::Context,
+    open: &mut bool,
+    state: &UpdateState,
+) -> Option<UpdateCommand> {
+    if !*open {
+        return None;
+    }
+
+    let palette = theme::palette(ctx);
+    let mut command = None;
+    let mut close_requested = false;
+
+    egui::Window::new(i18n::t(Key::UpdateTitle))
+        .open(open)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(420.0)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.label(
+                egui::RichText::new(i18n::tf(Key::UpdateCurrent, &[&Updater::current_version()]))
+                    .size(11.5)
+                    .color(palette.text2),
+            );
+            ui.add_space(8.0);
+
+            match state {
+                UpdateState::Idle => {
+                    ui.label(i18n::t(Key::UpdateHint));
+                    ui.add_space(8.0);
+                    if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
+                        command = Some(UpdateCommand::Check);
+                    }
+                }
+                UpdateState::Checking => {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(i18n::t(Key::UpdateChecking));
+                    });
+                }
+                UpdateState::UpToDate => {
+                    ui.label(
+                        egui::RichText::new(i18n::t(Key::UpdateUpToDate)).color(palette.success),
+                    );
+                    ui.add_space(8.0);
+                    if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
+                        command = Some(UpdateCommand::Check);
+                    }
+                }
+                UpdateState::Available { manifest } => {
+                    ui.label(i18n::tf(
+                        Key::UpdateAvailable,
+                        &[&manifest.version, &Updater::current_version()],
+                    ));
+                    if !manifest.notes.trim().is_empty() {
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(i18n::t(Key::UpdateNotes))
+                                .strong()
+                                .size(11.5),
+                        );
+                        egui::ScrollArea::vertical()
+                            .max_height(160.0)
+                            .show(ui, |ui| {
+                                ui.label(egui::RichText::new(&manifest.notes).size(11.5));
+                            });
+                    }
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(i18n::t(Key::UpdateDownload)).clicked() {
+                            command = Some(UpdateCommand::Download(manifest.clone()));
+                        }
+                        if ui.button(i18n::t(Key::Later)).clicked() {
+                            close_requested = true;
+                        }
+                    });
+                }
+                UpdateState::Downloading { received, total } => {
+                    ui.label(i18n::t(Key::UpdateDownloading));
+                    ui.add_space(6.0);
+                    if let Some(total) = total.filter(|total| *total > 0) {
+                        let fraction = (*received as f32 / total as f32).clamp(0.0, 1.0);
+                        ui.add(
+                            egui::ProgressBar::new(fraction)
+                                .show_percentage()
+                                .desired_width(380.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} / {}",
+                                human_size(*received),
+                                human_size(total)
+                            ))
+                            .size(11.0)
+                            .color(palette.text2),
+                        );
+                    } else {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                egui::RichText::new(human_size(*received))
+                                    .size(11.0)
+                                    .color(palette.text2),
+                            );
+                        });
+                    }
+                }
+                UpdateState::Ready {
+                    installer,
+                    manifest,
+                } => {
+                    ui.label(
+                        egui::RichText::new(i18n::tf(
+                            Key::UpdateAvailable,
+                            &[&manifest.version, &Updater::current_version()],
+                        ))
+                        .size(11.5),
+                    );
+                    ui.label(egui::RichText::new(i18n::t(Key::UpdateReady)).color(palette.success));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(i18n::t(Key::UpdateInstall)).clicked() {
+                            command = Some(UpdateCommand::Install(installer.clone()));
+                        }
+                        if ui.button(i18n::t(Key::Later)).clicked() {
+                            close_requested = true;
+                        }
+                    });
+                }
+                UpdateState::Error(error) => {
+                    ui.label(
+                        egui::RichText::new(i18n::tf(Key::UpdateError, &[&error.message()]))
+                            .color(palette.danger),
+                    );
+                    ui.add_space(8.0);
+                    if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
+                        command = Some(UpdateCommand::Check);
+                    }
+                }
+            }
+        });
+
+    if close_requested {
+        *open = false;
+    }
+    command
+}
+
+fn human_size(bytes: u64) -> String {
+    const MIB: f64 = 1024.0 * 1024.0;
+    const KIB: f64 = 1024.0;
+    let bytes = bytes as f64;
+    if bytes >= MIB {
+        format!("{:.1} MiB", bytes / MIB)
+    } else if bytes >= KIB {
+        format!("{:.1} KiB", bytes / KIB)
+    } else {
+        format!("{bytes:.0} B")
+    }
 }

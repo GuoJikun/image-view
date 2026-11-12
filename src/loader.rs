@@ -10,6 +10,7 @@ use image::imageops::FilterType;
 use image::metadata::Orientation;
 
 use crate::color::{self, ColorInfo};
+use crate::i18n::{self, Key};
 
 /// 解码与纹理上传的安全上限。
 #[derive(Clone, Debug)]
@@ -66,38 +67,75 @@ pub struct Decoded {
     pub color: ColorInfo,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum LoadError {
-    #[error("无法读取文件：{0}")]
-    Io(#[from] std::io::Error),
-    #[error("图片已损坏或格式不受支持：{0}")]
-    Decode(#[from] image::ImageError),
-    #[error("图片过大（{w}×{h}），已超过安全上限")]
-    TooLarge { w: u32, h: u32 },
-    #[error("解码超出内存限制")]
+    Io(std::io::Error),
+    Decode(image::ImageError),
+    TooLarge {
+        w: u32,
+        h: u32,
+    },
     OutOfMemory,
     /// 预加载遇到大图时主动放弃；不会展示给用户。
-    #[error("预加载已跳过（原图 {w}×{h} 过大）")]
-    PreloadSkipped { w: u32, h: u32 },
+    PreloadSkipped {
+        w: u32,
+        h: u32,
+    },
     #[cfg(feature = "avif")]
-    #[error("AVIF 解码失败：{0}")]
     Avif(String),
     #[cfg(feature = "heic")]
-    #[error("HEIC 解码失败：{0}")]
     Heic(String),
     #[cfg(feature = "svg")]
-    #[error("SVG 解析失败：{0}")]
     Svg(String),
     /// 仅在关闭对应 feature 的构建中构造。
     #[cfg_attr(
         all(feature = "avif", feature = "heic", feature = "svg"),
         allow(dead_code)
     )]
-    #[error("{format} 解码器未包含在此构建中；请使用启用该特性的版本打开 .{extension} 文件")]
     MissingDecoder {
         format: &'static str,
         extension: String,
     },
+    #[cfg(feature = "svg")]
+    SvgzUnsupported,
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = match self {
+            Self::Io(error) => i18n::tf(Key::LoadRead, &[error]),
+            Self::Decode(error) => i18n::tf(Key::LoadDecode, &[error]),
+            Self::TooLarge { w, h } => i18n::tf(Key::LoadTooLarge, &[w, h]),
+            Self::OutOfMemory => i18n::t(Key::LoadOutOfMemory).to_owned(),
+            Self::PreloadSkipped { w, h } => i18n::tf(Key::LoadPreloadSkipped, &[w, h]),
+            #[cfg(feature = "avif")]
+            Self::Avif(detail) => i18n::tf(Key::LoadAvif, &[detail]),
+            #[cfg(feature = "heic")]
+            Self::Heic(detail) => i18n::tf(Key::LoadHeic, &[detail]),
+            #[cfg(feature = "svg")]
+            Self::Svg(detail) => i18n::tf(Key::LoadSvg, &[detail]),
+            Self::MissingDecoder { format, extension } => {
+                i18n::tf(Key::LoadMissingDecoder, &[format, extension])
+            }
+            #[cfg(feature = "svg")]
+            Self::SvgzUnsupported => i18n::t(Key::SvgzUnsupported).to_owned(),
+        };
+        formatter.write_str(&text)
+    }
+}
+
+impl std::error::Error for LoadError {}
+
+impl From<std::io::Error> for LoadError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<image::ImageError> for LoadError {
+    fn from(error: image::ImageError) -> Self {
+        Self::Decode(error)
+    }
 }
 
 /// 按扩展名选择解码器；HEIC/AVIF 不走 `image` 的通用读取路径，SVG 走光栅化。
@@ -132,7 +170,7 @@ fn missing_decoder(path: &Path, format: Format) -> LoadError {
         Format::Avif => ("AVIF", "avif"),
         Format::Heic => ("HEIC", "heic"),
         Format::Svg => ("SVG", "svg"),
-        Format::Standard => ("图片", "img"),
+        Format::Standard => ("image", "img"),
     };
     let extension = path
         .extension()
@@ -564,9 +602,7 @@ fn parse_svg(path: &Path, data: &[u8]) -> Result<resvg::usvg::Tree, LoadError> {
 
     match usvg::Tree::from_data(data, &options) {
         Ok(tree) => Ok(tree),
-        Err(usvg::Error::SvgzFeatureNotEnabled) => Err(LoadError::Svg(
-            "暂不支持 gzip 压缩的 SVGZ，请解压为 .svg 后再打开".to_owned(),
-        )),
+        Err(usvg::Error::SvgzFeatureNotEnabled) => Err(LoadError::SvgzUnsupported),
         Err(error) => Err(LoadError::Svg(error.to_string())),
     }
 }

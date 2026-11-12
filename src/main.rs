@@ -6,6 +6,7 @@ mod color;
 mod document;
 mod fileops;
 mod folder;
+mod i18n;
 mod icons;
 mod loader;
 mod logging;
@@ -13,6 +14,7 @@ mod settings;
 mod theme;
 mod thumbs;
 mod ui;
+mod update;
 mod viewer;
 
 use std::ffi::OsStr;
@@ -39,7 +41,7 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("图片查看器")
+            .with_title(i18n::t(i18n::Key::AppName))
             .with_app_id("image-view")
             .with_inner_size([1100.0, 760.0])
             .with_min_inner_size([480.0, 320.0])

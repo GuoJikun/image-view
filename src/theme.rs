@@ -8,6 +8,8 @@ use eframe::egui::{
     Visuals,
 };
 
+use crate::i18n::{self, Key};
+
 /// 用户可选的主题。跟随系统时由 egui 读取操作系统的浅色/深色偏好。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ThemeSetting {
@@ -20,9 +22,9 @@ pub enum ThemeSetting {
 impl ThemeSetting {
     pub fn label(self) -> &'static str {
         match self {
-            Self::System => "跟随系统",
-            Self::Light => "浅色",
-            Self::Dark => "深色",
+            Self::System => i18n::t(Key::ThemeSystem),
+            Self::Light => i18n::t(Key::ThemeLight),
+            Self::Dark => i18n::t(Key::ThemeDark),
         }
     }
 

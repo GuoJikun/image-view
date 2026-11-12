@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use eframe::egui;
 
 use crate::color::ColorInfo;
+use crate::i18n::{self, Key};
 use crate::loader::Decoded;
 
 #[derive(Clone)]
@@ -76,11 +77,16 @@ impl LoadedImage {
         };
         if self.downscaled {
             format!(
-                "{}×{}（显示 {}×{}）{depth}",
-                self.source_size[0],
-                self.source_size[1],
-                self.display_size[0],
-                self.display_size[1]
+                "{}{depth}",
+                i18n::tf(
+                    Key::DimensionsDownscaled,
+                    &[
+                        &self.source_size[0],
+                        &self.source_size[1],
+                        &self.display_size[0],
+                        &self.display_size[1],
+                    ],
+                )
             )
         } else {
             format!("{}×{}{depth}", self.source_size[0], self.source_size[1])
@@ -94,9 +100,10 @@ impl LoadedImage {
 }
 
 pub fn format_title(file_name: &str, downscaled: bool) -> String {
-    let mut title = format!("{file_name} — 图片查看器");
+    let mut title = format!("{file_name} — {}", i18n::t(Key::AppName));
     if downscaled {
-        title.push_str(" · 已降采样");
+        title.push_str(" · ");
+        title.push_str(i18n::t(Key::Downscaled));
     }
     title
 }
@@ -107,11 +114,13 @@ mod tests {
 
     #[test]
     fn title_contains_name() {
+        i18n::set_language(crate::i18n::Language::Zh);
         assert_eq!(format_title("a.jpg", false), "a.jpg — 图片查看器");
     }
 
     #[test]
     fn title_marks_downscaled_images() {
+        i18n::set_language(crate::i18n::Language::Zh);
         let title = format_title("big.png", true);
         assert!(title.contains("已降采样"));
         assert!(title.contains("big.png"));

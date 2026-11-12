@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::folder::SortOrder;
+use crate::i18n::Language;
 use crate::theme::ThemeSetting;
 
 /// 设置 schema 版本。不兼容变更时递增，旧版本记录一律回退默认值。
@@ -31,6 +32,10 @@ pub struct Settings {
     pub theme: ThemeSetting,
     /// 是否显示底部缩略图条（默认显示）。
     pub show_thumbnails: bool,
+    /// 界面语言：跟随系统 / 简体中文 / English。
+    pub language: Language,
+    /// 启动时自动检查更新（默认关闭，保持本地优先）。
+    pub check_updates_on_startup: bool,
 }
 
 impl Default for Settings {
@@ -43,6 +48,8 @@ impl Default for Settings {
             show_color_status: false,
             theme: ThemeSetting::default(),
             show_thumbnails: true,
+            language: Language::default(),
+            check_updates_on_startup: false,
         }
     }
 }
@@ -114,6 +121,8 @@ mod tests {
             show_color_status: true,
             theme: ThemeSetting::Dark,
             show_thumbnails: false,
+            language: Language::En,
+            check_updates_on_startup: true,
         }
     }
 

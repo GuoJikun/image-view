@@ -3,12 +3,37 @@
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Debug, thiserror::Error)]
+use crate::i18n::{self, Key};
+
+#[derive(Debug)]
 pub enum FileOpError {
-    #[error("移到回收站失败：{0}")]
-    Trash(#[from] trash::Error),
-    #[error("无法打开文件管理器：{0}")]
-    Reveal(#[from] std::io::Error),
+    Trash(trash::Error),
+    Reveal(std::io::Error),
+}
+
+impl std::fmt::Display for FileOpError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Trash(error) => formatter.write_str(&i18n::tf(Key::ErrorTrashFailed, &[error])),
+            Self::Reveal(error) => {
+                formatter.write_str(&i18n::tf(Key::ErrorOpenFileManager, &[error]))
+            }
+        }
+    }
+}
+
+impl std::error::Error for FileOpError {}
+
+impl From<trash::Error> for FileOpError {
+    fn from(error: trash::Error) -> Self {
+        Self::Trash(error)
+    }
+}
+
+impl From<std::io::Error> for FileOpError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Reveal(error)
+    }
 }
 
 /// 把文件移到系统回收站（可恢复）。

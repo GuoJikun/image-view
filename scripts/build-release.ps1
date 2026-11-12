@@ -6,7 +6,7 @@
 .DESCRIPTION
     Reads the version from Cargo.toml, runs `cargo build --release --locked`,
     packages the installer with `cargo packager --release`, and writes
-    dist\SHA256SUMS.txt.
+    dist\SHA256SUMS.txt plus dist\update.json (the auto-update manifest).
 
     cargo-packager re-runs an incremental release build through
     `beforePackagingCommand`, so the explicit build below is mostly a size and
@@ -22,14 +22,57 @@
 .PARAMETER SkipInstaller
     Only build the executable (no packaging step).
 
+.PARAMETER Notes
+    Release notes written to update.json. Defaults to the matching section of
+    CHANGELOG.md.
+
+.PARAMETER DownloadBaseUrl
+    Base URL for the installer. The default points at the latest GitHub Release.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 #>
 [CmdletBinding()]
 param(
     [switch]$SkipBuild,
-    [switch]$SkipInstaller
+    [switch]$SkipInstaller,
+    [string]$Notes,
+    [string]$DownloadBaseUrl = 'https://github.com/GuoJikun/image-view/releases/latest/download'
 )
+
+# Extract the "## [version]" section from CHANGELOG.md for update.json notes.
+function Get-ChangelogSection {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Version
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ''
+    }
+
+    $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8)
+    $heading = '^\s*##\s+\[' + [regex]::Escape($Version) + '\]'
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match $heading) {
+            $start = $i + 1
+            break
+        }
+    }
+    if ($start -lt 0) {
+        return ''
+    }
+
+    $body = New-Object System.Collections.Generic.List[string]
+    for ($i = $start; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*##\s+') {
+            break
+        }
+        $body.Add($lines[$i])
+    }
+    return ($body -join "`n").Trim()
+}
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -97,8 +140,23 @@ try {
     $sums = "$hash  $($setup.Name)"
     Set-Content -LiteralPath (Join-Path $dist 'SHA256SUMS.txt') -Value $sums -Encoding ascii
 
+    if (-not $Notes) {
+        $Notes = Get-ChangelogSection -Path (Join-Path $root 'CHANGELOG.md') -Version $version
+    }
+    $manifest = [ordered]@{
+        version = $version
+        url     = '{0}/{1}' -f $DownloadBaseUrl.TrimEnd('/'), $setup.Name
+        sha256  = $hash
+        notes   = $Notes
+    }
+    # serde_json rejects a UTF-8 BOM, so write without one (PowerShell 5.1 adds it with -Encoding utf8).
+    $manifestPath = Join-Path $dist 'update.json'
+    $manifestJson = $manifest | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText($manifestPath, $manifestJson, (New-Object System.Text.UTF8Encoding($false)))
+
     Write-Host ("Installer: {0} ({1:N0} bytes)" -f $setup.FullName, $setup.Length)
     Write-Host ("SHA256:    {0}" -f $hash)
+    Write-Host ("Manifest:  {0}" -f $manifestPath)
     Write-Host 'Done.'
 }
 finally {

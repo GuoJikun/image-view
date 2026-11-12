@@ -2,6 +2,7 @@
 
 use eframe::egui::{self, Color32, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Vec2};
 
+use crate::i18n::{self, Key};
 use crate::icons::{self, Icon};
 use crate::theme::Palette;
 
@@ -282,14 +283,14 @@ fn empty_state(ui: &mut egui::Ui, rect: Rect, palette: &Palette) -> bool {
     painter.text(
         center + Vec2::new(0.0, 8.0),
         egui::Align2::CENTER_CENTER,
-        "还没有打开图片",
+        i18n::t(Key::EmptyTitle),
         FontId::proportional(15.0),
         Color32::from_white_alpha(217),
     );
     painter.text(
         center + Vec2::new(0.0, 30.0),
         egui::Align2::CENTER_CENTER,
-        "拖入文件，或按 Ctrl+O 选择",
+        i18n::t(Key::EmptyHint),
         FontId::proportional(12.0),
         Color32::from_white_alpha(115),
     );
@@ -312,7 +313,7 @@ fn empty_state(ui: &mut egui::Ui, rect: Rect, palette: &Palette) -> bool {
     ui.painter().text(
         button.center(),
         egui::Align2::CENTER_CENTER,
-        "打开图片…",
+        i18n::t(Key::EmptyOpen),
         FontId::proportional(12.5),
         Color32::WHITE,
     );

@@ -6,6 +6,8 @@
 
 use image::DynamicImage;
 
+use crate::i18n::{self, Key};
+
 /// 一次色彩转换的结果，供状态栏与调试日志使用。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ColorInfo {
@@ -23,7 +25,7 @@ impl ColorInfo {
         }
         match self.source.as_deref().map(str::trim) {
             Some(name) if !name.is_empty() => Some(format!("{name} → sRGB")),
-            _ => Some("已转换到 sRGB".to_owned()),
+            _ => Some(i18n::t(Key::ColorConverted).to_owned()),
         }
     }
 }

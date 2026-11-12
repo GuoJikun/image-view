@@ -21,11 +21,12 @@
 - 52 px 自绘工具栏：图标按钮、`⋯` 溢出菜单、可切换的 88 px 缩略图条；空状态与内联错误横幅
 - 后台单线程解码，打开请求优先于预加载；快速翻页时只保留最新请求，旧结果自动丢弃；缩略图使用独立后台线程，避免阻塞主图
 - 大图安全阈值：单边 8192、总像素 40MP 自动等比降采样；超过 250MP 的原图直接拒绝解码；预加载只处理 30MP 以下的图片
-- 中文界面，主题可选跟随系统 / 浅色 / 深色；画布在两套主题下都保持深色，保证图片显示时始终有最大对比度
+- 界面支持简体中文 / English（可跟随系统），在 `⋯ → 语言` 中切换并立即生效；主题可选跟随系统 / 浅色 / 深色，画布在两套主题下都保持深色，保证图片显示时始终有最大对比度
+- 自动更新：`⋯ → 检查更新…` 读取 GitHub Releases 的 `update.json`，下载后校验 SHA-256 再启动静默安装；启动时检查默认关闭，可手动开启
 
 ## 版本与路线
 
-当前版本为 **v1.0.0（未发布）**。发布前所有开发工作都归入 `1.0.0`：P0 查看基线，以及 P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）。默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow，release exe 约 16.3 MiB。1.0.0 仍在开发中：图库/搜索/对比（M6）尚未开始，GIF/WebP 动画（M7）计划在首个版本之后提供；自动更新与中/英 UI 也将在发布后以 v1.1 / v1.2 补齐。
+当前版本为 **v1.0.0（未发布）**。发布前所有开发工作都归入 `1.0.0`：P0 查看基线，P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言）。默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。图库/搜索/对比（M6）移至 v1.1，GIF/WebP 动画（M7）移至 v1.2。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -40,12 +41,19 @@ Windows 10/11 x64 用 cargo-packager 与 NSIS 生成安装包：
 powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
 ```
 
-产物位于 `dist\`：`image-view_<version>_x64-setup.exe` 与 `SHA256SUMS.txt`。
+产物位于 `dist\`：`image-view_<version>_x64-setup.exe`、`update.json` 与 `SHA256SUMS.txt`。把安装包和 `update.json` 一起上传到 GitHub Release，应用即可通过 `releases/latest/download/update.json` 发现新版本。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
 - **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
 - **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册。程序目录同时存放用户数据（`logs\` 日志、`thumbs\` 缩略图缓存），卸载默认保留；勾选卸载页的“删除应用数据”会一并清除，设置文件 `%APPDATA%\image-view` 同理由该选项控制。
 - **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
+
+## 自动更新
+
+- 入口在 `⋯ → 检查更新…`；同一菜单的“启动时检查更新”默认关闭，勾选后才会在启动时联网检查。
+- 默认清单地址为 `https://github.com/GuoJikun/image-view/releases/latest/download/update.json`，格式为 `{"version","url","sha256","notes"}`。可用环境变量 `IMAGE_VIEW_UPDATE_MANIFEST` 指向本地文件或测试地址，用 `IMAGE_VIEW_UPDATE_DIR` 覆盖下载目录。
+- 安装包分块下载到 `%LOCALAPPDATA%\image-view\updates`，先写 `.part`；SHA-256 与清单一致后才会重命名并允许安装。安装器以 `/S` 静默运行，应用随即退出，不会自动重新启动。
+- 无网络、清单损坏或哈希不匹配时只影响更新窗口，不影响正常看图。
 
 ## 运行
 
@@ -84,7 +92,7 @@ image-view [PATH]
 
 ## 隐私
 
-应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机 `%LOCALAPPDATA%\image-view\logs`。当前版本也没有自动更新检查，不会主动发起网络请求。
+应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机 `%LOCALAPPDATA%\image-view\logs`。自动更新默认不在启动时检查；只有点击 `⋯ → 检查更新…` 或勾选“启动时检查更新”后，才会访问 GitHub Releases 读取 `update.json`，且不会发送任何使用数据。
 
 ## 快捷键
 
@@ -142,7 +150,7 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
 - Windows 10/11 的默认应用由系统 `UserChoice` 保护，安装器无法静默夺取常见扩展名的默认查看器；请在“设置 → 应用 → 默认应用”中确认。
-- 安装向导暂为英文；应用内中/英 UI 资源表与自动更新检查计划在 v1.2 / v1.1 提供。
+- 安装向导支持英文 / 简体中文；应用内界面也可在“跟随系统 / 简体中文 / English”之间切换。自动更新只做 SHA-256 校验、没有代码签名；网络受限或需要回滚时，请从发布页手动下载安装包覆盖安装。
 - 日志与崩溃转储会写入 `%LOCALAPPDATA%\image-view\logs`；卸载会一并删除。若需长期保留问题现场，请在卸载前复制该目录。
 
 ## 项目结构
@@ -161,9 +169,11 @@ src/
   color.rs      ICC profile 解析、sRGB 转换与 16-bit 精度保持
   thumbs.rs     缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
   folder.rs     目录扫描、自然排序/时间排序、上一张/下一张、缩略图选中
-  settings.rs   持久化设置：窗口状态、上次会话与排序方式
+  settings.rs   持久化设置：窗口状态、上次会话、排序、主题、语言与更新偏好
   fileops.rs    回收站删除、资源管理器定位与打开目录
   logging.rs    文件日志轮转、启动信息与 panic 崩溃转储
+  i18n.rs       中/英资源表、语言检测与切换
+  update.rs     更新清单检查、后台下载、SHA-256 校验与安装器启动
 build.rs        在 Windows MSVC 下把 assets/app.res 链接进 exe
 examples/
   gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
@@ -179,13 +189,13 @@ installer/
     image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
 Packager.toml       cargo-packager 打包配置（NSIS 格式与安装器参数）
 scripts/
-  build-release.ps1  构建 release exe、安装包与 SHA256
+  build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
 design/
   gen_ico.py    从 icon-1024.png 生成多尺寸 assets/icon.ico
 docs/
   ROADMAP.md    阶段进度总览与里程碑
   PLAN-P0.md    1.0.0 开发基线（P0）设计与验收记录
-  PLAN-P1.md    v1.0 计划（M1~M7，只查看）
+  PLAN-P1.md    v1.0 计划（M1~M9，只查看）
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
   NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障

@@ -10,12 +10,14 @@ use crate::cache::ImageCache;
 use crate::document::LoadedImage;
 use crate::fileops;
 use crate::folder::{self, FolderNav, SortOrder};
+use crate::i18n::{self, Key as Text, Language};
 use crate::loader::{Caps, LoadError, LoadResponse, Loader, Purpose};
 use crate::logging;
 use crate::settings::Settings;
 use crate::theme::{self, ThemeSetting};
 use crate::thumbs::{self, ThumbnailCache, ThumbnailLoader};
 use crate::ui;
+use crate::update::{UpdateState, Updater};
 use crate::viewer::{self, ViewMode, ViewState};
 
 /// 幻灯片自动前进间隔。
@@ -72,6 +74,11 @@ pub struct ImageViewerApp {
     fullscreen_title_until: Option<Instant>,
     /// 上次应用的主题偏好，避免每帧重装样式。
     applied_theme: Option<ThemeSetting>,
+    /// 自动更新控制器与窗口开关。
+    updater: Updater,
+    show_update: bool,
+    /// 启动时检查更新只执行一次。
+    startup_update_checked: bool,
 }
 
 impl ImageViewerApp {
@@ -81,6 +88,7 @@ impl ImageViewerApp {
     }
 
     fn with_context(ctx: egui::Context, open_path: Option<PathBuf>, settings: Settings) -> Self {
+        i18n::set_language(settings.language);
         theme::apply(&ctx, settings.theme);
         let applied_theme = Some(settings.theme);
         Self {
@@ -115,6 +123,9 @@ impl ImageViewerApp {
             thumbnail_dir: PathBuf::new(),
             fullscreen_title_until: None,
             applied_theme,
+            updater: Updater::new(),
+            show_update: false,
+            startup_update_checked: false,
         }
     }
 
@@ -132,6 +143,10 @@ impl ImageViewerApp {
             ui::Action::CopyPath => self.copy_current_path(ctx),
             ui::Action::Delete => self.delete_current(),
             ui::Action::OpenLogs => self.open_logs(),
+            ui::Action::CheckUpdate => {
+                self.show_update = true;
+                self.updater.check(ctx);
+            }
             ui::Action::SetSort(order) => self.set_sort(order),
             ui::Action::SetShowColorStatus(show) => self.settings.show_color_status = show,
             ui::Action::ToggleThumbnails => {
@@ -142,13 +157,28 @@ impl ImageViewerApp {
                 theme::apply(ctx, setting);
                 self.applied_theme = Some(setting);
             }
+            ui::Action::SetLanguage(language) => self.set_language(language),
+            ui::Action::SetCheckUpdatesOnStartup(check) => {
+                self.settings.check_updates_on_startup = check;
+            }
         }
+    }
+
+    /// 切换界面语言并立即刷新标题；主题与窗口 chrome 不受影响。
+    fn set_language(&mut self, language: Language) {
+        if self.settings.language == language {
+            return;
+        }
+        self.settings.language = language;
+        i18n::set_language(language);
+        self.title_cache.clear();
+        self.needs_repaint = true;
     }
 
     fn open_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
-            .add_filter("图片", folder::SUPPORTED_EXTENSIONS)
-            .set_title("打开图片")
+            .add_filter(i18n::t(Text::OpenFilter), folder::SUPPORTED_EXTENSIONS)
+            .set_title(i18n::t(Text::OpenDialog))
             .pick_file()
         {
             self.open_path(&path);
@@ -165,14 +195,14 @@ impl ImageViewerApp {
                 self.request_load(first);
             } else {
                 self.reset_thumbnail_scope();
-                self.error = Some(format!("目录中没有支持的图片：{}", path.display()));
+                self.error = Some(i18n::tf(Text::ErrorNoImagesInDir, &[&path.display()]));
                 self.error_path = None;
             }
             return;
         }
 
         if !path.exists() {
-            self.error = Some(format!("文件不存在：{}", path.display()));
+            self.error = Some(i18n::tf(Text::ErrorFileMissing, &[&path.display()]));
             self.error_path = None;
             return;
         }
@@ -320,7 +350,7 @@ impl ImageViewerApp {
             return;
         };
         ctx.copy_text(path.display().to_string());
-        self.set_notice("已复制路径");
+        self.set_notice(i18n::t(Text::NoticePathCopied));
     }
 
     fn reveal_current(&mut self) {
@@ -338,7 +368,7 @@ impl ImageViewerApp {
     fn open_logs(&mut self) {
         let dir = logging::log_dir();
         if let Err(error) = std::fs::create_dir_all(&dir) {
-            self.error = Some(format!("无法创建日志目录 {}：{error}", dir.display()));
+            self.error = Some(i18n::tf(Text::ErrorCreateLogDir, &[&dir.display(), &error]));
             self.error_path = None;
             return;
         }
@@ -371,7 +401,7 @@ impl ImageViewerApp {
         self.thumbnail_failed.remove(&path);
         self.image = None;
         self.view = ViewState::default();
-        self.set_notice(format!("已移到回收站：{name}"));
+        self.set_notice(i18n::tf(Text::NoticeMovedToTrash, &[&name]));
 
         match self.folder.remove_current() {
             Some(next) => self.request_load(next),
@@ -448,7 +478,7 @@ impl ImageViewerApp {
 
     fn request_load(&mut self, path: PathBuf) {
         if !path.is_file() {
-            self.error = Some(format!("文件不存在：{}", path.display()));
+            self.error = Some(i18n::tf(Text::ErrorFileMissing, &[&path.display()]));
             self.error_path = None;
             return;
         }
@@ -776,17 +806,20 @@ impl ImageViewerApp {
                     return;
                 }
                 output.response.context_menu(|ui| {
-                    if ui.button("复制路径  Ctrl+Shift+C").clicked() {
+                    if ui.button(i18n::t(Text::CopyPathMenu)).clicked() {
                         action = Some(ui::Action::CopyPath);
                         ui.close();
                     }
-                    if ui.button("在资源管理器中显示").clicked() {
+                    if ui.button(i18n::t(Text::RevealInExplorer)).clicked() {
                         action = Some(ui::Action::RevealInExplorer);
                         ui.close();
                     }
                     ui.separator();
                     if ui
-                        .button(egui::RichText::new("移到回收站  Delete").color(palette.danger))
+                        .button(
+                            egui::RichText::new(i18n::t(Text::MoveToTrashMenu))
+                                .color(palette.danger),
+                        )
                         .clicked()
                     {
                         action = Some(ui::Action::Delete);
@@ -805,7 +838,7 @@ impl ImageViewerApp {
     fn sync_title(&mut self, ctx: &egui::Context) {
         let title = match &self.image {
             Some(image) => image.window_title(),
-            None => "图片查看器".to_owned(),
+            None => i18n::t(Text::AppName).to_owned(),
         };
 
         if title != self.title_cache {
@@ -838,6 +871,15 @@ impl eframe::App for ImageViewerApp {
         self.handle_shortcuts(ctx);
         self.poll_loader(ctx);
         self.poll_thumbnails(ctx);
+        if self.updater.poll() && matches!(self.updater.state, UpdateState::Available { .. }) {
+            self.show_update = true;
+        }
+        if !self.startup_update_checked {
+            self.startup_update_checked = true;
+            if self.settings.check_updates_on_startup {
+                self.updater.check(ctx);
+            }
+        }
         self.tick_slideshow(ctx);
         self.tick_notice(ctx);
 
@@ -872,6 +914,8 @@ impl eframe::App for ImageViewerApp {
             zoom_percent: self.image.as_ref().map(|_| self.view.zoom * 100.0),
             show_color_status: self.settings.show_color_status,
             theme: self.settings.theme,
+            language: self.settings.language,
+            check_updates_on_startup: self.settings.check_updates_on_startup,
             center_title,
         };
         if let Some(action) = ui::toolbar(ui, &toolbar_state) {
@@ -924,6 +968,20 @@ impl eframe::App for ImageViewerApp {
             self.handle_action(ui.ctx(), action);
         }
         ui::help_window(ui.ctx(), &mut self.show_help);
+        if let Some(command) =
+            ui::update_window(ui.ctx(), &mut self.show_update, &self.updater.state)
+        {
+            match command {
+                ui::UpdateCommand::Check => self.updater.check(ui.ctx()),
+                ui::UpdateCommand::Download(manifest) => {
+                    self.updater.download(ui.ctx(), manifest);
+                }
+                ui::UpdateCommand::Install(installer) => match Updater::install(&installer) {
+                    Ok(()) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
+                    Err(error) => self.updater.report(error),
+                },
+            }
+        }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
