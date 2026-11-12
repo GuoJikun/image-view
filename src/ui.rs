@@ -745,6 +745,7 @@ pub fn help_window(ctx: &egui::Context, open: &mut bool) {
 pub enum UpdateCommand {
     Check,
     Download(Manifest),
+    Cancel,
     Install(std::path::PathBuf),
 }
 
@@ -830,32 +831,32 @@ pub fn update_window(
                 UpdateState::Downloading { received, total } => {
                     ui.label(i18n::t(Key::UpdateDownloading));
                     ui.add_space(6.0);
-                    if let Some(total) = total.filter(|total| *total > 0) {
-                        let fraction = (*received as f32 / total as f32).clamp(0.0, 1.0);
-                        ui.add(
-                            egui::ProgressBar::new(fraction)
-                                .show_percentage()
-                                .desired_width(380.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{} / {}",
-                                human_size(*received),
-                                human_size(total)
-                            ))
-                            .size(11.0)
-                            .color(palette.text2),
-                        );
-                    } else {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(
-                                egui::RichText::new(human_size(*received))
-                                    .size(11.0)
-                                    .color(palette.text2),
-                            );
-                        });
-                    }
+                    let known_total = total.filter(|total| *total > 0);
+                    // egui 用 `extreme_bg_color` 画进度条轨道，而主题里它等于窗口底色，
+                    // 深色主题下轨道会完全看不见；这里只在进度条作用域内换成对比色。
+                    ui.scope(|ui| {
+                        ui.visuals_mut().extreme_bg_color = theme::progress_track(ctx);
+                        let bar = match known_total {
+                            Some(total) => {
+                                let fraction = (*received as f32 / total as f32).clamp(0.0, 1.0);
+                                egui::ProgressBar::new(fraction).show_percentage()
+                            }
+                            // 总长度未知时用 egui 的循环动画，避免进度条完全静止。
+                            None => egui::ProgressBar::new(0.0).animate(true),
+                        };
+                        ui.add(bar.fill(palette.accent).desired_width(380.0));
+                    });
+                    let amount = match known_total {
+                        Some(total) => format!("{} / {}", human_size(*received), human_size(total)),
+                        None => human_size(*received),
+                    };
+                    ui.label(egui::RichText::new(amount).size(11.0).color(palette.text2));
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(i18n::t(Key::UpdateCancel)).clicked() {
+                            command = Some(UpdateCommand::Cancel);
+                        }
+                    });
                 }
                 UpdateState::Ready {
                     installer,

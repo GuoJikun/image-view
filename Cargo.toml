@@ -70,6 +70,8 @@ resvg = { version = "0.50", optional = true }
 trash = { version = "5", default-features = false, features = [
     "coinit_apartmentthreaded",
 ] }
+# 更新下载读取 Windows 系统代理（Internet Settings），并保留 ALL_PROXY/HTTPS_PROXY 等环境变量优先。
+ureq = { version = "3.5", features = ["win-system-proxy"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 # Linux/BSD：X11 + Wayland 窗口后端、XDG portal 文件对话框、freedesktop 回收站规范。

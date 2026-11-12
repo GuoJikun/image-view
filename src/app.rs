@@ -976,6 +976,7 @@ impl eframe::App for ImageViewerApp {
                 ui::UpdateCommand::Download(manifest) => {
                     self.updater.download(ui.ctx(), manifest);
                 }
+                ui::UpdateCommand::Cancel => self.updater.cancel_download(),
                 ui::UpdateCommand::Install(installer) => match Updater::install(&installer) {
                     Ok(()) => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
                     Err(error) => self.updater.report(error),

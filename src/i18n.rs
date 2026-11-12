@@ -152,6 +152,7 @@ pub enum Key {
     UpdateError,
     UpdateCheck,
     UpdateDownload,
+    UpdateCancel,
     UpdateInstall,
     UpdateNotes,
     UpdateHint,
@@ -165,6 +166,7 @@ pub enum Key {
     UpdateErrHash,
     UpdateErrIo,
     UpdateErrUrl,
+    UpdateErrCancelled,
 }
 
 /// 取当前语言的文案。
@@ -273,6 +275,7 @@ fn zh(key: Key) -> &'static str {
         Key::UpdateError => "更新失败：{}",
         Key::UpdateCheck => "检查更新",
         Key::UpdateDownload => "下载",
+        Key::UpdateCancel => "取消",
         Key::UpdateInstall => "安装并退出",
         Key::UpdateNotes => "发布说明",
         Key::UpdateHint => "检查更新需要联网；安装前会校验 SHA-256。",
@@ -285,6 +288,7 @@ fn zh(key: Key) -> &'static str {
         Key::UpdateErrVersion => "版本号无效：{}",
         Key::UpdateErrHash => "安装包校验失败（SHA-256 不匹配）",
         Key::UpdateErrIo => "文件操作失败：{}",
+        Key::UpdateErrCancelled => "下载已取消",
         Key::UpdateErrUrl => "更新下载地址无效",
     }
 }
@@ -370,6 +374,7 @@ fn en(key: Key) -> &'static str {
         Key::UpdateError => "Update failed: {}",
         Key::UpdateCheck => "Check for updates",
         Key::UpdateDownload => "Download",
+        Key::UpdateCancel => "Cancel",
         Key::UpdateInstall => "Install and exit",
         Key::UpdateNotes => "Release notes",
         Key::UpdateHint => {
@@ -387,6 +392,7 @@ fn en(key: Key) -> &'static str {
         Key::UpdateErrHash => "Installer verification failed (SHA-256 mismatch)",
         Key::UpdateErrIo => "File operation failed: {}",
         Key::UpdateErrUrl => "Invalid update download URL",
+        Key::UpdateErrCancelled => "Download cancelled",
     }
 }
 

@@ -8,6 +8,8 @@ use std::fmt::Display;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
@@ -82,6 +84,7 @@ pub enum UpdateError {
     Hash,
     Io(String),
     Url,
+    Cancelled,
     #[cfg_attr(target_os = "windows", allow(dead_code))]
     Unsupported,
 }
@@ -96,6 +99,7 @@ impl UpdateError {
             Self::Hash => i18n::t(Key::UpdateErrHash).to_owned(),
             Self::Io(detail) => i18n::tf(Key::UpdateErrIo, &[detail]),
             Self::Url => i18n::t(Key::UpdateErrUrl).to_owned(),
+            Self::Cancelled => i18n::t(Key::UpdateErrCancelled).to_owned(),
             Self::Unsupported => i18n::t(Key::UpdateNotSupported).to_owned(),
         }
     }
@@ -130,8 +134,15 @@ pub enum UpdateState {
 
 enum UpdateEvent {
     Checked(Result<Option<Manifest>, UpdateError>),
-    Progress { received: u64, total: Option<u64> },
-    Downloaded(Result<(PathBuf, Manifest), UpdateError>),
+    Progress {
+        generation: u64,
+        received: u64,
+        total: Option<u64>,
+    },
+    Downloaded {
+        generation: u64,
+        result: Result<(PathBuf, Manifest), UpdateError>,
+    },
 }
 
 /// 更新控制器：后台线程 + 主线程轮询。
@@ -139,6 +150,12 @@ pub struct Updater {
     tx: Sender<UpdateEvent>,
     rx: Receiver<UpdateEvent>,
     pub state: UpdateState,
+    /// 最近一次发现的可用版本；取消下载后据此回到可重试状态。
+    available: Option<Manifest>,
+    /// 每次下载/取消自增，用来丢弃已被取消的旧任务事件。
+    generation: u64,
+    /// 当前下载任务的取消标记；由后台线程轮询。
+    cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Default for Updater {
@@ -149,8 +166,11 @@ impl Default for Updater {
 
 impl Drop for Updater {
     fn drop(&mut self) {
-        // 尽力清理上次运行残留的半成品；下载线程仍持有文件时删除会失败，
-        // 由下一次启动时的 `new()` 再清理。
+        // 请求正在进行的下载尽快收尾，再尽力清理半成品；下载线程仍持有文件时
+        // 删除会失败，由下一次启动时的 `new()` 再清理。
+        if let Some(cancel) = &self.cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
         cleanup_partials_in(&download_dir());
     }
 }
@@ -163,6 +183,9 @@ impl Updater {
             tx,
             rx,
             state: UpdateState::Idle,
+            available: None,
+            generation: 0,
+            cancel: None,
         }
     }
 
@@ -208,6 +231,11 @@ impl Updater {
         if self.is_busy() {
             return;
         }
+        self.available = Some(manifest.clone());
+        self.generation = self.generation.wrapping_add(1);
+        let generation = self.generation;
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.cancel = Some(Arc::clone(&cancel));
         self.state = UpdateState::Downloading {
             received: 0,
             total: None,
@@ -218,14 +246,47 @@ impl Updater {
             let dir = download_dir();
             let progress_tx = tx.clone();
             let progress_ctx = ctx.clone();
-            let result = download_to(&manifest, &dir, &move |received, total| {
-                let _ = progress_tx.send(UpdateEvent::Progress { received, total });
-                progress_ctx.request_repaint();
-            })
+            let result = download_to(
+                &manifest,
+                &dir,
+                generation,
+                &cancel,
+                &move |received, total| {
+                    let _ = progress_tx.send(UpdateEvent::Progress {
+                        generation,
+                        received,
+                        total,
+                    });
+                    progress_ctx.request_repaint();
+                },
+            )
             .map(|path| (path, manifest));
-            let _ = tx.send(UpdateEvent::Downloaded(result));
+            if matches!(&result, Err(UpdateError::Cancelled)) {
+                log::info!("更新下载已取消");
+            }
+            let _ = tx.send(UpdateEvent::Downloaded { generation, result });
             ctx.request_repaint();
         });
+    }
+
+    /// 取消正在进行的下载；界面立即回到“发现新版本”，后台线程随后自行收尾。
+    pub fn cancel_download(&mut self) {
+        if !matches!(self.state, UpdateState::Downloading { .. }) {
+            return;
+        }
+        self.stop_download();
+        self.state = match self.available.clone() {
+            Some(manifest) => UpdateState::Available { manifest },
+            None => UpdateState::Idle,
+        };
+    }
+
+    /// 通知后台下载退出，并让它的后续事件全部失效。
+    fn stop_download(&mut self) {
+        if let Some(cancel) = self.cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// 轮询后台结果；返回 `true` 表示状态发生了变化。
@@ -234,20 +295,38 @@ impl Updater {
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 UpdateEvent::Checked(Ok(Some(manifest))) => {
+                    self.available = Some(manifest.clone());
                     self.state = UpdateState::Available { manifest };
                 }
-                UpdateEvent::Checked(Ok(None)) => self.state = UpdateState::UpToDate,
+                UpdateEvent::Checked(Ok(None)) => {
+                    self.available = None;
+                    self.state = UpdateState::UpToDate;
+                }
                 UpdateEvent::Checked(Err(error)) => self.state = UpdateState::Error(error),
-                UpdateEvent::Progress { received, total } => {
-                    self.state = UpdateState::Downloading { received, total };
+                UpdateEvent::Progress {
+                    generation,
+                    received,
+                    total,
+                } => {
+                    if generation == self.generation
+                        && matches!(self.state, UpdateState::Downloading { .. })
+                    {
+                        self.state = UpdateState::Downloading { received, total };
+                    }
                 }
-                UpdateEvent::Downloaded(Ok((installer, manifest))) => {
-                    self.state = UpdateState::Ready {
-                        installer,
-                        manifest,
-                    };
+                UpdateEvent::Downloaded { generation, result } => {
+                    if generation == self.generation {
+                        match result {
+                            Ok((installer, manifest)) => {
+                                self.state = UpdateState::Ready {
+                                    installer,
+                                    manifest,
+                                };
+                            }
+                            Err(error) => self.state = UpdateState::Error(error),
+                        }
+                    }
                 }
-                UpdateEvent::Downloaded(Err(error)) => self.state = UpdateState::Error(error),
             }
         }
         self.state != before
@@ -317,17 +396,26 @@ fn check_manifest(url: &str, current: &str) -> Result<Option<Manifest>, UpdateEr
 }
 
 /// 同步下载并校验；供后台线程与单元测试复用。
+///
+/// `cancel` 在每个读取分块前检查，取消时删除自己的 `.part` 并返回
+/// [`UpdateError::Cancelled`]；`generation` 只用于给 `.part` 取唯一名字，
+/// 避免取消后立刻重试时新旧两个任务写同一个文件。
 fn download_to(
     manifest: &Manifest,
     dir: &Path,
+    generation: u64,
+    cancel: &AtomicBool,
     progress: &(dyn Fn(u64, Option<u64>) + Send),
 ) -> Result<PathBuf, UpdateError> {
     fs::create_dir_all(dir)
         .map_err(|error| UpdateError::Io(format!("{}: {error}", dir.display())))?;
 
+    if cancel.load(Ordering::Relaxed) {
+        return Err(UpdateError::Cancelled);
+    }
     let (mut reader, total) = open_source(&manifest.url)?;
     let target = dir.join(manifest.file_name());
-    let part = target.with_extension("part");
+    let part = part_path(&target, generation);
 
     let mut file = File::create(&part)
         .map_err(|error| UpdateError::Io(format!("{}: {error}", part.display())))?;
@@ -337,6 +425,11 @@ fn download_to(
     let mut buffer = vec![0u8; 64 * 1024];
 
     loop {
+        if cancel.load(Ordering::Relaxed) {
+            drop(file);
+            let _ = fs::remove_file(&part);
+            return Err(UpdateError::Cancelled);
+        }
         let count = reader
             .read(&mut buffer)
             .map_err(|error| UpdateError::Io(error.to_string()))?;
@@ -357,6 +450,12 @@ fn download_to(
         .map_err(|error| UpdateError::Io(error.to_string()))?;
     drop(file);
 
+    // 读取结束到发布之间用户仍可能点了取消；此时丢弃已下载内容。
+    if cancel.load(Ordering::Relaxed) {
+        let _ = fs::remove_file(&part);
+        return Err(UpdateError::Cancelled);
+    }
+
     let digest = hex(&hasher.finalize());
     if !digest.eq_ignore_ascii_case(manifest.sha256.trim()) {
         let _ = fs::remove_file(&part);
@@ -368,6 +467,11 @@ fn download_to(
         .map_err(|error| UpdateError::Io(format!("{}: {error}", target.display())))?;
     log::info!("更新安装包已下载并通过校验：{}", target.display());
     Ok(target)
+}
+
+/// 每个下载任务独立的临时文件名，扩展名仍是 `.part` 以便启动时统一清理。
+fn part_path(target: &Path, generation: u64) -> PathBuf {
+    target.with_extension(format!("{generation}.part"))
 }
 
 /// 打开清单或安装包来源；支持 http(s)、`file://` 与本地路径（便于离线测试）。
@@ -536,11 +640,17 @@ mod tests {
             sha256: expected,
             notes: String::new(),
         };
-        let downloaded =
-            download_to(&manifest, &dir.join("downloaded"), &|_, _| {}).expect("download");
+        let downloaded = download_to(
+            &manifest,
+            &dir.join("downloaded"),
+            0,
+            &AtomicBool::new(false),
+            &|_, _| {},
+        )
+        .expect("download");
 
         assert_eq!(fs::read(&downloaded).expect("read"), b"installer-bytes");
-        assert!(!downloaded.with_extension("part").exists());
+        assert!(!part_path(&downloaded, 0).exists());
         fs::remove_dir_all(&dir).expect("cleanup");
     }
 
@@ -557,11 +667,78 @@ mod tests {
             notes: String::new(),
         };
         let target = dir.join("downloaded").join(manifest.file_name());
-        let result = download_to(&manifest, &dir.join("downloaded"), &|_, _| {});
+        let result = download_to(
+            &manifest,
+            &dir.join("downloaded"),
+            0,
+            &AtomicBool::new(false),
+            &|_, _| {},
+        );
 
         assert_eq!(result, Err(UpdateError::Hash));
         assert!(!target.exists());
-        assert!(!target.with_extension("part").exists());
+        assert!(!part_path(&target, 0).exists());
+        fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn download_stops_when_cancelled_midway() {
+        let dir = temp_dir("cancel-midway");
+        let source = dir.join("setup.exe");
+        // 超过一个进度上报周期，确保取消发生在下载中途而不是结束之后。
+        let bytes = vec![7u8; (PROGRESS_STEP + 1024 * 1024) as usize];
+        fs::write(&source, &bytes).expect("write source");
+
+        let manifest = Manifest {
+            version: "1.0.1".to_owned(),
+            url: file_url(&source),
+            sha256: hex(&Sha256::digest(&bytes)),
+            notes: String::new(),
+        };
+        let target = dir.join("downloaded").join(manifest.file_name());
+        let cancel = AtomicBool::new(false);
+        let result = download_to(
+            &manifest,
+            &dir.join("downloaded"),
+            3,
+            &cancel,
+            &|received, _| {
+                if received > 0 {
+                    cancel.store(true, Ordering::Relaxed);
+                }
+            },
+        );
+
+        assert_eq!(result, Err(UpdateError::Cancelled));
+        assert!(!target.exists());
+        assert!(!part_path(&target, 3).exists());
+        fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn download_does_not_start_after_cancel() {
+        let dir = temp_dir("cancel-early");
+        let source = dir.join("setup.exe");
+        fs::write(&source, b"installer-bytes").expect("write source");
+
+        let manifest = Manifest {
+            version: "1.0.1".to_owned(),
+            url: file_url(&source),
+            sha256: hex(&Sha256::digest(b"installer-bytes")),
+            notes: String::new(),
+        };
+        let target = dir.join("downloaded").join(manifest.file_name());
+        let result = download_to(
+            &manifest,
+            &dir.join("downloaded"),
+            4,
+            &AtomicBool::new(true),
+            &|_, _| {},
+        );
+
+        assert_eq!(result, Err(UpdateError::Cancelled));
+        assert!(!target.exists());
+        assert!(!part_path(&target, 4).exists());
         fs::remove_dir_all(&dir).expect("cleanup");
     }
 

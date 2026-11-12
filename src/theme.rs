@@ -129,6 +129,18 @@ pub fn palette(ctx: &egui::Context) -> Palette {
     Palette::of(ctx.theme())
 }
 
+/// 进度条空槽等“空背景”的颜色。
+///
+/// egui 的 `ProgressBar` 用 `extreme_bg_color` 画轨道，而该值默认等于窗口底色，
+/// 深色主题下轨道会完全看不见；这里按主题选一个与面板有对比度的中性色。
+pub fn progress_track(ctx: &egui::Context) -> Color32 {
+    let palette = palette(ctx);
+    match ctx.theme() {
+        Theme::Dark => palette.strip,
+        Theme::Light => palette.track,
+    }
+}
+
 /// 应用主题偏好，并为浅色/深色两套 egui 样式安装设计稿配色。
 pub fn apply(ctx: &egui::Context, setting: ThemeSetting) {
     ctx.set_theme(setting.preference());
