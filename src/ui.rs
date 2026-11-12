@@ -782,13 +782,13 @@ pub fn update_window(
     let mut close_requested = false;
     // 内容区留白：左右 24、上下 16；标题栏保持默认内边距。
     let base_frame = egui::Frame::window(ctx.style_of(ctx.theme()).as_ref());
-    let content_frame = base_frame.inner_margin(egui::Margin::symmetric(24, 16));
+    let content_frame = base_frame.inner_margin(egui::Margin::symmetric(16, 16));
 
     egui::Window::new(i18n::t(Key::UpdateTitle))
         .open(open)
         .collapsible(false)
-        .auto_sized()
-        .default_width(420.0)
+        .resizable(false)
+        .default_width(460.0)
         .frame(content_frame)
         .title_frame(base_frame)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -840,7 +840,7 @@ pub fn update_window(
                                 .size(11.5),
                         );
                         egui::ScrollArea::vertical()
-                            .max_height(160.0)
+                            .max_height(180.0)
                             .show(ui, |ui| {
                                 // 发布说明是 Markdown；固定 Id 让渲染缓存跨帧复用，
                                 // 悬停链接时顺便显示完整地址。

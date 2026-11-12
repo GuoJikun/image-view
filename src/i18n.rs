@@ -277,7 +277,7 @@ fn zh(key: Key) -> &'static str {
         Key::UpdateDownload => "下载",
         Key::UpdateCancel => "取消",
         Key::UpdateInstall => "安装并退出",
-        Key::UpdateNotes => "发布说明",
+        Key::UpdateNotes => "发布说明：",
         Key::UpdateHint => "检查更新需要联网；安装前会校验 SHA-256。",
         Key::UpdateCurrent => "当前版本：{}",
         Key::UpdateStartup => "启动时检查更新",
@@ -376,7 +376,7 @@ fn en(key: Key) -> &'static str {
         Key::UpdateDownload => "Download",
         Key::UpdateCancel => "Cancel",
         Key::UpdateInstall => "Install and exit",
-        Key::UpdateNotes => "Release notes",
+        Key::UpdateNotes => "Release notes:",
         Key::UpdateHint => {
             "Checking for updates requires an internet connection; SHA-256 is verified before installation."
         }
