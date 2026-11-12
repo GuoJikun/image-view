@@ -765,6 +765,7 @@ pub fn update_window(
     ctx: &egui::Context,
     open: &mut bool,
     state: &UpdateState,
+    notes_cache: &mut egui_commonmark::CommonMarkCache,
 ) -> Option<UpdateCommand> {
     if !*open {
         return None;
@@ -830,7 +831,15 @@ pub fn update_window(
                         egui::ScrollArea::vertical()
                             .max_height(160.0)
                             .show(ui, |ui| {
-                                ui.label(egui::RichText::new(&manifest.notes).size(11.5));
+                                // 发布说明是 Markdown；固定 Id 让渲染缓存跨帧复用，
+                                // 悬停链接时顺便显示完整地址。
+                                ui.style_mut().url_in_tooltip = true;
+                                egui_commonmark::CommonMarkViewer::new().show_with_id(
+                                    egui::Id::unique("update-notes"),
+                                    ui,
+                                    notes_cache,
+                                    &manifest.notes,
+                                );
                             });
                     }
                     ui.add_space(12.0);

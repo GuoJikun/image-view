@@ -77,6 +77,8 @@ pub struct ImageViewerApp {
     /// 自动更新控制器与窗口开关。
     updater: Updater,
     show_update: bool,
+    /// 更新说明 Markdown 的渲染缓存，跨帧保留以免重复解析。
+    update_notes_cache: egui_commonmark::CommonMarkCache,
     /// 启动时检查更新只执行一次。
     startup_update_checked: bool,
 }
@@ -125,6 +127,7 @@ impl ImageViewerApp {
             applied_theme,
             updater: Updater::new(),
             show_update: false,
+            update_notes_cache: egui_commonmark::CommonMarkCache::default(),
             startup_update_checked: false,
         }
     }
@@ -968,9 +971,12 @@ impl eframe::App for ImageViewerApp {
             self.handle_action(ui.ctx(), action);
         }
         ui::help_window(ui.ctx(), &mut self.show_help);
-        if let Some(command) =
-            ui::update_window(ui.ctx(), &mut self.show_update, &self.updater.state)
-        {
+        if let Some(command) = ui::update_window(
+            ui.ctx(),
+            &mut self.show_update,
+            &self.updater.state,
+            &mut self.update_notes_cache,
+        ) {
             match command {
                 ui::UpdateCommand::Check => self.updater.check(ui.ctx()),
                 ui::UpdateCommand::Download(manifest) => {
