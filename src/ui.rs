@@ -749,6 +749,17 @@ pub enum UpdateCommand {
     Install(std::path::PathBuf),
 }
 
+/// 弹窗底部的动作区：按钮靠右排列，闭包中先添加的按钮在最右侧。
+fn dialog_actions(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add);
+}
+
+/// 主操作按钮：主色填充、白色文字。
+fn primary_button(ui: &mut egui::Ui, label: &str) -> Response {
+    let accent = theme::palette(ui.ctx()).accent;
+    ui.add(egui::Button::new(egui::RichText::new(label).color(Color32::WHITE)).fill(accent))
+}
+
 /// 软件更新窗口；`state` 由 `app` 每帧轮询后台任务后传入。
 pub fn update_window(
     ctx: &egui::Context,
@@ -781,9 +792,11 @@ pub fn update_window(
                 UpdateState::Idle => {
                     ui.label(i18n::t(Key::UpdateHint));
                     ui.add_space(8.0);
-                    if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
-                        command = Some(UpdateCommand::Check);
-                    }
+                    dialog_actions(ui, |ui| {
+                        if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
+                            command = Some(UpdateCommand::Check);
+                        }
+                    });
                 }
                 UpdateState::Checking => {
                     ui.horizontal(|ui| {
@@ -796,9 +809,11 @@ pub fn update_window(
                         egui::RichText::new(i18n::t(Key::UpdateUpToDate)).color(palette.success),
                     );
                     ui.add_space(8.0);
-                    if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
-                        command = Some(UpdateCommand::Check);
-                    }
+                    dialog_actions(ui, |ui| {
+                        if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
+                            command = Some(UpdateCommand::Check);
+                        }
+                    });
                 }
                 UpdateState::Available { manifest } => {
                     ui.label(i18n::tf(
@@ -818,9 +833,9 @@ pub fn update_window(
                                 ui.label(egui::RichText::new(&manifest.notes).size(11.5));
                             });
                     }
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(i18n::t(Key::UpdateDownload)).clicked() {
+                    ui.add_space(12.0);
+                    dialog_actions(ui, |ui| {
+                        if primary_button(ui, i18n::t(Key::UpdateDownload)).clicked() {
                             command = Some(UpdateCommand::Download(manifest.clone()));
                         }
                         if ui.button(i18n::t(Key::Later)).clicked() {
@@ -852,7 +867,7 @@ pub fn update_window(
                     };
                     ui.label(egui::RichText::new(amount).size(11.0).color(palette.text2));
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
+                    dialog_actions(ui, |ui| {
                         if ui.button(i18n::t(Key::UpdateCancel)).clicked() {
                             command = Some(UpdateCommand::Cancel);
                         }
@@ -871,8 +886,8 @@ pub fn update_window(
                     );
                     ui.label(egui::RichText::new(i18n::t(Key::UpdateReady)).color(palette.success));
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        if ui.button(i18n::t(Key::UpdateInstall)).clicked() {
+                    dialog_actions(ui, |ui| {
+                        if primary_button(ui, i18n::t(Key::UpdateInstall)).clicked() {
                             command = Some(UpdateCommand::Install(installer.clone()));
                         }
                         if ui.button(i18n::t(Key::Later)).clicked() {
@@ -886,9 +901,11 @@ pub fn update_window(
                             .color(palette.danger),
                     );
                     ui.add_space(8.0);
-                    if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
-                        command = Some(UpdateCommand::Check);
-                    }
+                    dialog_actions(ui, |ui| {
+                        if ui.button(i18n::t(Key::UpdateCheck)).clicked() {
+                            command = Some(UpdateCommand::Check);
+                        }
+                    });
                 }
             }
         });
