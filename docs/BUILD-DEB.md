@@ -84,6 +84,34 @@ image-view
 - `/usr/share/icons/hicolor/512x512/apps/image-view.png`
 - `/usr/share/icons/hicolor/1024x1024/apps/image-view.png`
 
+## 安装失败排查
+
+### 提示缺少 `libxkbcommon-x11-0`
+
+用 `dpkg -i image-view_*.deb` 或部分图形安装器安装时，dpkg 只解包、不会下载依赖，
+`image-view` 会停在 `iU`（已解包、未配置）状态。请改用 apt 安装并补齐依赖：
+
+```bash
+sudo apt update
+sudo apt --fix-broken install
+sudo apt install ./dist/image-view_1.3.0_amd64.deb
+```
+
+`libxkbcommon-x11-0` 会连带安装 `libxcb-xkb1`，两者都在 Ubuntu 22.04 / 24.04 / 26.04
+的 `main` 源中。安装后用下面的命令确认状态已从 `iU` 变为 `ii`：
+
+```bash
+dpkg -l image-view
+image-view
+```
+
+如果 `apt` 仍提示依赖不可安装，先确认软件源和网络正常：
+
+```bash
+apt-cache policy libxkbcommon-x11-0
+sudo apt update
+```
+
 ## 配置说明
 
 `Packager.toml` 中与 deb 有关的字段：
