@@ -46,12 +46,18 @@ binaries = [{ path = "image-view", main = true }]
 # NSIS uses icon.ico. The deb bundler only consumes PNGs and installs each
 # image into the matching hicolor size, while the macOS bundler combines the
 # PNGs into the .app's .icns. Keep the large sizes for Retina displays.
+#
+# The macOS bundler maps each file to an ICNS type using its pixel size and
+# density, and the filename suffix decides the density: files ending in "@2x"
+# are treated as 2x (Retina). ICNS has no 1024x1024 1x type, so the 1024 px
+# asset must be named icon-512@2x.png (512 pt at 2x) or packaging fails with
+# "No matching IconType".
 icons = [
     "assets/icon.ico",
     "assets/icon.png",
     "assets/icon-256.png",
     "assets/icon-512.png",
-    "assets/icon-1024.png",
+    "assets/icon-512@2x.png",
 ]
 
 # README and CHANGELOG are copied next to the executable (NSIS), into

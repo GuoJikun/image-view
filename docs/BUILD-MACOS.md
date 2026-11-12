@@ -45,7 +45,24 @@ cargo install cargo-packager --version 0.11.8 --locked
 ```
 
 首次构建 dmg 时，cargo-packager 会联网下载 `create-dmg` 脚本到
-`~/Library/Caches/.cargo-packager`；离线环境需要提前准备好该工具。
+`~/Library/Caches/.cargo-packager/DMG/script/create-dmg`；离线环境需要提前准备好该工具。
+
+如果系统使用 SOCKS 代理，cargo-packager 内置的下载器可能报：
+
+```text
+ERROR https://raw.githubusercontent.com/create-dmg/...: Connection Failed: Connect error: SOCKS feature disabled.
+```
+
+这是因为它的 HTTP 客户端没有启用 SOCKS 支持。用 `curl`（会走系统代理）手动把同一份脚本
+放到缓存目录即可，之后打包会直接复用、不再下载：
+
+```bash
+mkdir -p ~/Library/Caches/.cargo-packager/DMG/script
+curl -fL --retry 5 -C - \
+  -o ~/Library/Caches/.cargo-packager/DMG/script/create-dmg \
+  https://raw.githubusercontent.com/create-dmg/create-dmg/28867ba3563ddef62f55dcf130677103b4296c42/create-dmg
+chmod 764 ~/Library/Caches/.cargo-packager/DMG/script/create-dmg
+```
 
 ## 构建
 
@@ -116,7 +133,10 @@ xattr -dr com.apple.quarantine /Applications/image-view.app
 - `[dmg]`：设置 dmg 打开后的 Finder 窗口尺寸，以及应用图标和“应用程序”快捷方式的位置。
   如需背景图，可增加 `background = "assets/dmg-background.png"`。
 - `icons`：cargo-packager 会把其中的 PNG（64/256/512/1024）合成为 `.app` 内的 `.icns`；
-  NSIS 继续使用 `icon.ico`。deb 也会把这些 PNG 安装到对应的 hicolor 目录。
+  NSIS 继续使用 `icon.ico`。deb 也会把这些 PNG 安装到对应的 hicolor 目录。macOS 端按
+  文件名后缀判断像素密度：`icon-512@2x.png`（1024×1024）表示 512 pt 的 Retina 图标；
+  ICNS 没有 1024×1024 的 1x 类型，所以不能命名为 `icon-1024.png`，否则打包会报
+  `ERROR No matching IconType`。
 - `resources`：`README.md` 与 `CHANGELOG.md` 复制到 `.app/Contents/Resources`。
 - `[[fileAssociations]]`：生成 `CFBundleDocumentTypes`，`role = "viewer"` 表示只读查看；
   同一份配置在 Linux 上生成 `.desktop` 的 MIME 列表。

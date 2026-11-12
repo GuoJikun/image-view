@@ -213,8 +213,8 @@ examples/
 assets/
   icon.png      窗口图标（64×64）
   icon-256.png  deb / macOS 打包用的 256×256 图标
-  icon-512.png  macOS Retina 图标（512×512）
-  icon-1024.png macOS Retina 图标（1024×1024）
+  icon-512.png  deb / macOS 打包用的 512×512 图标
+  icon-512@2x.png macOS Retina 图标（1024×1024，按 512 pt @2x 命名）
   icon.ico      多尺寸应用图标（安装包 / exe）
   app.rc        图标资源定义
   app.res       编译后的 Windows 资源

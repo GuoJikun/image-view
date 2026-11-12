@@ -119,7 +119,8 @@ sudo apt update
 - `authors`：生成 Debian control 的 `Maintainer` 字段，必须是非空真实联系人。
 - `homepage`：生成 `Homepage` 字段。
 - `icons`：deb 只消费 PNG；`icon.png`（64×64）与 `icon-256.png`、`icon-512.png`、
-  `icon-1024.png` 会安装到对应 hicolor 目录。NSIS 仍优先使用 `icon.ico`。
+  `icon-512@2x.png`（1024×1024）会安装到对应 hicolor 目录。NSIS 仍优先使用
+  `icon.ico`。`@2x` 后缀是 cargo-packager 判断 Retina 密度的约定，macOS 打包依赖它。
 - `[deb]`：包名、section、priority 与运行时依赖。cargo-packager 没有
   `$auto` 依赖模式，依赖需要手动维护。
 - `[[fileAssociations]]`：在 Linux 上生成 `.desktop` 的 `MimeType=...`，在 macOS 上生成
