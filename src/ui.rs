@@ -751,7 +751,13 @@ pub enum UpdateCommand {
 
 /// 弹窗底部的动作区：按钮靠右排列，闭包中先添加的按钮在最右侧。
 fn dialog_actions(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add);
+    // 只占一行高度；用 `with_layout` 会继承窗口剩余高度，把按钮上方撑出空白。
+    let height = ui.spacing().interact_size.y;
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), height),
+        egui::Layout::right_to_left(egui::Align::Center),
+        add,
+    );
 }
 
 /// 主操作按钮：主色填充、白色文字。
@@ -774,12 +780,17 @@ pub fn update_window(
     let palette = theme::palette(ctx);
     let mut command = None;
     let mut close_requested = false;
+    // 内容区留白：左右 24、上下 16；标题栏保持默认内边距。
+    let base_frame = egui::Frame::window(ctx.style_of(ctx.theme()).as_ref());
+    let content_frame = base_frame.inner_margin(egui::Margin::symmetric(24, 16));
 
     egui::Window::new(i18n::t(Key::UpdateTitle))
         .open(open)
         .collapsible(false)
-        .resizable(false)
+        .auto_sized()
         .default_width(420.0)
+        .frame(content_frame)
+        .title_frame(base_frame)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
         .show(ctx, |ui| {
             ui.label(
@@ -868,7 +879,7 @@ pub fn update_window(
                             // 总长度未知时用 egui 的循环动画，避免进度条完全静止。
                             None => egui::ProgressBar::new(0.0).animate(true),
                         };
-                        ui.add(bar.fill(palette.accent).desired_width(380.0));
+                        ui.add(bar.fill(palette.accent).desired_width(ui.available_width()));
                     });
                     let amount = match known_total {
                         Some(total) => format!("{} / {}", human_size(*received), human_size(total)),
