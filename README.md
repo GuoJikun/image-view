@@ -26,7 +26,7 @@
 
 ## 版本与路线
 
-当前版本为 **v1.2.0（开发中）**。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
+当前版本为 **v1.3.0（开发中）**。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。`1.2.0` 增加 Debian/Ubuntu 打包，`1.3.0` 增加 macOS（Apple Silicon）打包；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -34,6 +34,8 @@
 - 1.0.0 开发基线（P0）设计与验收：[docs/PLAN-P0.md](docs/PLAN-P0.md)
 
 ## 安装与卸载
+
+### Windows（10/11 x64）
 
 Windows 10/11 x64 用 cargo-packager 与 NSIS 生成安装包：
 
@@ -66,6 +68,16 @@ bash scripts/build-deb.sh
 ```
 
 产物为 `dist/image-view_<version>_amd64.deb`。依赖、桌面入口与文件关联位于 `Packager.toml` 的 `[deb]` / `[[fileAssociations]]`，完整步骤见 [docs/BUILD-DEB.md](docs/BUILD-DEB.md)。
+
+### macOS（Apple Silicon）
+
+仅支持 arm64，需在 Apple Silicon Mac 上构建（不提供 Intel / Universal 版本）。在仓库根目录运行：
+
+```bash
+bash scripts/build-macos.sh
+```
+
+产物为 `dist/image-view_<version>_aarch64.dmg`，内含 `image-view.app`。最低系统版本、DMG 窗口布局与文件关联位于 `Packager.toml` 的 `[macos]` / `[dmg]` / `[[fileAssociations]]`；签名、公证与验证步骤见 [docs/BUILD-MACOS.md](docs/BUILD-MACOS.md)。未签名时首次打开需在 Finder 中右键应用选择“打开”；文件关联已注册，但 Finder 双击传入文件的 macOS 事件尚未处理，需从命令行传入路径。
 
 ## 自动更新
 
@@ -200,17 +212,20 @@ examples/
   thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
 assets/
   icon.png      窗口图标（64×64）
-  icon-256.png  deb 用的 256×256 图标
+  icon-256.png  deb / macOS 打包用的 256×256 图标
+  icon-512.png  macOS Retina 图标（512×512）
+  icon-1024.png macOS Retina 图标（1024×1024）
   icon.ico      多尺寸应用图标（安装包 / exe）
   app.rc        图标资源定义
   app.res       编译后的 Windows 资源
 installer/
   nsis/
     image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
-Packager.toml       cargo-packager 打包配置（NSIS / deb、依赖与文件关联）
+Packager.toml       cargo-packager 打包配置（NSIS / deb / dmg、依赖与文件关联）
 scripts/
   build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
   build-deb.sh       在 Linux/WSL2 中构建 .deb
+  build-macos.sh     在 Apple Silicon Mac 上构建 arm64 .dmg
 .github/
   workflows/
     release.yml      推送 v* 标签时自动构建并发布
@@ -224,6 +239,7 @@ docs/
   PLAN-P3.md    v3+ 长期方向
   NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
   BUILD-DEB.md       WSL2/Linux 构建 .deb 的依赖、步骤与配置说明
+  BUILD-MACOS.md     Apple Silicon 构建 arm64 .dmg 的步骤与签名说明
 CHANGELOG.md    各发布版本的用户可见变更
 ```
 

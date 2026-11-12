@@ -9,6 +9,10 @@
 # This requires a Linux host (WSL2 or a Linux container); cargo-packager does
 # not include the deb bundler in its Windows build.
 #
+# Build the macOS .dmg with:
+#   cargo packager --release -c Packager.toml --formats dmg
+# This requires an Apple Silicon Mac (arm64 only), see docs/BUILD-MACOS.md.
+#
 # Format reference: https://docs.rs/cargo-packager/latest/cargo_packager/config/struct.Config.html
 # Keys are camelCase because the config is deserialized with
 # `deny_unknown_fields`, so `before-packaging-command` is rejected.
@@ -19,7 +23,7 @@
 
 name = "image-view"
 productName = "image-view"
-version = "1.2.0"
+version = "1.3.0"
 identifier = "io.github.guojikun.image-view"
 description = "Lightweight Rust image viewer"
 longDescription = """
@@ -40,11 +44,18 @@ beforePackagingCommand = "cargo build --release --locked"
 
 binaries = [{ path = "image-view", main = true }]
 # NSIS uses icon.ico. The deb bundler only consumes PNGs and installs each
-# image into the matching hicolor size, so keep the PNG sizes here.
-icons = ["assets/icon.ico", "assets/icon.png", "assets/icon-256.png"]
+# image into the matching hicolor size, while the macOS bundler combines the
+# PNGs into the .app's .icns. Keep the large sizes for Retina displays.
+icons = [
+    "assets/icon.ico",
+    "assets/icon.png",
+    "assets/icon-256.png",
+    "assets/icon-512.png",
+    "assets/icon-1024.png",
+]
 
-# README and CHANGELOG are copied next to the executable (NSIS) or into
-# /usr/lib/image-view (deb).
+# README and CHANGELOG are copied next to the executable (NSIS), into
+# /usr/lib/image-view (deb), or into Contents/Resources (macOS).
 resources = ["README.md", "CHANGELOG.md"]
 
 formats = ["nsis"]
@@ -71,76 +82,128 @@ depends = [
     "libfontconfig1",
 ]
 
-# MIME associations used to generate the deb's .desktop file. The NSIS
-# template registers the same extensions itself, so these entries only affect
-# Linux packages.
+[macos]
+# Apple Silicon only: 11.0 is the first macOS release that runs on arm64, and
+# the aarch64-apple-darwin target uses it as the default deployment target.
+minimumSystemVersion = "11.0"
+# Signing/notarization stays opt-in so local builds work without a Developer
+# ID certificate. Uncomment and set this to enable codesigning; notarization
+# credentials are read from APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID (or the
+# APPLE_API_* variables) and must never be committed. See docs/BUILD-MACOS.md.
+# signingIdentity = "Developer ID Application: Your Name (TEAMID)"
+
+[dmg]
+# Finder window shown when the .dmg is opened: app icon on the left, the
+# Applications shortcut on the right.
+windowSize = { width = 660, height = 420 }
+appPosition = { x = 180, y = 190 }
+appFolderPosition = { x = 480, y = 190 }
+
+# File associations. On Linux they generate the deb's .desktop MimeType list;
+# on macOS they become CFBundleDocumentTypes in Info.plist, so the app appears
+# under "Open With" with a read-only Viewer role. The NSIS template registers
+# the same extensions itself, so these entries do not affect Windows.
 [[fileAssociations]]
 extensions = ["png"]
 mimeType = "image/png"
+name = "PNG image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["jpg", "jpeg"]
 mimeType = "image/jpeg"
+name = "JPEG image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["gif"]
 mimeType = "image/gif"
+name = "GIF image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["webp"]
 mimeType = "image/webp"
+name = "WebP image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["bmp"]
 mimeType = "image/bmp"
+name = "BMP image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["tif", "tiff"]
 mimeType = "image/tiff"
+name = "TIFF image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["ico"]
 mimeType = "image/vnd.microsoft.icon"
+name = "ICO image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["qoi"]
 mimeType = "image/qoi"
+name = "QOI image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["tga"]
 mimeType = "image/x-tga"
+name = "TGA image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["pnm"]
 mimeType = "image/x-portable-anymap"
+name = "PNM image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["hdr"]
 mimeType = "image/vnd.radiance"
+name = "Radiance HDR image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["exr"]
 mimeType = "image/x-exr"
+name = "OpenEXR image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["dds"]
 mimeType = "image/vnd-ms.dds"
+name = "DirectDraw Surface image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["avif"]
 mimeType = "image/avif"
+name = "AVIF image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["heic"]
 mimeType = "image/heic"
+name = "HEIC image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["heif"]
 mimeType = "image/heif"
+name = "HEIF image"
+role = "viewer"
 
 [[fileAssociations]]
 extensions = ["svg"]
 mimeType = "image/svg+xml"
+name = "SVG image"
+role = "viewer"
 
 [nsis]
 # Per-user install into %LOCALAPPDATA%\image-view, no administrator rights

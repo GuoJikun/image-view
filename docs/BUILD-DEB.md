@@ -57,7 +57,7 @@ cargo packager --release -c Packager.toml --formats deb
 产物：
 
 ```text
-dist/image-view_1.2.0_amd64.deb
+dist/image-view_1.3.0_amd64.deb
 ```
 
 复制回 Windows：
@@ -69,9 +69,9 @@ cp dist/image-view_*.deb /mnt/e/private/Rust/image-view/dist/
 ## 检查与安装
 
 ```bash
-dpkg-deb --info dist/image-view_1.2.0_amd64.deb
-dpkg-deb --contents dist/image-view_1.2.0_amd64.deb
-sudo apt install ./dist/image-view_1.2.0_amd64.deb
+dpkg-deb --info dist/image-view_1.3.0_amd64.deb
+dpkg-deb --contents dist/image-view_1.3.0_amd64.deb
+sudo apt install ./dist/image-view_1.3.0_amd64.deb
 image-view
 ```
 
@@ -81,6 +81,8 @@ image-view
 - `/usr/share/applications/image-view.desktop`
 - `/usr/share/icons/hicolor/64x64/apps/image-view.png`
 - `/usr/share/icons/hicolor/256x256/apps/image-view.png`
+- `/usr/share/icons/hicolor/512x512/apps/image-view.png`
+- `/usr/share/icons/hicolor/1024x1024/apps/image-view.png`
 
 ## 配置说明
 
@@ -88,12 +90,12 @@ image-view
 
 - `authors`：生成 Debian control 的 `Maintainer` 字段，必须是非空真实联系人。
 - `homepage`：生成 `Homepage` 字段。
-- `icons`：deb 只消费 PNG；`icon.png`（64×64）与 `icon-256.png` 会安装到对应
-  hicolor 目录。NSIS 仍优先使用 `icon.ico`。
+- `icons`：deb 只消费 PNG；`icon.png`（64×64）与 `icon-256.png`、`icon-512.png`、
+  `icon-1024.png` 会安装到对应 hicolor 目录。NSIS 仍优先使用 `icon.ico`。
 - `[deb]`：包名、section、priority 与运行时依赖。cargo-packager 没有
   `$auto` 依赖模式，依赖需要手动维护。
-- `[[fileAssociations]]`：只影响 Linux 的 `.desktop` 文件，生成
-  `MimeType=...`；Windows 安装器继续使用
+- `[[fileAssociations]]`：在 Linux 上生成 `.desktop` 的 `MimeType=...`，在 macOS 上生成
+  `CFBundleDocumentTypes`；Windows 安装器继续使用
   `installer/nsis/image-view.nsi` 里的硬编码注册。
 
 ## 兼容性

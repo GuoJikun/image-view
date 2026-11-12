@@ -2,6 +2,14 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
+## [1.3.0] - 2026-11-12
+
+新增 macOS（Apple Silicon）打包支持。
+
+### 新增
+
+- 新增 macOS `.dmg` 打包配置与 `scripts/build-macos.sh`：仅构建 arm64，包含最低系统版本、DMG 窗口布局、文件关联、64～1024 px 图标与可选的签名/公证流程；构建与验证步骤见 `docs/BUILD-MACOS.md`。
+
 ## [1.2.0] - 2026-11-12
 
 新增 Debian/Ubuntu 打包支持。
