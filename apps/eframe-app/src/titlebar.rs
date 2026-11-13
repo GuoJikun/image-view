@@ -14,9 +14,11 @@ use eframe::egui::{
 };
 
 use crate::theme::{self, Palette};
+use crate::visuals;
 
-/// 标题栏高度（逻辑点）。
-const HEIGHT: f32 = 32.0;
+/// 标题栏高度（逻辑点）。Q9：32 → 36，仅高度变化，交互与圆角逻辑不动；
+/// 数值统一取自 `visuals::TITLEBAR_H`，避免多处硬编码。
+const HEIGHT: f32 = visuals::TITLEBAR_H;
 /// 单个窗口按钮的命中区域宽度。
 const CELL_W: f32 = 24.0;
 /// 相邻窗口按钮之间的间距。

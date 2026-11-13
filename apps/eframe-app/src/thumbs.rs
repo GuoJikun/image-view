@@ -11,6 +11,8 @@ use image::ImageEncoder as _;
 use iv_cache::LruCache;
 use iv_image_decode::decode_thumbnail;
 
+use crate::{icons, theme, visuals};
+
 /// 缩略图最长边（逻辑尺寸 64 px，按 2x DPI 预留）。
 pub const MAX_SIDE: u32 = 128;
 /// 内存中保留的缩略图张数。
@@ -18,12 +20,13 @@ pub const MAX_ENTRIES: usize = 512;
 /// 磁盘缓存预算；超过后删除最旧的文件。
 const DISK_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
 
-const STRIP_HEIGHT: f32 = 88.0;
-const ITEM_WIDTH: f32 = 76.0;
-const ITEM_HEIGHT: f32 = 56.0;
-const ITEM_GAP: f32 = 9.0;
-const ITEM_STEP: f32 = ITEM_WIDTH + ITEM_GAP;
-const ITEM_PADDING: f32 = 2.0;
+// 绘制常量统一从 `visuals` 取；缓存 / 解码 / 虚拟滚动算法一律不动。
+const STRIP_HEIGHT: f32 = visuals::STRIP_H;
+const ITEM_WIDTH: f32 = visuals::THUMB_W;
+const ITEM_HEIGHT: f32 = visuals::THUMB_H;
+const ITEM_GAP: f32 = visuals::THUMB_GAP;
+const ITEM_STEP: f32 = visuals::THUMB_STEP;
+const ITEM_PADDING: f32 = visuals::THUMB_PAD;
 /// 每批缩略图并行解码线程数；限制峰值内存（大图解码缓冲较大）。
 const DECODE_THREADS: usize = 2;
 
@@ -434,13 +437,16 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
         return output;
     }
 
-    let palette = crate::theme::palette(ui.ctx());
+    let palette = visuals::chrome_palette(ui.ctx(), theme::palette(ui.ctx()));
     let panel = egui::Panel::bottom("thumbnail_strip")
         .exact_size(STRIP_HEIGHT)
         .frame(
             egui::Frame::NONE
                 .fill(palette.strip)
-                .inner_margin(egui::Margin::symmetric(8, 16)),
+                .inner_margin(egui::Margin::symmetric(
+                    visuals::THUMB_PAD_H.round() as i8,
+                    visuals::THUMB_PAD_V.round() as i8,
+                )),
         )
         .show(ui, |ui| {
             // 缩略图条只有横向滚动，滚轮直接横向移动。
@@ -475,10 +481,41 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
                         );
                         let selected = current == Some(index);
                         let painter = ui.painter();
+                        let ppp = ui.ctx().pixels_per_point();
+                        let card = visuals::snap_rect(rect, ppp);
+                        let card_corner = egui::CornerRadius::same(visuals::snap_radius(
+                            visuals::THUMB_RADIUS,
+                            ppp,
+                        ));
 
-                        painter.rect_filled(rect, egui::CornerRadius::same(6), palette.tile);
-                        if response.hovered() && !selected {
-                            painter.rect_filled(rect, egui::CornerRadius::same(6), palette.hover);
+                        // 选中：卡片下方铺强调浅底 + 外扩 3 pt 的 2 pt 强调环（圆角 11）。
+                        if selected {
+                            painter.rect_filled(
+                                visuals::snap_rect(rect.expand(visuals::RING_EXPAND), ppp),
+                                egui::CornerRadius::same(visuals::snap_radius(
+                                    visuals::RING_RADIUS,
+                                    ppp,
+                                )),
+                                palette.accent_soft,
+                            );
+                        }
+                        painter.rect_filled(card, card_corner, palette.tile);
+
+                        // hover：中性叠色 6% + 1 pt 控件强描边；选中项 hover 不改变环。
+                        let control = if response.is_pointer_button_down_on() {
+                            visuals::ControlState::Pressed
+                        } else if response.hovered() {
+                            visuals::ControlState::Hovered
+                        } else {
+                            visuals::ControlState::Default
+                        };
+                        let style = visuals::resolve_state(
+                            &palette,
+                            control,
+                            visuals::WidgetKind::ThumbCard,
+                        );
+                        if style.bg.a() > 0 {
+                            painter.rect_filled(card, card_corner, style.bg);
                         }
 
                         if let Some(texture) = cache.get(&files[index]) {
@@ -504,26 +541,50 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
                                 );
                             }
                         } else {
-                            painter.text(
-                                rect.center(),
-                                egui::Align2::CENTER_CENTER,
-                                "…",
-                                egui::FontId::proportional(18.0),
-                                palette.text3,
+                            // 占位：20 pt `Image` 线稿图标（弱文字 @50%），取消 `…` 文本。
+                            icons::paint(
+                                painter,
+                                egui::Rect::from_center_size(
+                                    rect.center(),
+                                    egui::Vec2::splat(visuals::ICON_FRAME),
+                                ),
+                                icons::Icon::Image,
+                                visuals::with_alpha(palette.text3, 128),
                             );
                         }
 
                         painter.rect_stroke(
-                            rect,
-                            egui::CornerRadius::same(6),
-                            egui::Stroke::new(1.0, palette.tile_border),
+                            card,
+                            card_corner,
+                            egui::Stroke::new(visuals::STRUCTURE_LINE, palette.tile_border),
                             egui::StrokeKind::Inside,
                         );
-                        if selected {
+                        if let Some(stroke) = style.stroke {
                             painter.rect_stroke(
-                                rect.expand(3.0),
-                                egui::CornerRadius::same(9),
-                                egui::Stroke::new(2.0, palette.accent),
+                                card,
+                                card_corner,
+                                stroke,
+                                egui::StrokeKind::Inside,
+                            );
+                        }
+                        if selected {
+                            // 卡片内 1 pt 白 @25% 内描边。
+                            painter.rect_stroke(
+                                card,
+                                card_corner,
+                                egui::Stroke::new(
+                                    visuals::STRUCTURE_LINE,
+                                    egui::Color32::from_white_alpha(64),
+                                ),
+                                egui::StrokeKind::Inside,
+                            );
+                            painter.rect_stroke(
+                                visuals::snap_rect(rect.expand(visuals::RING_EXPAND), ppp),
+                                egui::CornerRadius::same(visuals::snap_radius(
+                                    visuals::RING_RADIUS,
+                                    ppp,
+                                )),
+                                egui::Stroke::new(visuals::RING_W, palette.accent),
                                 egui::StrokeKind::Middle,
                             );
                         }
@@ -543,10 +604,11 @@ pub fn strip(ui: &mut egui::Ui, state: StripState<'_>) -> StripOutput {
         });
 
     let rect = panel.response.rect;
+    let y = visuals::snap_line_center(rect.top() + 0.5, ui.ctx().pixels_per_point());
     ui.painter().hline(
         rect.x_range(),
-        rect.top() + 0.5,
-        egui::Stroke::new(1.0, palette.border),
+        y,
+        egui::Stroke::new(visuals::STRUCTURE_LINE, palette.structure_stroke),
     );
 
     output
@@ -687,11 +749,14 @@ mod tests {
 
     #[test]
     fn visible_range_virtualizes_large_lists() {
-        assert_eq!(visible_range(0.0, 800.0, 3000), 0..11);
+        // 期望值全部由 ITEM_STEP 派生：卡片尺寸变化不会让「虚拟化」断言失效。
+        let per_view = (800.0 / ITEM_STEP).ceil() as usize + 1;
+        assert_eq!(visible_range(0.0, 800.0, 3000), 0..per_view);
+
         let middle = visible_range(ITEM_STEP * 1000.0, 800.0, 3000);
         assert!(middle.start >= 999);
         assert!(middle.end > middle.start);
-        assert!(middle.end < 1012);
+        assert!(middle.end <= 1000 + per_view + 1);
         assert_eq!(visible_range(0.0, 800.0, 0), 0..0);
     }
 
@@ -755,5 +820,46 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// QA 回归测试：卡片几何与纹理策略零回退（PRD §5.5 / R-8 / Q5）
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod qa_redesign_tests {
+    use super::*;
+
+    #[test]
+    fn item_step_is_92pt_and_equals_card_width_plus_gap() {
+        assert!((ITEM_STEP - 92.0).abs() < 1e-4, "ITEM_STEP={ITEM_STEP}");
+        assert!((ITEM_WIDTH - 80.0).abs() < 1e-4);
+        assert!((ITEM_HEIGHT - 60.0).abs() < 1e-4);
+        assert!((ITEM_GAP - 12.0).abs() < 1e-4);
+        assert!((ITEM_STEP - (ITEM_WIDTH + ITEM_GAP)).abs() < 1e-4);
+        assert!((visuals::THUMB_STEP - ITEM_STEP).abs() < 1e-4);
+        assert_eq!(MAX_SIDE, 128, "Q5：纹理最长边保持 128");
+        assert_eq!(MAX_ENTRIES, 512, "缩略图 LRU 保持 512");
+        assert_eq!(DISK_BUDGET_BYTES, 256 * 1024 * 1024, "磁盘预算保持 256MB");
+        assert_eq!(DECODE_THREADS, 2, "解码线程保持 2");
+    }
+
+    #[test]
+    fn visible_range_follows_the_92pt_step_with_hardcoded_expectations() {
+        // 独立期望值：用 PRD 的 92 pt 步进硬编码，不复用实现变量，
+        // 避免工程师改写后的「由 ITEM_STEP 派生」断言退化成同义反复。
+        assert_eq!(visible_range(0.0, 800.0, 3000), 0..10);
+        assert_eq!(visible_range(92_000.0, 800.0, 3000), 999..1010);
+        assert_eq!(visible_range(0.0, 92.0, 3000), 0..2);
+        assert_eq!(visible_range(0.0, 800.0, 0), 0..0);
+    }
+
+    #[test]
+    fn item_rect_places_cards_on_the_92pt_grid() {
+        let rect = item_rect(egui::pos2(0.0, 0.0), 3);
+        assert!((rect.min.x - 276.0).abs() < 1e-4, "3 × 92 = 276");
+        assert!((rect.width() - 80.0).abs() < 1e-4);
+        assert!((rect.height() - 60.0).abs() < 1e-4);
     }
 }

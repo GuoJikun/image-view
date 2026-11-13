@@ -6,6 +6,7 @@ mod document;
 mod errors;
 mod i18n;
 mod icons;
+mod overlay;
 mod theme;
 mod thumbs;
 // 非 Linux 平台使用系统装饰、不调用本模块；保留编译以便在本机检查类型。
@@ -14,6 +15,7 @@ mod titlebar;
 mod ui;
 mod update;
 mod viewer;
+mod visuals;
 
 use std::ffi::OsStr;
 use std::path::PathBuf;

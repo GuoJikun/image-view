@@ -17,6 +17,7 @@ use crate::cache::ImageCache;
 use crate::document::LoadedImage;
 use crate::errors;
 use crate::i18n::{self, Key as Text, Language};
+use crate::overlay;
 use crate::theme;
 use crate::thumbs::{self, ThumbnailCache, ThumbnailLoader};
 #[cfg(target_os = "linux")]
@@ -24,6 +25,7 @@ use crate::titlebar;
 use crate::ui;
 use crate::update::{UpdateState, Updater};
 use crate::viewer::{self, ViewMode, ViewState};
+use crate::visuals;
 
 /// 幻灯片自动前进间隔。
 const SLIDESHOW_INTERVAL: Duration = Duration::from_secs(3);
@@ -71,6 +73,48 @@ struct Slideshow {
     next_at: Instant,
 }
 
+/// 可重放的本地化文本：不保存渲染后的字符串，语言切换后每帧重译（C9）。
+///
+/// 只复用 `i18n.rs` / `errors.rs` 的现有函数与 `Key`，两文件零改动。
+enum LocalizedText {
+    Key { key: Text, args: Vec<String> },
+    Load(LoadError),
+    FileOp(fileops::FileOpError),
+}
+
+impl LocalizedText {
+    fn key(key: Text) -> Self {
+        Self::Key {
+            key,
+            args: Vec::new(),
+        }
+    }
+
+    fn key_with(key: Text, args: Vec<String>) -> Self {
+        Self::Key { key, args }
+    }
+
+    fn render(&self) -> String {
+        match self {
+            Self::Key { key, args } => {
+                let refs: Vec<&dyn std::fmt::Display> = args
+                    .iter()
+                    .map(|arg| arg as &dyn std::fmt::Display)
+                    .collect();
+                i18n::tf(*key, &refs)
+            }
+            Self::Load(error) => errors::load_error_text(error),
+            Self::FileOp(error) => errors::file_op_error_text(error),
+        }
+    }
+}
+
+/// 短提示：可重放文本 + 起始时刻（三段 alpha 由 `visuals::Motion` 驱动）。
+struct Notice {
+    text: LocalizedText,
+    since: Instant,
+}
+
 pub struct ImageViewerApp {
     folder: FolderNav,
     image: Option<LoadedImage>,
@@ -79,7 +123,9 @@ pub struct ImageViewerApp {
     caps: Caps,
     generation: u64,
     pending: Option<PathBuf>,
-    error: Option<String>,
+    error: Option<LocalizedText>,
+    /// 错误卡片淡入起点；错误常驻直到关闭 / 重试 / 换图成功（Q7）。
+    error_since: Option<Instant>,
     /// 最近一次失败、可重试的路径。
     error_path: Option<PathBuf>,
     title_cache: String,
@@ -93,8 +139,8 @@ pub struct ImageViewerApp {
     settings: Settings,
     /// 启动参数与上次会话只恢复一次。
     session_restored: bool,
-    /// 状态栏短提示：文本与过期时刻。
-    notice: Option<(String, Instant)>,
+    /// 短提示（右下 toast 浮层）：文本与起始时刻。
+    notice: Option<Notice>,
     /// 缩略图内存 LRU，与主纹理缓存预算分离。
     thumbnails: ThumbnailCache,
     thumbnail_loader: ThumbnailLoader,
@@ -106,8 +152,8 @@ pub struct ImageViewerApp {
     thumbnail_follow: bool,
     /// 上次重置缩略图作用域的目录。
     thumbnail_dir: PathBuf,
-    /// 全屏时工具栏中央标题的显示截止时刻。
-    fullscreen_title_until: Option<Instant>,
+    /// 全屏文件名胶囊的起始时刻；三段 alpha 后淡出（总时长 3 s 不变）。
+    fullscreen_title_since: Option<Instant>,
     /// 上次应用的主题偏好，避免每帧重装样式。
     applied_theme: Option<ThemeSetting>,
     /// 自动更新控制器与窗口开关。
@@ -133,6 +179,8 @@ impl ImageViewerApp {
     fn with_context(ctx: egui::Context, open_path: Option<PathBuf>, settings: Settings) -> Self {
         i18n::set_language(settings.language);
         theme::apply(&ctx, settings.theme);
+        // Q6：不新增设置项；「减少动效」默认关闭，仅保留常量化降级入口。
+        visuals::set_reduced_motion(&ctx, false);
         let applied_theme = Some(settings.theme);
         let repaint_ctx = ctx.clone();
         Self {
@@ -147,6 +195,7 @@ impl ImageViewerApp {
             generation: 0,
             pending: None,
             error: None,
+            error_since: None,
             error_path: None,
             title_cache: String::new(),
             show_help: false,
@@ -165,7 +214,7 @@ impl ImageViewerApp {
             thumbnail_failed: HashSet::new(),
             thumbnail_follow: true,
             thumbnail_dir: PathBuf::new(),
-            fullscreen_title_until: None,
+            fullscreen_title_since: None,
             applied_theme,
             updater: Updater::new(),
             show_update: false,
@@ -221,6 +270,18 @@ impl ImageViewerApp {
         self.needs_repaint = true;
     }
 
+    /// 设置错误并记录淡入起点（错误卡片 180 ms 一次性淡入，之后常驻）。
+    fn set_error(&mut self, text: LocalizedText) {
+        self.error = Some(text);
+        self.error_since = Some(Instant::now());
+    }
+
+    /// 关闭 / 重试 / 换图成功时清除错误。
+    fn clear_error(&mut self) {
+        self.error = None;
+        self.error_since = None;
+    }
+
     fn open_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter(i18n::t(Text::OpenFilter), iv_domain::SUPPORTED_EXTENSIONS)
@@ -241,14 +302,20 @@ impl ImageViewerApp {
                 self.request_load(first);
             } else {
                 self.reset_thumbnail_scope();
-                self.error = Some(i18n::tf(Text::ErrorNoImagesInDir, &[&path.display()]));
+                self.set_error(LocalizedText::key_with(
+                    Text::ErrorNoImagesInDir,
+                    vec![path.display().to_string()],
+                ));
                 self.error_path = None;
             }
             return;
         }
 
         if !path.exists() {
-            self.error = Some(i18n::tf(Text::ErrorFileMissing, &[&path.display()]));
+            self.set_error(LocalizedText::key_with(
+                Text::ErrorFileMissing,
+                vec![path.display().to_string()],
+            ));
             self.error_path = None;
             return;
         }
@@ -396,7 +463,7 @@ impl ImageViewerApp {
             return;
         };
         ctx.copy_text(path.display().to_string());
-        self.set_notice(i18n::t(Text::NoticePathCopied));
+        self.set_notice(LocalizedText::key(Text::NoticePathCopied));
     }
 
     fn reveal_current(&mut self) {
@@ -405,7 +472,7 @@ impl ImageViewerApp {
         };
         if let Err(error) = fileops::reveal_in_file_manager(&path) {
             log::warn!("无法在文件管理器中定位 {}：{error}", path.display());
-            self.error = Some(errors::file_op_error_text(&error));
+            self.set_error(LocalizedText::FileOp(error));
             self.error_path = None;
         }
     }
@@ -414,13 +481,16 @@ impl ImageViewerApp {
     fn open_logs(&mut self) {
         let dir = logging::log_dir();
         if let Err(error) = std::fs::create_dir_all(&dir) {
-            self.error = Some(i18n::tf(Text::ErrorCreateLogDir, &[&dir.display(), &error]));
+            self.set_error(LocalizedText::key_with(
+                Text::ErrorCreateLogDir,
+                vec![dir.display().to_string(), error.to_string()],
+            ));
             self.error_path = None;
             return;
         }
         if let Err(error) = fileops::open_folder(&dir) {
             log::warn!("无法打开日志目录 {}：{error}", dir.display());
-            self.error = Some(errors::file_op_error_text(&error));
+            self.set_error(LocalizedText::FileOp(error));
             self.error_path = None;
         }
     }
@@ -432,9 +502,9 @@ impl ImageViewerApp {
             None => {
                 let path = std::env::temp_dir().join("image-view-THIRD-PARTY-LICENSES.txt");
                 if let Err(error) = std::fs::write(&path, THIRD_PARTY_LICENSES) {
-                    self.error = Some(i18n::tf(
+                    self.set_error(LocalizedText::key_with(
                         Text::ErrorWriteLicenses,
-                        &[&path.display(), &error],
+                        vec![path.display().to_string(), error.to_string()],
                     ));
                     self.error_path = None;
                     return;
@@ -444,7 +514,7 @@ impl ImageViewerApp {
         };
         if let Err(error) = fileops::open_file(&path) {
             log::warn!("无法打开许可证文件 {}：{error}", path.display());
-            self.error = Some(errors::file_op_error_text(&error));
+            self.set_error(LocalizedText::FileOp(error));
             self.error_path = None;
         }
     }
@@ -459,7 +529,7 @@ impl ImageViewerApp {
 
         if let Err(error) = fileops::delete_to_trash(&path) {
             log::warn!("删除失败 {}：{error}", path.display());
-            self.error = Some(errors::file_op_error_text(&error));
+            self.set_error(LocalizedText::FileOp(error));
             self.error_path = None;
             return;
         }
@@ -471,7 +541,10 @@ impl ImageViewerApp {
         self.thumbnail_failed.remove(&path);
         self.image = None;
         self.view = ViewState::default();
-        self.set_notice(i18n::tf(Text::NoticeMovedToTrash, &[&name]));
+        self.set_notice(LocalizedText::key_with(
+            Text::NoticeMovedToTrash,
+            vec![name],
+        ));
 
         match self.folder.remove_current() {
             Some(next) => self.request_load(next),
@@ -479,33 +552,68 @@ impl ImageViewerApp {
                 // 目录已清空：取消在途请求，回到空状态。
                 self.generation = self.loader.cancel_pending();
                 self.pending = None;
-                self.error = None;
+                self.clear_error();
                 self.error_path = None;
                 self.needs_repaint = true;
             }
         }
     }
 
-    fn set_notice(&mut self, text: impl Into<String>) {
-        self.notice = Some((text.into(), Instant::now() + NOTICE_DURATION));
+    fn set_notice(&mut self, text: LocalizedText) {
+        // 新提示替换文本并重置计时（B8）。
+        self.notice = Some(Notice {
+            text,
+            since: Instant::now(),
+        });
     }
 
+    /// 驱动 toast 三段计时；总时长保持 4 s（Z1 零回退口径）。
     fn tick_notice(&mut self, ctx: &egui::Context) {
-        let Some((_, until)) = &self.notice else {
+        let Some(notice) = &self.notice else {
             return;
         };
-        let now = Instant::now();
-        if now >= *until {
+        let motion = visuals::motion(ctx);
+        let total = NOTICE_DURATION.max(Duration::from_millis(u64::from(motion.toast_total_ms())));
+        let elapsed = Instant::now().saturating_duration_since(notice.since);
+        if elapsed >= total {
             self.notice = None;
         } else {
-            ctx.request_repaint_after(*until - now);
+            ctx.request_repaint_after((total - elapsed).min(Duration::from_millis(60)));
         }
     }
 
-    /// 全屏时在工具栏中央显示“文件名 · 序号”；3 秒无操作后淡出，移动鼠标唤回。
+    /// 错误卡片只做一次性 180 ms 淡入：淡入期间请求重绘，之后常驻且不再持续重绘。
+    /// `error_since` 保留为淡入起点，供 `overlay::ErrorCardState` 计算 alpha。
+    fn tick_error(&self, ctx: &egui::Context) {
+        let Some(since) = self.error_since else {
+            return;
+        };
+        let in_ms = u64::from(visuals::motion(ctx).error_in_ms);
+        let total = Duration::from_millis(in_ms);
+        let elapsed = Instant::now().saturating_duration_since(since);
+        if elapsed < total {
+            ctx.request_repaint_after((total - elapsed).min(Duration::from_millis(60)));
+        }
+    }
+
+    /// toast 三段 alpha；`None` 表示动效结束（不绘制、不注册命中区）。
+    fn notice_alpha(&self, ctx: &egui::Context, now: Instant) -> Option<f32> {
+        let notice = self.notice.as_ref()?;
+        let motion = visuals::motion(ctx);
+        let elapsed = now.saturating_duration_since(notice.since).as_secs_f32() * 1000.0;
+        visuals::three_phase_alpha(
+            elapsed,
+            motion.toast_in_ms as f32,
+            motion.toast_hold_ms as f32,
+            motion.toast_out_ms as f32,
+        )
+    }
+
+    /// 全屏文件名胶囊：200/2400/400 = 3.0 s；移动鼠标 / 按键唤回（行为不变）。
+    /// 返回值仍作为 `ToolbarState.center_title` 传值，由画布胶囊绘制，不再画在顶栏。
     fn fullscreen_title(&mut self, ctx: &egui::Context) -> Option<(String, f32)> {
         if !self.fullscreen {
-            self.fullscreen_title_until = None;
+            self.fullscreen_title_since = None;
             return None;
         }
         self.image.as_ref()?;
@@ -526,17 +634,26 @@ impl ImageViewerApp {
                 })
         });
         if active {
-            self.fullscreen_title_until = Some(now + FULLSCREEN_TITLE_DURATION);
+            self.fullscreen_title_since = Some(now);
         }
 
-        let until = self.fullscreen_title_until?;
-        if now >= until {
-            self.fullscreen_title_until = None;
+        let since = self.fullscreen_title_since?;
+        let motion = visuals::motion(ctx);
+        let elapsed = now.saturating_duration_since(since).as_secs_f32() * 1000.0;
+        let total_ms =
+            (FULLSCREEN_TITLE_DURATION.as_secs_f32() * 1000.0).max(motion.title_total_ms() as f32);
+        let alpha = visuals::three_phase_alpha(
+            elapsed,
+            motion.title_in_ms as f32,
+            motion.title_hold_ms as f32,
+            motion.title_out_ms as f32,
+        );
+        let Some(alpha) = alpha else {
+            self.fullscreen_title_since = None;
             return None;
-        }
-        let remaining = until - now;
-        ctx.request_repaint_after(remaining.min(Duration::from_millis(60)));
-        let alpha = (remaining.as_secs_f32() / 0.6).clamp(0.0, 1.0);
+        };
+        let remaining_ms = (total_ms - elapsed).max(1.0) as u64;
+        ctx.request_repaint_after(Duration::from_millis(remaining_ms.min(60)));
 
         let image = self.image.as_ref()?;
         let title = match self.folder.position() {
@@ -548,12 +665,15 @@ impl ImageViewerApp {
 
     fn request_load(&mut self, path: PathBuf) {
         if !path.is_file() {
-            self.error = Some(i18n::tf(Text::ErrorFileMissing, &[&path.display()]));
+            self.set_error(LocalizedText::key_with(
+                Text::ErrorFileMissing,
+                vec![path.display().to_string()],
+            ));
             self.error_path = None;
             return;
         }
 
-        self.error = None;
+        self.clear_error();
         self.error_path = None;
 
         // 缓存命中：直接显示；同时推进代号，让在途解码结果全部过期，
@@ -577,7 +697,7 @@ impl ImageViewerApp {
         // 当前图片始终入缓存，回翻时可直接命中。
         self.cache.insert(image.clone(), &path);
         self.image = Some(image);
-        self.error = None;
+        self.clear_error();
         self.error_path = None;
         // 视图重置后 Fit 需要下一帧才能用画布尺寸重算。
         self.needs_repaint = true;
@@ -683,11 +803,15 @@ impl ImageViewerApp {
                 self.show_image(LoadedImage::from_decoded(ctx, path, decoded));
             }
             Err(error) => {
-                let text = errors::load_error_text(&error);
-                log::error!("failed to load {}: {text}", path.display());
-                self.error = Some(text);
+                log::error!(
+                    "failed to load {}: {}",
+                    path.display(),
+                    errors::load_error_text(&error)
+                );
+                // 保存结构化错误对象（move）：语言切换后由 LocalizedText::render 重译（C9）。
+                self.set_error(LocalizedText::Load(error));
                 self.error_path = Some(path);
-                // 加载失败时停下，不让错误横幅和自动翻页互相打断。
+                // 加载失败时停下，不让错误卡片和自动翻页互相打断。
                 self.slideshow = None;
             }
         }
@@ -798,9 +922,9 @@ impl ImageViewerApp {
         if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::F11)) {
             self.fullscreen = !self.fullscreen;
             if self.fullscreen {
-                self.fullscreen_title_until = Some(Instant::now() + FULLSCREEN_TITLE_DURATION);
+                self.fullscreen_title_since = Some(Instant::now());
             } else {
-                self.fullscreen_title_until = None;
+                self.fullscreen_title_since = None;
             }
             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.fullscreen));
         }
@@ -808,7 +932,7 @@ impl ImageViewerApp {
         if ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape)) {
             if self.fullscreen {
                 self.fullscreen = false;
-                self.fullscreen_title_until = None;
+                self.fullscreen_title_since = None;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
             } else {
                 self.show_help = false;
@@ -854,7 +978,7 @@ impl ImageViewerApp {
         );
     }
 
-    fn canvas(&mut self, ui: &mut egui::Ui) -> Option<ui::Action> {
+    fn canvas(&mut self, ui: &mut egui::Ui) -> (Option<ui::Action>, egui::Rect) {
         let texture = self.image.as_ref().map(|image| &image.texture);
         let image_size = self
             .image
@@ -865,45 +989,30 @@ impl ImageViewerApp {
         let palette = theme::palette(ui.ctx());
         let mut action = None;
         let mut open_clicked = false;
+        let mut canvas_rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::Vec2::ZERO);
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(palette.canvas))
             .show(ui, |ui| {
                 let output = viewer::canvas(ui, &mut self.view, texture, image_size, &palette);
+                canvas_rect = output.canvas_rect;
                 if output.open_clicked {
                     open_clicked = true;
                 }
                 if !has_image {
                     return;
                 }
-                output.response.context_menu(|ui| {
-                    if ui.button(i18n::t(Text::CopyPathMenu)).clicked() {
-                        action = Some(ui::Action::CopyPath);
-                        ui.close();
-                    }
-                    if ui.button(i18n::t(Text::RevealInExplorer)).clicked() {
-                        action = Some(ui::Action::RevealInExplorer);
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui
-                        .button(
-                            egui::RichText::new(i18n::t(Text::MoveToTrashMenu))
-                                .color(palette.danger),
-                        )
-                        .clicked()
-                    {
-                        action = Some(ui::Action::Delete);
-                        ui.close();
-                    }
-                });
+                // 右键菜单内容统一由 overlay 的 S3 菜单共用件绘制（P0-6）。
+                output
+                    .response
+                    .context_menu(|ui| overlay::context_menu_content(ui, &palette, &mut action));
             });
 
         if open_clicked {
             self.open_dialog();
         }
 
-        action
+        (action, canvas_rect)
     }
 
     fn sync_title(&mut self, ctx: &egui::Context) {
@@ -936,6 +1045,12 @@ impl eframe::App for ImageViewerApp {
             self.applied_theme = Some(self.settings.theme);
         }
 
+        // Q6/Q9：全屏态、键盘导航、减少动效一律每帧从 ctx 读取，写进
+        // ctx.data 的临时槽位；不改 ToolbarState、不新增设置项/线程/定时器。
+        visuals::update_keyboard_nav(ctx);
+        let viewport_fullscreen = ctx.input(|input| input.viewport().fullscreen.unwrap_or(false));
+        visuals::set_fullscreen(ctx, self.fullscreen || viewport_fullscreen);
+
         let max_texture_side = ctx.input(|input| input.max_texture_side);
         if max_texture_side > 0 {
             self.caps = Caps::from_texture_side(max_texture_side);
@@ -963,6 +1078,7 @@ impl eframe::App for ImageViewerApp {
         }
         self.tick_slideshow(ctx);
         self.tick_notice(ctx);
+        self.tick_error(ctx);
 
         // 标题/工具栏在画布之前绘制；先用上一帧画布尺寸重算 Fit，
         // 避免加载或旋转后标题短暂显示上一张/上一个角度的百分比。
@@ -1006,6 +1122,7 @@ impl eframe::App for ImageViewerApp {
         #[cfg(not(target_os = "linux"))]
         let windowed = false;
 
+        // 全屏文件名仍沿用原 3 s 三段计时，但改由画布内 Area 绘制（不占布局）。
         let center_title = self.fullscreen_title(ui.ctx());
         let toolbar_state = ui::ToolbarState {
             can_prev: self.folder.can_prev(),
@@ -1019,18 +1136,14 @@ impl eframe::App for ImageViewerApp {
             theme: self.settings.theme,
             language: self.settings.language,
             check_updates_on_startup: self.settings.check_updates_on_startup,
-            center_title,
+            center_title: center_title.clone(),
         };
         if let Some(action) = ui::toolbar(ui, &toolbar_state) {
             self.handle_action(ui.ctx(), action);
         }
 
-        let can_retry = self.error_path.is_some();
-        if ui::error_banner(ui, &mut self.error, can_retry)
-            && let Some(path) = self.error_path.take()
-        {
-            self.request_load(path);
-        }
+        // 原 `ui::error_banner` 的 `Panel::top` 已彻底删除：错误卡片改为画布内
+        // `Area`（Order::Middle）浮层，不参与布局切分，画布可用高度恒定。
 
         let status = ui::StatusState {
             dimensions: self.image.as_ref().map(LoadedImage::dimensions_text),
@@ -1044,7 +1157,6 @@ impl eframe::App for ImageViewerApp {
                 .show_color_status
                 .then(|| self.image.as_ref()?.color_label())
                 .flatten(),
-            notice: self.notice.as_ref().map(|(text, _)| text.clone()),
             rounded_corners: windowed,
         };
         ui::status_bar(ui, &status);
@@ -1068,9 +1180,64 @@ impl eframe::App for ImageViewerApp {
             self.warm_thumbnails(output.visible);
         }
 
-        if let Some(action) = self.canvas(ui) {
+        let (canvas_action, canvas_rect) = self.canvas(ui);
+        if let Some(action) = canvas_action {
             self.handle_action(ui.ctx(), action);
         }
+        // 画布内浮层：错误卡片 / toast / 全屏文件名胶囊。
+        // 必须在所有 Panel 与 CentralPanel 之后调用，并基于本帧的 canvas_rect 定位；
+        // 三者都用 Area（Order::Middle）叠加，不占布局。放在帮助/更新窗口之前，
+        // 保证窗口始终压在画布浮层之上。颜色与文案每帧重取，因此切换主题/语言后
+        // 已显示的错误卡片也会即时刷新（C9）。
+        let now = Instant::now();
+        let motion = visuals::motion(ui.ctx());
+        let palette = theme::palette(ui.ctx());
+        // 理论上 error 存在时 error_since 必存在；缺时间戳时视为淡入已完成。
+        let error_since = self
+            .error_since
+            .unwrap_or_else(|| now - Duration::from_millis(u64::from(motion.error_in_ms)));
+        let error = self.error.as_ref().map(|text| overlay::ErrorCardState {
+            text: text.render(),
+            can_retry: self.error_path.is_some(),
+            since: error_since,
+        });
+        // alpha ≤ 0 时完全不下发浮层状态，避免注册任何 interact（B10）。
+        let toast = match (self.notice.as_ref(), self.notice_alpha(ui.ctx(), now)) {
+            (Some(notice), Some(alpha)) if alpha > 0.0 => Some(overlay::ToastState {
+                text: notice.text.render(),
+                since: notice.since,
+            }),
+            _ => None,
+        };
+        let title = center_title
+            .as_ref()
+            .map(|(text, alpha)| overlay::TitleCapsuleState {
+                text: text.clone(),
+                alpha: *alpha,
+            });
+
+        match overlay::draw_all(
+            ui.ctx(),
+            overlay::OverlayState {
+                canvas_rect,
+                palette,
+                error,
+                toast,
+                title,
+                motion,
+            },
+        ) {
+            overlay::ErrorAction::Dismiss => self.clear_error(),
+            overlay::ErrorAction::Retry => {
+                if let Some(path) = self.error_path.take() {
+                    self.request_load(path);
+                } else {
+                    self.clear_error();
+                }
+            }
+            overlay::ErrorAction::None => {}
+        }
+
         ui::help_window(ui.ctx(), &mut self.show_help);
         if let Some(command) = ui::update_window(
             ui.ctx(),
