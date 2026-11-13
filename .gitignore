@@ -1,4 +1,4 @@
-/target
-/dist
-/apps/eframe-app/dist
+target
+dist
+node_modules
 /.workbuddy
