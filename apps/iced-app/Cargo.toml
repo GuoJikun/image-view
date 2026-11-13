@@ -1,0 +1,45 @@
+[package]
+name = "image-view-iced"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "ImageViewer 的 Iced GUI POC"
+
+# 图片格式解码能力与 eframe 应用保持一致，便于在同一批夹具上比较两套 GUI。
+[features]
+default = ["avif", "heic", "svg"]
+avif = ["iv-image-decode/avif"]
+heic = ["iv-image-decode/heic"]
+svg = ["iv-image-decode/svg"]
+
+[dependencies]
+iv-application = { path = "../../crates/iv-application" }
+iv-cache = { path = "../../crates/iv-cache" }
+iv-domain = { path = "../../crates/iv-domain" }
+iv-image-decode = { path = "../../crates/iv-image-decode" }
+iv-image-render = { path = "../../crates/iv-image-render" }
+iv-infra = { path = "../../crates/iv-infra" }
+iv-metadata = { path = "../../crates/iv-metadata" }
+iv-platform = { path = "../../crates/iv-platform" }
+
+iced = { workspace = true, features = [
+    "wgpu",
+    "canvas",
+    "image-without-codecs",
+    "thread-pool",
+    "crisp",
+    "x11",
+    "wayland",
+] }
+emath = { workspace = true }
+# 只用于窗口图标与测试夹具，不承担图片解码。
+image = { workspace = true, features = ["png"] }
+rfd = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
+
+[dev-dependencies]
+image = { workspace = true, features = ["png", "jpeg", "gif"] }
