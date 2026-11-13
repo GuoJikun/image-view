@@ -371,6 +371,14 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
     }
 }
 
+/// 单次同步解码入口。
+///
+/// `Loader` 面向单窗口 GUI 的 latest-wins 队列；其他 GUI adapter（如 Tauri）
+/// 需要自己的请求调度时，可直接调用本函数复用同一套格式分派、ICC 与限额逻辑。
+pub fn decode_image(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    decode(path, caps, purpose)
+}
+
 /// 按缩略图尺寸解码；复用主图路径的格式分派、ICC 转换与错误类型。
 pub fn decode_thumbnail(path: &Path, max_side: u32) -> Result<Decoded, LoadError> {
     let side = max_side as usize;

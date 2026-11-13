@@ -221,6 +221,9 @@ apps/
       build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
       build-deb.sh       在 Linux/WSL2 中构建 .deb
       build-macos.sh     在 Apple Silicon Mac 上构建 arm64 .dmg
+  tauri-app/      Tauri 2 + Vue 3 前端 POC（仅 gui-tauri 分支）
+    src-tauri/    Rust 适配层：Commands、Events、iviewer:// 协议
+    frontend/     Vue 3 + TypeScript + Vite + Pinia
 crates/
   iv-domain/       排序、语言、主题与支持的扩展名
   iv-files/        目录扫描与自然/时间排序
@@ -257,6 +260,7 @@ docs/
   NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
   BUILD-DEB.md       WSL2/Linux 构建 .deb 的依赖、步骤与配置说明
   BUILD-MACOS.md     Apple Silicon 构建 arm64 .dmg 的步骤与签名说明
+  TAURI-POC.md      Tauri 2 + Vue 3 POC 的 IPC、验收状态与已知缺口
 CHANGELOG.md    各发布版本的用户可见变更
 ```
 
@@ -271,6 +275,17 @@ powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.p
 ```
 
 `build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --all --check` 与 `cargo test --workspace --no-default-features`。
+
+Tauri 2 + Vue 3 POC 位于 `apps/tauri-app/`，只存在于 `gui-tauri` 分支，不参与默认 workspace 构建产物发布：
+
+```powershell
+cd apps\tauri-app
+npm install
+npm run dev                 # tauri dev（自动启动 frontend 的 Vite）
+npm run build               # tauri build（release + 安装包）
+```
+
+IPC 边界、验收状态与已知缺口见 [docs/TAURI-POC.md](docs/TAURI-POC.md)。
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
 

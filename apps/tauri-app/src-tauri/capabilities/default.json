@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口只开放事件订阅与窗口自身能力；业务操作全部走显式 Command。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

@@ -1,0 +1,38 @@
+[package]
+name = "image-view-tauri"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "image-view 的 Tauri 2 + Vue 3 GUI adapter（POC）"
+build = "build.rs"
+
+# 与 eframe-app 保持同一组图片格式特性，业务能力由 workspace crates 提供。
+[features]
+default = ["avif", "heic", "svg"]
+avif = ["iv-image-decode/avif"]
+heic = ["iv-image-decode/heic"]
+svg = ["iv-image-decode/svg"]
+
+[dependencies]
+iv-application = { path = "../../../crates/iv-application" }
+iv-cache = { path = "../../../crates/iv-cache" }
+iv-domain = { path = "../../../crates/iv-domain" }
+iv-image-decode = { path = "../../../crates/iv-image-decode" }
+iv-infra = { path = "../../../crates/iv-infra" }
+iv-platform = { path = "../../../crates/iv-platform" }
+
+tauri = { version = "2.12.5", features = [] }
+tauri-plugin-single-instance = "2.5.5"
+serde = { workspace = true }
+uuid = { version = "1", features = ["v4"] }
+# 自定义协议把解码结果编码为 WebView 可解码的 PNG；不经过 JSON/Base64。
+image = { workspace = true, features = ["png"] }
+rfd = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }

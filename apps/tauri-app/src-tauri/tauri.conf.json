@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "image-view-tauri",
+  "version": "1.3.0",
+  "identifier": "com.guojikun.imageview.tauri",
+  "build": {
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "../frontend" },
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "../frontend" },
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "image-view",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 640,
+        "minHeight": 420,
+        "dragDropEnabled": true,
+        "backgroundColor": "#12161c"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' data: blob: http://iviewer.localhost iviewer:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  }
+}

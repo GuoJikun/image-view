@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/eframe-app", "crates/*"]
+members = ["apps/eframe-app", "apps/tauri-app/src-tauri", "crates/*"]
 default-members = ["apps/eframe-app"]
 
 [workspace.package]
