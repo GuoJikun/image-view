@@ -556,16 +556,31 @@ pub struct StatusState {
     pub color: Option<String>,
     /// 短暂提示，例如“已复制路径”。
     pub notice: Option<String>,
+    /// 窗口四角是否做圆角。仅 Linux 自绘装饰且窗口化时为 `true`，
+    /// 其余平台与贴边状态保持系统默认的直角。
+    pub rounded_corners: bool,
 }
 
 pub fn status_bar(ui: &mut egui::Ui, state: &StatusState) {
     let palette = theme::palette(ui.ctx());
+    // Linux 透明背景：窗口化时底部两角留圆角、透出桌面；贴边时保持直角。
+    let radius = if state.rounded_corners {
+        crate::titlebar::CORNER_RADIUS as u8
+    } else {
+        0
+    };
     let panel = egui::Panel::bottom("status_bar")
         .exact_size(26.0)
         .frame(
             egui::Frame::NONE
                 .fill(palette.status)
-                .inner_margin(egui::Margin::symmetric(14, 0)),
+                .inner_margin(egui::Margin::symmetric(14, 0))
+                .corner_radius(egui::CornerRadius {
+                    nw: 0,
+                    ne: 0,
+                    sw: radius,
+                    se: radius,
+                }),
         )
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);

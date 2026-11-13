@@ -854,6 +854,16 @@ impl ImageViewerApp {
 }
 
 impl eframe::App for ImageViewerApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // Linux 是透明窗口：未绘制的圆角区域必须完全透明，才能透出桌面。
+        if cfg!(target_os = "linux") {
+            [0.0, 0.0, 0.0, 0.0]
+        } else {
+            // 与 eframe 默认一致：近黑底色，未绘制区域不会突兀。
+            egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()
+        }
+    }
+
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.applied_theme != Some(self.settings.theme) {
             theme::apply(ctx, self.settings.theme);
@@ -909,8 +919,10 @@ impl eframe::App for ImageViewerApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Linux 关闭了系统装饰：先画自绘标题栏（全屏时隐藏），再叠加缩放把手。
+        // windowed 在窗口化且非全屏时为 true：此时窗口四角做圆角、透出桌面；
+        // 最大化与全屏贴边，必须保持直角，否则边缘会出现缝隙。
         #[cfg(target_os = "linux")]
-        {
+        let windowed = {
             let (maximized, viewport_fullscreen) = ui.ctx().input(|input| {
                 let viewport = input.viewport();
                 (
@@ -923,7 +935,10 @@ impl eframe::App for ImageViewerApp {
                 titlebar::show(ui, &self.title_cache);
             }
             titlebar::resize_grips(ui.ctx(), maximized, fullscreen);
-        }
+            !maximized && !fullscreen
+        };
+        #[cfg(not(target_os = "linux"))]
+        let windowed = false;
 
         let center_title = self.fullscreen_title(ui.ctx());
         let toolbar_state = ui::ToolbarState {
@@ -964,6 +979,7 @@ impl eframe::App for ImageViewerApp {
                 .then(|| self.image.as_ref()?.color_label())
                 .flatten(),
             notice: self.notice.as_ref().map(|(text, _)| text.clone()),
+            rounded_corners: windowed,
         };
         ui::status_bar(ui, &status);
 

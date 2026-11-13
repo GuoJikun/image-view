@@ -52,7 +52,9 @@ fn main() -> eframe::Result {
             .with_icon(load_icon())
             // Linux 关闭系统装饰，改用 egui 自绘标题栏（见 titlebar 模块）：
             // 合成器装饰与 Adwaita 客户端装饰都存在按钮显示问题。
-            .with_decorations(!cfg!(target_os = "linux")),
+            .with_decorations(!cfg!(target_os = "linux"))
+            // Linux 开启透明背景：窗口化时四角为圆角，圆角处透出桌面。
+            .with_transparent(cfg!(target_os = "linux")),
         // 窗口尺寸/位置/最大化由 eframe 持久化；应用状态见 `settings` 模块。
         persist_window: true,
         ..Default::default()

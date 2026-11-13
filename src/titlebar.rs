@@ -5,6 +5,9 @@
 //! 三个窗口按钮糊成一片。标题栏、窗口按钮与缩放把手因此改由 egui 绘制：走
 //! GL 管线、严格按 `pixels_per_point` 缩放，任何 DPI 下都保持清晰；窗口
 //! 移动、缩放、最小化等交互通过 `ViewportCommand` 转发给窗口系统。
+//!
+//! 窗口同时开启了透明背景（见 `main.rs`）：窗口化时四角按 [`CORNER_RADIUS`]
+//! 做圆角、圆角处不绘制而透出桌面；最大化与全屏贴边时保持直角。
 
 use eframe::egui::{
     self, Color32, CornerRadius, CursorIcon, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2,
@@ -24,6 +27,9 @@ const RIGHT_MARGIN: f32 = 10.0;
 const BUTTON_R: f32 = 10.0;
 /// 边缘缩放把手的厚度。
 const GRIP: f32 = 6.0;
+/// 窗口四角的圆角半径。仅 Linux 自绘装饰、窗口化时应用：标题栏画上两角、
+/// 状态栏画下两角，圆角处不绘制、透出桌面；最大化与全屏贴边时保持直角。
+pub const CORNER_RADIUS: f32 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Button {
@@ -38,10 +44,20 @@ pub fn show(ui: &mut egui::Ui, title: &str) {
     let ctx = ui.ctx().clone();
     let maximized = ctx.input(|input| input.viewport().maximized.unwrap_or(false));
     let palette = theme::palette(&ctx);
+    // 最大化时窗口贴边，圆角会露出桌面缝隙，保持直角。
+    let radius = if maximized { 0 } else { CORNER_RADIUS as u8 };
+    let frame = egui::Frame::NONE
+        .fill(palette.chrome)
+        .corner_radius(egui::CornerRadius {
+            nw: radius,
+            ne: radius,
+            sw: 0,
+            se: 0,
+        });
 
     let panel = egui::Panel::top("titlebar")
         .exact_size(HEIGHT)
-        .frame(egui::Frame::NONE.fill(palette.chrome))
+        .frame(frame)
         .show(ui, |ui| {
             let rect = ui.max_rect();
 
