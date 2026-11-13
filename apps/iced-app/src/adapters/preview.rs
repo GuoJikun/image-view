@@ -4,7 +4,7 @@
 //! 缩略图使用独立的小线程池，避免大量小图拖住当前图片的打开。
 
 use std::collections::{HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
@@ -51,11 +51,13 @@ pub struct ThumbResult {
     pub result: Result<Handle, String>,
 }
 
+#[derive(Debug)]
 struct Queue {
     items: VecDeque<PathBuf>,
     closed: bool,
 }
 
+#[derive(Debug)]
 pub struct ThumbnailService {
     queue: Arc<(Mutex<Queue>, Condvar)>,
     results: Receiver<ThumbResult>,
@@ -112,6 +114,11 @@ impl ThumbnailService {
         !self.inflight.is_empty()
     }
 
+    /// 某个路径是否已有请求在队列中或正在解码；视图层据此避免重复排队。
+    pub fn is_inflight(&self, path: &Path) -> bool {
+        self.inflight.contains(path)
+    }
+
     pub fn try_recv(&mut self) -> Option<ThumbResult> {
         let result = self.results.try_recv().ok()?;
         self.inflight.remove(&result.path);
@@ -137,11 +144,7 @@ fn run_worker(queue: &Arc<(Mutex<Queue>, Condvar)>, sender: &Sender<ThumbResult>
 
         let result = decode_thumbnail(&path, MAX_THUMB_SIDE)
             .map(|decoded| {
-                Handle::from_rgba(
-                    decoded.size[0] as u32,
-                    decoded.size[1] as u32,
-                    decoded.rgba,
-                )
+                Handle::from_rgba(decoded.size[0] as u32, decoded.size[1] as u32, decoded.rgba)
             })
             .map_err(|error| error.to_string());
 

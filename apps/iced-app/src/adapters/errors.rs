@@ -25,9 +25,7 @@ pub fn load_error_text(error: &LoadError) -> String {
             format!("当前构建未包含 {format} 解码器，请使用启用该特性的版本打开 .{extension}")
         }
         #[cfg(feature = "svg")]
-        LoadError::SvgzUnsupported => {
-            "不支持 Gzip 压缩的 SVGZ，请先解压为 .svg".to_owned()
-        }
+        LoadError::SvgzUnsupported => "不支持 Gzip 压缩的 SVGZ，请先解压为 .svg".to_owned(),
     }
 }
 

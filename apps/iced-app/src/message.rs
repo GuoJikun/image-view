@@ -1,4 +1,7 @@
 //! Iced 消息：只描述 UI 事件和异步结果，不进入 Domain。
+//!
+//! Update 层把消息转换为 `iv-application` 用例或视图变换；Core 从不依赖
+//! 这里定义的类型。
 
 use std::path::PathBuf;
 
@@ -7,12 +10,12 @@ use iv_domain::SortOrder;
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// 全局事件（键盘、窗口、拖放）。
+    /// 全局事件（键盘、窗口、拖放）；widget 已捕获的事件不会到达这里。
     Event(iced::Event),
+    WindowReady(iced::window::Id),
 
     OpenDialog,
     DialogPicked(Option<PathBuf>),
-    OpenPath(PathBuf),
 
     Navigate(isize),
     Select(usize),
@@ -32,17 +35,24 @@ pub enum Message {
     Rotate(i8),
 
     CanvasResized(iced::Size),
-    ScaleFactor(f32),
+    ThumbScrolled {
+        offset_x: f32,
+        viewport_w: f32,
+    },
 
     ToggleThumbnails,
     ToggleMetadata,
+    ToggleMenu,
+    ToggleSlideshow,
     SetSort(SortOrder),
 
     Reveal,
     DeleteCurrent,
     CopyPath,
+    ToggleFullscreen,
+    ApplyWindowMode(iced::window::Mode),
 
-    /// 轮询解码线程与缩略图线程的结果。
+    /// 定时轮询解码线程与缩略图线程的结果。
     Poll,
     Dismiss,
 }

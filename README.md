@@ -33,6 +33,19 @@
 - v2.x / v3+ 方向：[docs/PLAN-P2.md](docs/PLAN-P2.md) · [docs/PLAN-P3.md](docs/PLAN-P3.md)
 - 1.0.0 开发基线（P0）设计与验收：[docs/PLAN-P0.md](docs/PLAN-P0.md)
 
+## Iced POC（实验）
+
+仓库同时保留了 Iced 0.14 的架构验证工程 `apps/iced-app`：与主程序共用同一套 Core crate（Domain、Application、解码、渲染、缓存、元数据、Platform），只替换 GUI 层，用来验证「GUI 可替换」这条架构约束。
+
+```bash
+cargo run -p image-view-iced -- "D:\photos\a.jpg"
+cargo run -p image-view-iced -- "D:\photos"    # 打开目录中第一张
+```
+
+已具备打开/翻页、适配与 100%、以光标为锚点缩放、拖拽平移、旋转、缩略图条（虚拟滚动 + 按需解码）、元数据面板、幻灯片、删除到回收站、定位文件、复制路径、全屏与设置持久化。设置写在 `%APPDATA%\image-view-iced\settings.ron`，可用 `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖。
+
+该工程是 POC，不随安装包发布；设计说明、目录映射与未完成项见 [docs/02-iced-architecture.md](docs/02-iced-architecture.md)。
+
 ## 安装与卸载
 
 ### Windows（10/11 x64）

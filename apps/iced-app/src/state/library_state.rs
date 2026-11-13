@@ -15,6 +15,9 @@ use crate::state::viewer_state::LoadedImage;
 
 const THUMB_CACHE_ENTRIES: usize = 512;
 
+/// 缩略图卡片宽度（含间距），视图层与虚拟化计算共用。
+pub const THUMB_ITEM_WIDTH: f32 = 88.0;
+
 #[derive(Debug, Default)]
 pub struct ThumbnailState {
     entries: HashMap<PathBuf, Handle>,
@@ -143,6 +146,44 @@ impl MetadataState {
     }
 }
 
+/// 图库侧状态：缩略图、元数据面板与缩略图条的视口信息。
+///
+/// 视口数据由 `scrollable::on_scroll` 上报，virtual strip 只构建可见卡片，
+/// 因此大目录不会在每帧生成成千上万个 widget。
+#[derive(Debug)]
+pub struct LibraryState {
+    pub thumbs: ThumbnailState,
+    pub meta: MetadataState,
+    pub thumb_offset_x: f32,
+    pub thumb_viewport_w: f32,
+}
+
+impl Default for LibraryState {
+    fn default() -> Self {
+        Self {
+            thumbs: ThumbnailState::new(),
+            meta: MetadataState::default(),
+            thumb_offset_x: 0.0,
+            thumb_viewport_w: THUMB_ITEM_WIDTH * 8.0,
+        }
+    }
+}
+
+impl LibraryState {
+    /// 当前需要绘制的缩略图下标区间（两侧各多留几张，滚动时不易露白）。
+    pub fn visible_range(&self, total: usize) -> std::ops::Range<usize> {
+        if total == 0 {
+            return 0..0;
+        }
+        let viewport = self.thumb_viewport_w.max(THUMB_ITEM_WIDTH * 2.0);
+        let first = (self.thumb_offset_x / THUMB_ITEM_WIDTH).floor().max(0.0) as usize;
+        let count = (viewport / THUMB_ITEM_WIDTH).ceil() as usize + 4;
+        let start = first.min(total);
+        let end = (start + count).min(total);
+        start..end
+    }
+}
+
 pub fn format_label(path: &Path) -> String {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -205,11 +246,11 @@ mod tests {
     fn relative_time_covers_recent_ranges() {
         let now = SystemTime::now();
         assert_eq!(format_age(Some(now - Duration::from_secs(5))), "刚刚");
+        assert_eq!(format_age(Some(now - Duration::from_secs(120))), "2 分钟前");
         assert_eq!(
-            format_age(Some(now - Duration::from_secs(120))),
-            "2 分钟前"
+            format_age(Some(now - Duration::from_secs(7200))),
+            "2 小时前"
         );
-        assert_eq!(format_age(Some(now - Duration::from_secs(7200))), "2 小时前");
         assert_eq!(format_age(None), "未知");
     }
 
@@ -217,5 +258,23 @@ mod tests {
     fn format_label_is_uppercase() {
         assert_eq!(format_label(Path::new("a.PnG")), "PNG");
         assert_eq!(format_label(Path::new("no-extension")), "未知");
+    }
+
+    #[test]
+    fn visible_range_tracks_scroll_and_clamps_to_total() {
+        let mut library = LibraryState {
+            thumb_viewport_w: THUMB_ITEM_WIDTH * 4.0,
+            ..LibraryState::default()
+        };
+
+        assert_eq!(library.visible_range(1000), 0..8);
+        library.thumb_offset_x = THUMB_ITEM_WIDTH * 50.0;
+        assert_eq!(library.visible_range(1000), 50..58);
+
+        library.thumb_offset_x = THUMB_ITEM_WIDTH * 999.0;
+        let range = library.visible_range(1000);
+        assert_eq!(range.start, 999);
+        assert_eq!(range.end, 1000);
+        assert_eq!(library.visible_range(0), 0..0);
     }
 }

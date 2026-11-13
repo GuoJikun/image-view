@@ -28,6 +28,7 @@ iced = { workspace = true, features = [
     "canvas",
     "image-without-codecs",
     "thread-pool",
+    "smol",
     "crisp",
     "x11",
     "wayland",
@@ -37,6 +38,7 @@ emath = { workspace = true }
 image = { workspace = true, features = ["png"] }
 rfd = { workspace = true }
 log = { workspace = true }
+ron = { workspace = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 rfd = { workspace = true, features = ["xdg-portal", "wayland"] }

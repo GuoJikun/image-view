@@ -32,11 +32,7 @@ impl LoadedImage {
     pub fn from_decoded(path: PathBuf, decoded: Decoded) -> Self {
         Self {
             path,
-            handle: Handle::from_rgba(
-                decoded.size[0] as u32,
-                decoded.size[1] as u32,
-                decoded.rgba,
-            ),
+            handle: Handle::from_rgba(decoded.size[0] as u32, decoded.size[1] as u32, decoded.rgba),
             pixel_size: [decoded.size[0] as u32, decoded.size[1] as u32],
             source_size: [decoded.source_size[0] as u32, decoded.source_size[1] as u32],
             depth: decoded.source_depth,
@@ -86,10 +82,6 @@ impl ViewerState {
 
     pub fn loading(&self) -> bool {
         self.pending.is_some()
-    }
-
-    pub fn current_path(&self) -> Option<&PathBuf> {
-        self.image.as_ref().map(|image| &image.path)
     }
 
     /// 显示指定图片：命中缓存立即显示，否则发起解码并清空旧画面。
@@ -171,9 +163,9 @@ impl ViewerState {
         if response.purpose != Purpose::Open {
             return false;
         }
-        self.pending
-            .as_ref()
-            .is_some_and(|pending| pending.request == response.generation && pending.path == response.path)
+        self.pending.as_ref().is_some_and(|pending| {
+            pending.request == response.generation && pending.path == response.path
+        })
     }
 
     pub fn reset_view(&mut self) {
@@ -209,8 +201,7 @@ impl ViewerState {
         let Some(size) = self.image_size() else {
             return;
         };
-        self.view
-            .zoom_by(size, self.canvas, factor, scale_factor);
+        self.view.zoom_by(size, self.canvas, factor, scale_factor);
     }
 
     pub fn pan_by(&mut self, delta: Vec2, scale_factor: f32) {
@@ -243,15 +234,5 @@ impl ViewerState {
 
     pub fn rotate(&mut self, steps: i8) {
         self.view.rotate(steps);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn insert_cached(&mut self, image: LoadedImage) {
-        self.cache.insert(image.path.clone(), image);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn pending_path(&self) -> Option<&PathBuf> {
-        self.pending.as_ref().map(|pending| &pending.path)
     }
 }

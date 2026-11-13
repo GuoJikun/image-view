@@ -505,3 +505,58 @@ renderer、文件打开事件、单实例和安装包工作正常。 6. Iced
 版本升级不会迫使 Core 改动。
 
 如果希望纯 Rust 且偏好明确的状态更新架构，Iced 值得优先 POC。
+
+## 12. 实施进度（Iced POC）
+
+代码位于 `apps/iced-app`，与 eframe 应用共用全部 Core crate，未修改任何
+`crates/*` 的公开 API。锁定版本：`iced 0.14`（`wgpu` + `canvas` +
+`image-without-codecs` + `smol`）。
+
+``` bash
+cargo run -p image-view-iced -- "D:\photos\a.jpg"
+cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
+```
+
+### 12.1 目录与文档草案的差异
+
+| 草案 | 实际 | 原因 |
+| --- | --- | --- |
+| `adapters/core_events.rs` | `adapters/preview.rs` | Iced 的事件统一走 `iced::event::listen()`，不需要独立的事件总线；真正需要适配的是「后台解码服务」。 |
+| `adapters/image_resource.rs` | `adapters/preview.rs`（`PreviewService` / `ThumbnailService`） | 主图复用 `iv-image-decode::Loader`，缩略图用独立 2 线程池，句柄统一为 `iced::widget::image::Handle`。 |
+| （未定义） | `adapters/storage.rs` | Iced 没有 egui 的 `Storage`，用一个 RON 键值文件实现 `iv-infra` 的存储端口。 |
+| （未定义） | `adapters/errors.rs` | 把 Core 错误类型转成界面文案，避免文案散落在 View。 |
+| `theme/`（目录） | `theme.rs`（单文件） | 只有 3 个容器样式，无需拆目录。 |
+
+### 12.2 已实现能力
+
+- **应用骨架**：`main.rs` 负责 CLI、日志与窗口图标，`app.rs` 只做
+  boot/update/view/subscription/title/theme 装配。
+- **消息映射**：`Message` 只含 UI 事件与异步结果，不进入 Core；键盘、拖放、
+  窗口缩放等未被子控件消费的事件由 `iced::event::listen()` 收口。
+- **状态**：`AppState` 组合 `iv-application::FolderNav`、
+  `ViewerState`（视图变换 + LRU 主图缓存）、`LibraryState`（缩略图缓存 +
+  元数据面板）、`Settings` 与 `FileStorage`；GUI 侧不保存像素 Buffer。
+- **画布**：`widgets/image_canvas.rs` 实现 `canvas::Program`，几何计算全部来自
+  `iv-image-render::ViewState`（滚动缩放锚定光标、拖拽平移、双击切换
+  适配/100%、旋转 90° 步进）。
+- **缩略图条**：水平虚拟滚动，只为可见区间（外扩 3 张）构建 widget，首尾用
+  `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。
+- **异步**：主图解码复用 `iv-image-decode::Loader` 的 latest-wins 语义，过期
+  结果按 generation 丢弃；`Message::Poll` 每 50 ms 收拢一次，消息量有上界。
+- **系统集成**：`rfd` 文件对话框、拖放打开、回收站删除、资源管理器定位、
+  复制路径、全屏切换、幻灯片（3 s 自动前进）。
+- **持久化**：目录、文件、排序、主题、缩略图条开关写入 `settings.ron`
+  （默认 `%APPDATA%\image-view-iced\`，可用
+  `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。
+- **质量门禁**：`cargo fmt` / `cargo clippy`（零告警）/ `cargo test`
+  （14 个单测）通过，启动冒烟测试正常打开图片。
+
+### 12.3 尚未完成
+
+1. 单实例、IPC 与文件关联：需要 `iv-platform` 与安装包层面配合，POC 未接入。
+2. 文件监听（`notify`）：当前目录内新增/删除文件后需重新打开目录才刷新。
+3. 原生菜单栏与触控板手势：目前只有自绘工具栏与 `⋯` 溢出菜单。
+4. 长时浏览的大图 GPU 资源生命周期、macOS/Linux renderer 实机验证。
+5. 多语言（i18n）：POC 只提供中文界面，未接入 `iv-domain::Language`。
+6. 「跟随系统」主题回落为深色：Iced 0.14 的 `Theme` 没有系统主题探测入口。
+
