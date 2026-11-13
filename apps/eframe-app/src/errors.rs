@@ -35,6 +35,7 @@ pub fn file_op_error_text(error: &FileOpError) -> String {
     match error {
         FileOpError::Trash(error) => i18n::tf(Key::ErrorTrashFailed, &[error]),
         FileOpError::Reveal(error) => i18n::tf(Key::ErrorOpenFileManager, &[error]),
+        FileOpError::Open(error) => i18n::tf(Key::ErrorOpenFile, &[error]),
     }
 }
 

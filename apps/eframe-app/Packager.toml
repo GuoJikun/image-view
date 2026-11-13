@@ -63,9 +63,14 @@ icons = [
     "../../assets/icon-512@2x.png",
 ]
 
-# README and CHANGELOG are copied next to the executable (NSIS), into
-# /usr/lib/image-view (deb), or into Contents/Resources (macOS).
-resources = ["../../README.md", "../../CHANGELOG.md"]
+# README, CHANGELOG and third-party license notices are copied next to the
+# executable (NSIS), into /usr/lib/image-view (deb), or into
+# Contents/Resources (macOS).
+resources = [
+    "../../README.md",
+    "../../CHANGELOG.md",
+    "../../THIRD-PARTY-LICENSES.md",
+]
 
 formats = ["nsis"]
 

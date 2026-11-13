@@ -7,6 +7,7 @@ use std::process::Command;
 pub enum FileOpError {
     Trash(trash::Error),
     Reveal(std::io::Error),
+    Open(std::io::Error),
 }
 
 impl std::fmt::Display for FileOpError {
@@ -15,6 +16,7 @@ impl std::fmt::Display for FileOpError {
         match self {
             Self::Trash(error) => write!(formatter, "failed to move to trash: {error}"),
             Self::Reveal(error) => write!(formatter, "failed to open file manager: {error}"),
+            Self::Open(error) => write!(formatter, "failed to open file: {error}"),
         }
     }
 }
@@ -47,26 +49,32 @@ pub fn reveal_in_file_manager(path: &Path) -> Result<(), FileOpError> {
 
 /// 在系统文件管理器中打开该目录。
 pub fn open_folder(path: &Path) -> Result<(), FileOpError> {
-    open_folder_command(path).spawn()?;
+    open_path_command(path).spawn()?;
+    Ok(())
+}
+
+/// 用系统默认程序打开文件。
+pub fn open_file(path: &Path) -> Result<(), FileOpError> {
+    open_path_command(path).spawn().map_err(FileOpError::Open)?;
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn open_folder_command(path: &Path) -> Command {
+fn open_path_command(path: &Path) -> Command {
     let mut command = Command::new("explorer");
     command.arg(path);
     command
 }
 
 #[cfg(target_os = "macos")]
-fn open_folder_command(path: &Path) -> Command {
+fn open_path_command(path: &Path) -> Command {
     let mut command = Command::new("open");
     command.arg(path);
     command
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn open_folder_command(path: &Path) -> Command {
+fn open_path_command(path: &Path) -> Command {
     let mut command = Command::new("xdg-open");
     command.arg(path);
     command

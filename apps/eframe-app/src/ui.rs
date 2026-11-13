@@ -572,6 +572,10 @@ fn overflow_menu(
             *action = Some(Action::OpenLogs);
             ui.close();
         }
+        if ui.button(i18n::t(Key::ThirdPartyLicenses)).clicked() {
+            *action = Some(Action::OpenLicenses);
+            ui.close();
+        }
         if ui.button(i18n::t(Key::ShortcutsEllipsis)).clicked() {
             *action = Some(Action::Help);
             ui.close();

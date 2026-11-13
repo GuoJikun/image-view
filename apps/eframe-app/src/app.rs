@@ -34,6 +34,9 @@ const NOTICE_DURATION: Duration = Duration::from_secs(4);
 /// 全屏时工具栏中央文件名的淡出时间。
 const FULLSCREEN_TITLE_DURATION: Duration = Duration::from_secs(3);
 
+/// 内置的第三方许可证文本；安装包资源缺失时写入临时文件供系统查看器打开。
+const THIRD_PARTY_LICENSES: &str = include_str!("../../../THIRD-PARTY-LICENSES.md");
+
 /// eframe 键值存储 → `iv-infra` 只读存储端口。
 struct EframeStorage<'a>(&'a dyn eframe::Storage);
 
@@ -185,6 +188,7 @@ impl ImageViewerApp {
             ui::Action::CopyPath => self.copy_current_path(ctx),
             ui::Action::Delete => self.delete_current(),
             ui::Action::OpenLogs => self.open_logs(),
+            ui::Action::OpenLicenses => self.open_licenses(),
             ui::Action::CheckUpdate => {
                 self.show_update = true;
                 self.updater.check(ctx);
@@ -416,6 +420,30 @@ impl ImageViewerApp {
         }
         if let Err(error) = fileops::open_folder(&dir) {
             log::warn!("无法打开日志目录 {}：{error}", dir.display());
+            self.error = Some(errors::file_op_error_text(&error));
+            self.error_path = None;
+        }
+    }
+
+    /// 打开第三方许可证：优先使用安装包内的文件，否则写出内置文本再交给系统查看器。
+    fn open_licenses(&mut self) {
+        let path = match bundled_license_file() {
+            Some(path) => path,
+            None => {
+                let path = std::env::temp_dir().join("image-view-THIRD-PARTY-LICENSES.txt");
+                if let Err(error) = std::fs::write(&path, THIRD_PARTY_LICENSES) {
+                    self.error = Some(i18n::tf(
+                        Text::ErrorWriteLicenses,
+                        &[&path.display(), &error],
+                    ));
+                    self.error_path = None;
+                    return;
+                }
+                path
+            }
+        };
+        if let Err(error) = fileops::open_file(&path) {
+            log::warn!("无法打开许可证文件 {}：{error}", path.display());
             self.error = Some(errors::file_op_error_text(&error));
             self.error_path = None;
         }
@@ -1083,6 +1111,33 @@ fn absolute_path(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+/// 安装包内的许可证文件位置：Windows/deb 在可执行文件旁或其资源目录，macOS 在 Contents/Resources。
+fn bundled_license_file() -> Option<PathBuf> {
+    if let Some(directory) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+    {
+        let candidates = [
+            directory.join("THIRD-PARTY-LICENSES.md"),
+            directory.join("../Resources/THIRD-PARTY-LICENSES.md"),
+            directory.join("../lib/image-view/THIRD-PARTY-LICENSES.md"),
+        ];
+        if let Some(path) = candidates.into_iter().find(|path| path.is_file()) {
+            return Some(path);
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../THIRD-PARTY-LICENSES.md");
+        if source.is_file() {
+            return Some(source);
+        }
+    }
+
+    None
+}
+
 /// 解析旋转快捷键：`R` 顺时针（+1），`Shift+R` 逆时针（-1）。
 /// `consume_key` 使用逻辑修饰键匹配，未按下的 Shift 不会阻止 `Modifiers::NONE`
 /// 命中；因此必须先匹配更具体的 `Shift+R`，否则会被 `R` 先消费。
@@ -1135,6 +1190,12 @@ mod tests {
     fn rotate_shortcut_ignores_other_keys() {
         assert_eq!(rotation_for(Key::F, Modifiers::NONE), 0);
         assert_eq!(rotation_for(Key::F, Modifiers::SHIFT), 0);
+    }
+
+    #[test]
+    fn bundled_license_file_is_available() {
+        let path = bundled_license_file().expect("应能找到第三方许可证文件");
+        assert!(path.is_file(), "{}", path.display());
     }
 
     fn temp_dir(tag: &str) -> PathBuf {

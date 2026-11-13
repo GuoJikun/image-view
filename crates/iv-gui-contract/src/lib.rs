@@ -20,6 +20,7 @@ pub enum Action {
     CopyPath,
     Delete,
     OpenLogs,
+    OpenLicenses,
     CheckUpdate,
     SetSort(SortOrder),
     SetShowColorStatus(bool),

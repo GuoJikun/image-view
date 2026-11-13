@@ -190,6 +190,7 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 Cargo.toml        虚拟 workspace：成员、共享依赖与 release profile
 rust-toolchain.toml  Rust stable 工具链与 rustfmt/clippy 组件
 deny.toml            cargo-deny 依赖审计、许可证与来源配置
+THIRD-PARTY-LICENSES.md  自动生成的第三方依赖许可证与版权声明
 apps/
   eframe-app/     唯一的 GUI 可执行包（package 名 `image-view`）
     src/
@@ -211,6 +212,7 @@ apps/
       gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
       color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
       thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
+      gen_third_party_licenses.rs  从 Cargo.lock 重新生成 THIRD-PARTY-LICENSES.md
     installer/
       nsis/
         image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
