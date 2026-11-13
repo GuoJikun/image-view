@@ -48,7 +48,7 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 - **下一步**：发布 v1.0.0（构建安装包、生成 `update.json`、打 `v1.0.0` 标签）；之后进入 v1.1 的 P1-M6 图库/搜索/对比，动画（M7）排入 v1.2。
 - **理由**：查看体验（M1~M4）、发布工程（M5）、自动更新（M8）与中/英多语言（M9）均已完成，v1.0 范围收敛。
-- **发布前检查**：把 `dist\update.json` 与安装包一起上传为 GitHub Release 资产；核对 `update.json` 的 `sha256` 与 `SHA256SUMS.txt` 一致；确认首版发布说明注明未签名与 SmartScreen 提示。
+- **发布前检查**：把 `apps\eframe-app\dist\update.json` 与安装包一起上传为 GitHub Release 资产；核对 `update.json` 的 `sha256` 与 `SHA256SUMS.txt` 一致；确认首版发布说明注明未签名与 SmartScreen 提示。
 - **完成定义**：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo build --release` 全部通过，[PLAN-P1.md](PLAN-P1.md) §6 已补 M8 / M9 验收记录。
 
 ## P1 里程碑看板（v1.0）

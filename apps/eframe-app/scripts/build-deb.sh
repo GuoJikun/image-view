@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Build the Linux .deb package. Run this from WSL2 or another Linux host:
-#   bash scripts/build-deb.sh
+#   bash apps/eframe-app/scripts/build-deb.sh
 #
 # The deb bundler is compiled only on Linux/BSD, so the Windows build of
 # cargo-packager cannot produce a .deb.
 
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+app="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$app/../.." && pwd)"
 cd "$root"
 
 if [[ "$(uname -s)" != "Linux" ]]; then
@@ -21,11 +22,11 @@ if ! command -v cargo-packager >/dev/null 2>&1; then
     exit 1
 fi
 
-cargo packager --release -p image-view -c Packager.toml --formats deb
+cargo packager --release -p image-view -c "$app/Packager.toml" --formats deb
 
-deb="$(ls -t dist/image-view_*.deb 2>/dev/null | head -n 1 || true)"
+deb="$(ls -t "$app"/dist/image-view_*.deb 2>/dev/null | head -n 1 || true)"
 if [[ -z "$deb" ]]; then
-    echo "error: no .deb was produced in dist/." >&2
+    echo "error: no .deb was produced in apps/eframe-app/dist/." >&2
     exit 1
 fi
 

@@ -40,10 +40,10 @@
 Windows 10/11 x64 用 cargo-packager 与 NSIS 生成安装包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
+powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1
 ```
 
-产物位于 `dist\`：`image-view_<version>_x64-setup.exe`、`update.json` 与 `SHA256SUMS.txt`。把安装包和 `update.json` 一起上传到 GitHub Release，应用即可通过 `releases/latest/download/update.json` 发现新版本。
+产物位于 `apps\eframe-app\dist\`：`image-view_<version>_x64-setup.exe`、`update.json` 与 `SHA256SUMS.txt`。把安装包和 `update.json` 一起上传到 GitHub Release，应用即可通过 `releases/latest/download/update.json` 发现新版本。
 
 推送版本标签会触发 GitHub Actions 发布（`.github/workflows/release.yml`）：
 
@@ -52,7 +52,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-工作流只接受以 `v` 开头且与 `Cargo.toml` / `Packager.toml` 版本一致的标签（例如 `v1.0.0`），随后构建安装包、`update.json` 与校验文件，并自动创建 GitHub Release。
+工作流只接受以 `v` 开头且与 `Cargo.toml` / `apps/eframe-app/Packager.toml` 版本一致的标签（例如 `v1.0.0`），随后构建安装包、`update.json` 与校验文件，并自动创建 GitHub Release。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
 - **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
@@ -64,20 +64,20 @@ git push origin v1.0.0
 `.deb` 必须在 Linux 环境中构建（Windows 版 cargo-packager 不包含 deb 后端）。WSL2 下进入仓库后运行：
 
 ```bash
-bash scripts/build-deb.sh
+bash apps/eframe-app/scripts/build-deb.sh
 ```
 
-产物为 `dist/image-view_<version>_amd64.deb`。依赖、桌面入口与文件关联位于 `Packager.toml` 的 `[deb]` / `[[fileAssociations]]`，完整步骤见 [docs/BUILD-DEB.md](docs/BUILD-DEB.md)。
+产物为 `apps/eframe-app/dist/image-view_<version>_amd64.deb`。依赖、桌面入口与文件关联位于 `apps/eframe-app/Packager.toml` 的 `[deb]` / `[[fileAssociations]]`，完整步骤见 [docs/BUILD-DEB.md](docs/BUILD-DEB.md)。
 
 ### macOS（Apple Silicon）
 
 仅支持 arm64，需在 Apple Silicon Mac 上构建（不提供 Intel / Universal 版本）。在仓库根目录运行：
 
 ```bash
-bash scripts/build-macos.sh
+bash apps/eframe-app/scripts/build-macos.sh
 ```
 
-产物为 `dist/image-view_<version>_aarch64.dmg`，内含 `image-view.app`。最低系统版本、DMG 窗口布局与文件关联位于 `Packager.toml` 的 `[macos]` / `[dmg]` / `[[fileAssociations]]`；签名、公证与验证步骤见 [docs/BUILD-MACOS.md](docs/BUILD-MACOS.md)。未签名时首次打开需在 Finder 中右键应用选择“打开”；文件关联已注册，但 Finder 双击传入文件的 macOS 事件尚未处理，需从命令行传入路径。
+产物为 `apps/eframe-app/dist/image-view_<version>_aarch64.dmg`，内含 `image-view.app`。最低系统版本、DMG 窗口布局与文件关联位于 `apps/eframe-app/Packager.toml` 的 `[macos]` / `[dmg]` / `[[fileAssociations]]`；签名、公证与验证步骤见 [docs/BUILD-MACOS.md](docs/BUILD-MACOS.md)。未签名时首次打开需在 Finder 中右键应用选择“打开”；文件关联已注册，但 Finder 双击传入文件的 macOS 事件尚未处理，需从命令行传入路径。
 
 ## 自动更新
 
@@ -209,6 +209,14 @@ apps/
       gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
       color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
       thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
+    installer/
+      nsis/
+        image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
+    Packager.toml       cargo-packager 打包配置（NSIS / deb / dmg、依赖与文件关联）
+    scripts/
+      build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
+      build-deb.sh       在 Linux/WSL2 中构建 .deb
+      build-macos.sh     在 Apple Silicon Mac 上构建 arm64 .dmg
 crates/
   iv-domain/       排序、语言、主题与支持的扩展名
   iv-files/        目录扫描与自然/时间排序
@@ -231,14 +239,6 @@ assets/
   icon.ico      多尺寸应用图标（安装包 / exe）
   app.rc        图标资源定义
   app.res       编译后的 Windows 资源
-installer/
-  nsis/
-    image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
-Packager.toml       cargo-packager 打包配置（NSIS / deb / dmg、依赖与文件关联）
-scripts/
-  build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
-  build-deb.sh       在 Linux/WSL2 中构建 .deb
-  build-macos.sh     在 Apple Silicon Mac 上构建 arm64 .dmg
 .github/
   workflows/
     release.yml      推送 v* 标签时自动构建并发布
@@ -263,7 +263,7 @@ cargo fmt --all
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --release -p image-view
-powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1   # exe + 安装包 + SHA256
+powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1   # exe + 安装包 + SHA256
 ```
 
 `build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --all --check` 与 `cargo test --workspace --no-default-features`。

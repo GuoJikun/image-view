@@ -1,7 +1,7 @@
 //! 自动更新：检查发布清单、下载安装包、SHA-256 校验与安装。
 //!
 //! 网络与磁盘操作都在后台线程执行，结果通过通道回主线程；检查与下载互不阻塞。
-//! 更新清单由 `scripts/build-release.ps1` 随安装包生成，默认从 GitHub Release
+//! 更新清单由 `apps/eframe-app/scripts/build-release.ps1` 随安装包生成，默认从 GitHub Release
 //! 的 `update.json` 读取；可用 `IMAGE_VIEW_UPDATE_MANIFEST` 指向本地文件或测试地址。
 
 use std::fmt::Display;

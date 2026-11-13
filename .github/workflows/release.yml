@@ -43,12 +43,12 @@ jobs:
             throw "Tag '$tag' does not match Cargo.toml version '$version' (expected 'v$version')."
           }
 
-          $packagerToml = Get-Content -LiteralPath 'Packager.toml' -Raw -Encoding UTF8
+          $packagerToml = Get-Content -LiteralPath 'apps/eframe-app/Packager.toml' -Raw -Encoding UTF8
           if ($packagerToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
-            throw 'Cannot read the package version from Packager.toml.'
+            throw 'Cannot read the package version from apps/eframe-app/Packager.toml.'
           }
           if ($Matches[1] -ne $version) {
-            throw "Packager.toml version '$($Matches[1])' does not match Cargo.toml version '$version'."
+            throw "apps/eframe-app/Packager.toml version '$($Matches[1])' does not match Cargo.toml version '$version'."
           }
 
           Write-Host "Releasing image-view v$version"
@@ -88,16 +88,16 @@ jobs:
 
       - name: Build installer, manifest and checksums
         shell: pwsh
-        run: ./scripts/build-release.ps1 -AllowNsisDownload
+        run: ./apps/eframe-app/scripts/build-release.ps1 -AllowNsisDownload
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: image-view-${{ github.ref_name }}
           path: |
-            dist/image-view_*_x64-setup.exe
-            dist/update.json
-            dist/SHA256SUMS.txt
+            apps/eframe-app/dist/image-view_*_x64-setup.exe
+            apps/eframe-app/dist/update.json
+            apps/eframe-app/dist/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -108,6 +108,6 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            dist/image-view_*_x64-setup.exe
-            dist/update.json
-            dist/SHA256SUMS.txt
+            apps/eframe-app/dist/image-view_*_x64-setup.exe
+            apps/eframe-app/dist/update.json
+            apps/eframe-app/dist/SHA256SUMS.txt

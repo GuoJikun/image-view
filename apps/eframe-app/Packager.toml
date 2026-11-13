@@ -1,16 +1,19 @@
-# Packaging configuration for cargo-packager.
+# Packaging configuration for the eframe GUI (cargo-packager).
+#
+# cargo-packager reads relative paths from this file's directory, so the
+# workspace target and shared assets are referenced with `../../`.
 #
 # Build the Windows installer with:
-#   cargo packager --release -p image-view
-# or through scripts\build-release.ps1.
+#   cargo packager --release -p image-view -c apps/eframe-app/Packager.toml
+# or through apps\eframe-app\scripts\build-release.ps1.
 #
 # Build the Linux .deb with:
-#   cargo packager --release -p image-view -c Packager.toml --formats deb
+#   cargo packager --release -p image-view -c apps/eframe-app/Packager.toml --formats deb
 # This requires a Linux host (WSL2 or a Linux container); cargo-packager does
 # not include the deb bundler in its Windows build.
 #
 # Build the macOS .dmg with:
-#   cargo packager --release -p image-view -c Packager.toml --formats dmg
+#   cargo packager --release -p image-view -c apps/eframe-app/Packager.toml --formats dmg
 # This requires an Apple Silicon Mac (arm64 only), see docs/BUILD-MACOS.md.
 #
 # Format reference: https://docs.rs/cargo-packager/latest/cargo_packager/config/struct.Config.html
@@ -39,7 +42,7 @@ authors = ["GuoJikun <guojikun@users.noreply.github.com>"]
 homepage = "https://github.com/GuoJikun/image-view"
 
 outDir = "dist"
-binariesDir = "target/release"
+binariesDir = "../../target/release"
 beforePackagingCommand = "cargo build --release --locked -p image-view"
 
 binaries = [{ path = "image-view", main = true }]
@@ -53,16 +56,16 @@ binaries = [{ path = "image-view", main = true }]
 # asset must be named icon-512@2x.png (512 pt at 2x) or packaging fails with
 # "No matching IconType".
 icons = [
-    "assets/icon.ico",
-    "assets/icon.png",
-    "assets/icon-256.png",
-    "assets/icon-512.png",
-    "assets/icon-512@2x.png",
+    "../../assets/icon.ico",
+    "../../assets/icon.png",
+    "../../assets/icon-256.png",
+    "../../assets/icon-512.png",
+    "../../assets/icon-512@2x.png",
 ]
 
 # README and CHANGELOG are copied next to the executable (NSIS), into
 # /usr/lib/image-view (deb), or into Contents/Resources (macOS).
-resources = ["README.md", "CHANGELOG.md"]
+resources = ["../../README.md", "../../CHANGELOG.md"]
 
 formats = ["nsis"]
 
@@ -221,7 +224,7 @@ installMode = "currentUser"
 # association registration and uninstall cleanup.
 template = "installer/nsis/image-view.nsi"
 
-installerIcon = "assets/icon.ico"
+installerIcon = "../../assets/icon.ico"
 languages = ["English", "SimpChinese"]
 displayLanguageSelector = true
 

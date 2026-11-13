@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Build the macOS .dmg package. Run this from an Apple Silicon Mac:
-#   bash scripts/build-macos.sh
+#   bash apps/eframe-app/scripts/build-macos.sh
 #
 # Only arm64 is supported: Intel (x86_64) and universal binaries are
 # deliberately not produced. See docs/BUILD-MACOS.md.
 
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+app="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$app/../.." && pwd)"
 cd "$root"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -46,7 +47,7 @@ fi
 # Keep the binary's deployment target in sync with [macos] minimumSystemVersion.
 export MACOSX_DEPLOYMENT_TARGET=11.0
 
-cargo packager --release -p image-view -c Packager.toml --formats dmg
+cargo packager --release -p image-view -c "$app/Packager.toml" --formats dmg
 
 bin="target/release/image-view"
 if [[ ! -f "$bin" ]]; then
@@ -60,9 +61,9 @@ if [[ "$archs" != "arm64" ]]; then
     exit 1
 fi
 
-dmg="$(ls -t dist/image-view_*.dmg 2>/dev/null | head -n 1 || true)"
+dmg="$(ls -t "$app"/dist/image-view_*.dmg 2>/dev/null | head -n 1 || true)"
 if [[ -z "$dmg" ]]; then
-    echo "error: no .dmg was produced in dist/." >&2
+    echo "error: no .dmg was produced in apps/eframe-app/dist/." >&2
     exit 1
 fi
 

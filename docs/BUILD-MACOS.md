@@ -5,12 +5,12 @@
 | 构建主机 | Apple Silicon Mac（arm64）；仅支持 arm64，不提供 Intel 或 Universal 版本 |
 | 系统要求 | macOS 11+、Xcode Command Line Tools |
 | 打包工具 | cargo-packager 0.11.8 |
-| 配置 | `Packager.toml` 的 `[macos]`、`[dmg]`、`icons` 与 `[[fileAssociations]]` |
-| 产物 | `dist/image-view_<version>_aarch64.dmg` |
+| 配置 | `apps/eframe-app/Packager.toml` 的 `[macos]`、`[dmg]`、`icons` 与 `[[fileAssociations]]` |
+| 产物 | `apps/eframe-app/dist/image-view_<version>_aarch64.dmg` |
 
 ## 为什么只支持 arm64
 
-项目只发布 Apple Silicon 版本。`scripts/build-macos.sh` 会在以下情况直接退出：
+项目只发布 Apple Silicon 版本。`apps/eframe-app/scripts/build-macos.sh` 会在以下情况直接退出：
 
 - 构建主机不是 macOS；
 - `uname -m` 不是 `arm64`；
@@ -69,14 +69,14 @@ chmod 764 ~/Library/Caches/.cargo-packager/DMG/script/create-dmg
 在仓库根目录运行：
 
 ```bash
-bash scripts/build-macos.sh
+bash apps/eframe-app/scripts/build-macos.sh
 ```
 
 脚本会依次检查系统、架构、Rust host、cargo-packager 与 `hdiutil`，并在构建前把
 `MACOSX_DEPLOYMENT_TARGET` 固定为 `11.0`（与 `LSMinimumSystemVersion` 一致），然后执行：
 
 ```bash
-cargo packager --release -p image-view -c Packager.toml --formats dmg
+cargo packager --release -p image-view -c apps/eframe-app/Packager.toml --formats dmg
 ```
 
 `beforePackagingCommand` 会先执行 `cargo build --release --locked -p image-view`。打包完成后脚本用
@@ -86,8 +86,8 @@ cargo packager --release -p image-view -c Packager.toml --formats dmg
 产物：
 
 ```text
-dist/image-view.app
-dist/image-view_1.3.0_aarch64.dmg
+apps/eframe-app/dist/image-view.app
+apps/eframe-app/dist/image-view_1.3.0_aarch64.dmg
 ```
 
 `.app` 是 dmg 的中间产物，可以一起保留或删除。
@@ -95,7 +95,7 @@ dist/image-view_1.3.0_aarch64.dmg
 ## 安装与检查
 
 ```bash
-hdiutil attach dist/image-view_1.3.0_aarch64.dmg
+hdiutil attach apps/eframe-app/dist/image-view_1.3.0_aarch64.dmg
 cp -R /Volumes/image-view/image-view.app /Applications/
 hdiutil detach /Volumes/image-view
 open -a image-view
@@ -125,7 +125,7 @@ xattr -dr com.apple.quarantine /Applications/image-view.app
 
 ## 配置说明
 
-`Packager.toml` 中与 macOS 有关的字段：
+`apps/eframe-app/Packager.toml` 中与 macOS 有关的字段：
 
 - `[macos] minimumSystemVersion`：写入 `LSMinimumSystemVersion`。
 - `[macos] signingIdentity`：默认注释掉，保持本地构建无需证书；取消注释并填入
@@ -147,7 +147,7 @@ xattr -dr com.apple.quarantine /Applications/image-view.app
 默认构建不签名。正式分发建议准备 Apple Developer ID：
 
 1. 把 “Developer ID Application” 证书安装到登录钥匙串；
-2. 在 `Packager.toml` 的 `[macos]` 中取消注释并填写 `signingIdentity`；
+2. 在 `apps/eframe-app/Packager.toml` 的 `[macos]` 中取消注释并填写 `signingIdentity`；
 3. 提供公证凭据（任选一种）：
 
    ```bash
@@ -164,7 +164,7 @@ xattr -dr com.apple.quarantine /Applications/image-view.app
    export APPLE_API_KEY_PATH="$HOME/private_keys/AuthKey_KEYID.p8"
    ```
 
-4. 重新运行 `bash scripts/build-macos.sh`。
+4. 重新运行 `bash apps/eframe-app/scripts/build-macos.sh`。
 
 设置 `signingIdentity` 后，cargo-packager 会用 hardened runtime 签名 `.app`、签名 dmg，
 并在存在公证凭据时通过 `notarytool` 提交 `.app`、成功后自动 staple；凭据缺失时只警告并

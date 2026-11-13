@@ -4,9 +4,9 @@
     Build the release executable and the NSIS installer with cargo-packager.
 
 .DESCRIPTION
-    Reads the version from Cargo.toml, runs `cargo build --release --locked -p image-view`,
-    packages the installer with `cargo packager --release -p image-view`, and writes
-    dist\SHA256SUMS.txt plus dist\update.json (the auto-update manifest).
+    Reads the workspace version, runs `cargo build --release --locked -p image-view`,
+    packages the installer with cargo-packager, and writes apps\eframe-app\dist\SHA256SUMS.txt
+    plus apps\eframe-app\dist\update.json (the auto-update manifest).
 
     cargo-packager re-runs an incremental release build through
     `beforePackagingCommand`, so the explicit build below is mostly a size and
@@ -37,7 +37,7 @@
     with unrestricted network access.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1
+    powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1
 #>
 [CmdletBinding()]
 param(
@@ -83,7 +83,8 @@ function Get-ChangelogSection {
 }
 
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
+$app = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $app)
 Push-Location $root
 
 try {
@@ -130,11 +131,11 @@ try {
         Write-Host 'NSIS toolchain missing; cargo-packager will download it.'
     }
 
-    $dist = Join-Path $root 'dist'
+    $dist = Join-Path $app 'dist'
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
     Write-Host 'Packaging with cargo-packager...'
-    & cargo packager --release -p image-view -c (Join-Path $root 'Packager.toml')
+    & cargo packager --release -p image-view -c (Join-Path $app 'Packager.toml')
     if ($LASTEXITCODE -ne 0) {
         throw "cargo packager failed with exit code $LASTEXITCODE."
     }
