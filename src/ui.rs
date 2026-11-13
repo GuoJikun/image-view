@@ -437,6 +437,78 @@ fn zoom_segment(
     value.on_hover_text(i18n::t(Key::FitTooltip));
 }
 
+/// 复选框：选中时主色填充 + 白色对勾，未选中时描边框，整行可点。
+///
+/// 不用 `egui::Checkbox`：它的框体颜色取自 `widgets.inactive.bg_fill`/`bg_stroke`，
+/// 深色下与菜单底色几乎同色且没有描边，选中与未选中只差一个对勾，看不出来。
+fn checkbox(ui: &mut egui::Ui, checked: &mut bool, label: &str, palette: &Palette) -> bool {
+    let text_width = ui
+        .painter()
+        .layout_no_wrap(label.to_owned(), FontId::proportional(13.0), palette.text)
+        .size()
+        .x;
+    let box_size = 16.0;
+    let gap = ui.spacing().icon_spacing;
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(
+            box_size + gap + text_width,
+            ui.spacing().interact_size.y.max(box_size),
+        ),
+        Sense::click(),
+    );
+
+    let box_rect = Rect::from_center_size(
+        egui::pos2(rect.left() + box_size / 2.0, rect.center().y),
+        Vec2::splat(box_size),
+    );
+
+    if ui.is_rect_visible(rect) {
+        let corner = CornerRadius::same(4);
+        if *checked {
+            ui.painter().rect_filled(box_rect, corner, palette.accent);
+            let tick = box_rect.shrink(4.0);
+            ui.painter().add(egui::Shape::line(
+                vec![
+                    egui::pos2(tick.left(), tick.center().y),
+                    egui::pos2(tick.center().x, tick.bottom()),
+                    egui::pos2(tick.right(), tick.top()),
+                ],
+                Stroke::new(1.6, Color32::WHITE),
+            ));
+        } else {
+            let background = if response.is_pointer_button_down_on() {
+                palette.press
+            } else if response.hovered() {
+                palette.hover
+            } else {
+                Color32::TRANSPARENT
+            };
+            if background.a() > 0 {
+                ui.painter().rect_filled(box_rect, corner, background);
+            }
+            ui.painter().rect_stroke(
+                box_rect,
+                corner,
+                Stroke::new(1.0, palette.text3),
+                StrokeKind::Inside,
+            );
+        }
+        ui.painter().text(
+            rect.left_center() + Vec2::new(box_size + gap, 0.0),
+            Align2::LEFT_CENTER,
+            label,
+            FontId::proportional(13.0),
+            palette.text,
+        );
+    }
+
+    if response.clicked() {
+        *checked = !*checked;
+        return true;
+    }
+    false
+}
+
 fn overflow_menu(
     response: &Response,
     state: &ToolbarState,
@@ -485,10 +557,12 @@ fn overflow_menu(
         ui.separator();
 
         let mut show_color_status = state.show_color_status;
-        if ui
-            .checkbox(&mut show_color_status, i18n::t(Key::ShowColorStatus))
-            .changed()
-        {
+        if checkbox(
+            ui,
+            &mut show_color_status,
+            i18n::t(Key::ShowColorStatus),
+            palette,
+        ) {
             *action = Some(Action::SetShowColorStatus(show_color_status));
         }
 
@@ -521,10 +595,7 @@ fn overflow_menu(
         });
 
         let mut check_updates = state.check_updates_on_startup;
-        if ui
-            .checkbox(&mut check_updates, i18n::t(Key::UpdateStartup))
-            .changed()
-        {
+        if checkbox(ui, &mut check_updates, i18n::t(Key::UpdateStartup), palette) {
             *action = Some(Action::SetCheckUpdatesOnStartup(check_updates));
         }
 
