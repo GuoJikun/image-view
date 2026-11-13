@@ -1,16 +1,16 @@
 # Packaging configuration for cargo-packager.
 #
 # Build the Windows installer with:
-#   cargo packager --release
+#   cargo packager --release -p image-view
 # or through scripts\build-release.ps1.
 #
 # Build the Linux .deb with:
-#   cargo packager --release -c Packager.toml --formats deb
+#   cargo packager --release -p image-view -c Packager.toml --formats deb
 # This requires a Linux host (WSL2 or a Linux container); cargo-packager does
 # not include the deb bundler in its Windows build.
 #
 # Build the macOS .dmg with:
-#   cargo packager --release -c Packager.toml --formats dmg
+#   cargo packager --release -p image-view -c Packager.toml --formats dmg
 # This requires an Apple Silicon Mac (arm64 only), see docs/BUILD-MACOS.md.
 #
 # Format reference: https://docs.rs/cargo-packager/latest/cargo_packager/config/struct.Config.html
@@ -40,7 +40,7 @@ homepage = "https://github.com/GuoJikun/image-view"
 
 outDir = "dist"
 binariesDir = "target/release"
-beforePackagingCommand = "cargo build --release --locked"
+beforePackagingCommand = "cargo build --release --locked -p image-view"
 
 binaries = [{ path = "image-view", main = true }]
 # NSIS uses icon.ico. The deb bundler only consumes PNGs and installs each

@@ -76,10 +76,10 @@ bash scripts/build-macos.sh
 `MACOSX_DEPLOYMENT_TARGET` 固定为 `11.0`（与 `LSMinimumSystemVersion` 一致），然后执行：
 
 ```bash
-cargo packager --release -c Packager.toml --formats dmg
+cargo packager --release -p image-view -c Packager.toml --formats dmg
 ```
 
-`beforePackagingCommand` 会先执行 `cargo build --release --locked`。打包完成后脚本用
+`beforePackagingCommand` 会先执行 `cargo build --release --locked -p image-view`。打包完成后脚本用
 `lipo -archs target/release/image-view` 确认二进制只包含 `arm64`，避免 Rosetta 工具链
 产出 x86_64 包。
 

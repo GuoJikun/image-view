@@ -46,7 +46,7 @@ fi
 # Keep the binary's deployment target in sync with [macos] minimumSystemVersion.
 export MACOSX_DEPLOYMENT_TARGET=11.0
 
-cargo packager --release -c Packager.toml --formats dmg
+cargo packager --release -p image-view -c Packager.toml --formats dmg
 
 bin="target/release/image-view"
 if [[ ! -f "$bin" ]]; then

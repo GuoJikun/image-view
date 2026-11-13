@@ -1,0 +1,8 @@
+[package]
+name = "iv-image-process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 像素处理（旋转、翻转、裁剪、缩放）"
+
+[dependencies]

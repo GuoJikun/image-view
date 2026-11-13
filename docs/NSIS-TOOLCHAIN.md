@@ -72,7 +72,7 @@ Copy-Item "$src\appid.zip" "$root\NSIS-ApplicationID.zip" -Force
 
 ```powershell
 & "$env:LOCALAPPDATA\.cargo-packager\NSIS\Bin\makensis.exe" /VERSION   # 期望输出 v3.09
-cargo packager --release -c Packager.toml                              # 不应出现下载请求
+cargo packager --release -p image-view -c Packager.toml                # 不应出现下载请求
 ```
 
 打包成功的日志形如：
@@ -87,7 +87,7 @@ INFO Finished packaging 1 package
 若确实需要让 cargo-packager 自行下载，可通过环境变量指定代理（`reqwest` 读取 `HTTPS_PROXY`）：
 
 ```bash
-HTTPS_PROXY=http://127.0.0.1:10808 cargo packager --release
+HTTPS_PROXY=http://127.0.0.1:10808 cargo packager --release -p image-view
 ```
 
 代理需支持 HTTP CONNECT；纯 SOCKS5 端口不一定被 `reqwest` 接受。

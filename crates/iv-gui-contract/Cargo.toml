@@ -1,0 +1,9 @@
+[package]
+name = "iv-gui-contract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer GUI 无关的 UI 动作与界面状态 DTO"
+
+[dependencies]
+iv-domain = { path = "../iv-domain" }

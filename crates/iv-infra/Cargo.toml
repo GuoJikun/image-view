@@ -1,0 +1,13 @@
+[package]
+name = "iv-infra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 基础设施：设置持久化与日志"
+
+[dependencies]
+iv-domain = { path = "../iv-domain" }
+log = { workspace = true }
+env_logger = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }

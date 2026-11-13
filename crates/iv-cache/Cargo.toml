@@ -1,0 +1,8 @@
+[package]
+name = "iv-cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 通用 LRU 缓存（按键与成本淘汰，不依赖 GUI）"
+
+[dependencies]

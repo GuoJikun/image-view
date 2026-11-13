@@ -1,0 +1,11 @@
+[package]
+name = "iv-files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 目录遍历与排序（不依赖 GUI）"
+
+[dependencies]
+iv-domain = { path = "../iv-domain" }
+natord = { workspace = true }
+log = { workspace = true }

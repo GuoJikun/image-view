@@ -1,0 +1,15 @@
+[package]
+name = "iv-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 平台集成：回收站、文件管理器定位"
+
+[dependencies]
+trash = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+trash = { workspace = true, features = ["coinit_apartmentthreaded"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+trash = { workspace = true, features = ["freedesktop"] }

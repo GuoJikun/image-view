@@ -1,0 +1,12 @@
+[package]
+name = "iv-metadata"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 色彩管理：ICC profile 解析与 sRGB 转换"
+
+[dependencies]
+image = { workspace = true }
+lcms2 = { workspace = true }
+bytemuck = { workspace = true }
+log = { workspace = true }

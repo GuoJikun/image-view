@@ -1,0 +1,44 @@
+[package]
+name = "iv-image-decode"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "ImageViewer 格式识别与后台解码（不依赖 GUI）"
+
+[features]
+# 由 GUI app 的默认特性开启；独立构建核心 crate 时保持最小依赖。
+default = []
+avif = ["dep:imgalifier-avif", "dep:imgalifier-heif"]
+heic = [
+    "dep:imgalifier-heif",
+    "imgalifier-heif/hevc",
+    "imgalifier-heif/unci-compression",
+]
+svg = ["dep:resvg"]
+
+[dependencies]
+iv-metadata = { path = "../iv-metadata" }
+iv-task = { path = "../iv-task" }
+image = { workspace = true, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+    "tiff",
+    "ico",
+    "qoi",
+    "tga",
+    "pnm",
+    "hdr",
+    "exr",
+    "dds",
+    "rayon",
+] }
+log = { workspace = true }
+imgalifier-avif = { workspace = true, optional = true }
+imgalifier-heif = { workspace = true, optional = true }
+resvg = { workspace = true, optional = true }
+
+[dev-dependencies]
+bytemuck = { workspace = true }

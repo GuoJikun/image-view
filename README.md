@@ -187,29 +187,42 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 ## 项目结构
 
 ```
-src/
-  main.rs       入口：CLI、窗口参数、图标、日志初始化
-  app.rs        应用状态与每帧编排（eframe::App 的 logic / ui）
-  ui.rs         顶部工具栏、分段缩放、溢出菜单、状态栏、错误横幅、帮助窗口
-  theme.rs      浅/深色调色板、主题设置与 egui 样式安装
-  icons.rs      工具栏与空状态使用的矢量图标绘制
-  viewer.rs     缩放/平移数学与画布绘制
-  document.rs   当前图片与 GPU 纹理
-  cache.rs      最近使用（LRU）纹理缓存
-  loader.rs     后台解码线程、优先级队列、预加载、阈值检查、降采样、HEIC/AVIF/SVG 分派、SVG 光栅化、缩略图尺寸解码
-  color.rs      ICC profile 解析、sRGB 转换与 16-bit 精度保持
-  thumbs.rs     缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
-  folder.rs     目录扫描、自然排序/时间排序、上一张/下一张、缩略图选中
-  settings.rs   持久化设置：窗口状态、上次会话、排序、主题、语言与更新偏好
-  fileops.rs    回收站删除、资源管理器定位与打开目录
-  logging.rs    文件日志轮转、启动信息与 panic 崩溃转储
-  i18n.rs       中/英资源表、语言检测与切换
-  update.rs     更新清单检查、后台下载、SHA-256 校验与安装器启动
-build.rs        在 Windows MSVC 下把 assets/app.res 链接进 exe
-examples/
-  gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
-  color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
-  thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
+Cargo.toml        虚拟 workspace：成员、共享依赖与 release profile
+apps/
+  eframe-app/     唯一的 GUI 可执行包（package 名 `image-view`）
+    src/
+      main.rs     入口：CLI、窗口参数、图标、日志初始化
+      app.rs      应用状态与每帧编排（eframe::App 的 logic / ui）
+      ui.rs       顶部工具栏、分段缩放、溢出菜单、状态栏、错误横幅、帮助窗口
+      theme.rs    浅/深色调色板、主题设置与 egui 样式安装
+      icons.rs    工具栏与空状态使用的矢量图标绘制
+      viewer.rs   缩放/平移视图状态与画布绘制
+      document.rs 当前图片与 GPU 纹理
+      cache.rs    `iv-cache` 的纹理缓存适配
+      thumbs.rs   缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
+      i18n.rs     中/英资源表、语言检测与切换
+      errors.rs   核心错误到本地化文案的映射
+      update.rs   更新清单检查、后台下载、SHA-256 校验与安装器启动
+      titlebar.rs Linux 无边框标题栏
+    build.rs      在 Windows MSVC 下把 assets/app.res 链接进 exe
+    examples/
+      gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
+      color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
+      thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
+crates/
+  iv-domain/       排序、语言、主题与支持的扩展名
+  iv-files/        目录扫描与自然/时间排序
+  iv-application/  目录导航状态（上一张/下一张/选中）
+  iv-metadata/     ICC profile 解析、sRGB 转换与 16-bit 精度保持
+  iv-image-decode/ 后台解码线程、优先级队列、预加载、降采样、格式分派与缩略图解码
+  iv-image-render/ 缩放/平移视图数学（不依赖 egui）
+  iv-cache/        通用 LRU 与像素预算缓存
+  iv-task/         后台请求代号（generation）
+  iv-platform/     回收站删除、资源管理器定位与打开目录
+  iv-infra/        文件日志轮转、设置持久化与存储端口
+  iv-gui-contract/ GUI 动作与工具栏状态
+  iv-library/      图库能力占位（尚未实现）
+  iv-image-process/ 图片处理能力占位（尚未实现）
 assets/
   icon.png      窗口图标（64×64）
   icon-256.png  deb / macOS 打包用的 256×256 图标
@@ -246,14 +259,14 @@ CHANGELOG.md    各发布版本的用户可见变更
 ## 开发
 
 ```powershell
-cargo fmt
-cargo test
-cargo clippy --all-targets -- -D warnings
-cargo build --release
+cargo fmt --all
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --release -p image-view
 powershell -ExecutionPolicy Bypass -File scripts\build-release.ps1   # exe + 安装包 + SHA256
 ```
 
-`build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --check` 与 `cargo test --no-default-features`。
+`build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --all --check` 与 `cargo test --workspace --no-default-features`。
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
 

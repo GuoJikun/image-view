@@ -51,7 +51,7 @@ bash scripts/build-deb.sh
 脚本会执行：
 
 ```bash
-cargo packager --release -c Packager.toml --formats deb
+cargo packager --release -p image-view -c Packager.toml --formats deb
 ```
 
 产物：

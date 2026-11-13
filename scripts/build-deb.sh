@@ -21,7 +21,7 @@ if ! command -v cargo-packager >/dev/null 2>&1; then
     exit 1
 fi
 
-cargo packager --release -c Packager.toml --formats deb
+cargo packager --release -p image-view -c Packager.toml --formats deb
 
 deb="$(ls -t dist/image-view_*.deb 2>/dev/null | head -n 1 || true)"
 if [[ -z "$deb" ]]; then

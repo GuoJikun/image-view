@@ -4,8 +4,8 @@
     Build the release executable and the NSIS installer with cargo-packager.
 
 .DESCRIPTION
-    Reads the version from Cargo.toml, runs `cargo build --release --locked`,
-    packages the installer with `cargo packager --release`, and writes
+    Reads the version from Cargo.toml, runs `cargo build --release --locked -p image-view`,
+    packages the installer with `cargo packager --release -p image-view`, and writes
     dist\SHA256SUMS.txt plus dist\update.json (the auto-update manifest).
 
     cargo-packager re-runs an incremental release build through
@@ -100,7 +100,7 @@ try {
 
     if (-not $SkipBuild) {
         Write-Host "Building image-view $version..."
-        & cargo build --release --locked
+        & cargo build --release --locked -p image-view
         if ($LASTEXITCODE -ne 0) {
             throw "cargo build failed with exit code $LASTEXITCODE."
         }
@@ -134,7 +134,7 @@ try {
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
     Write-Host 'Packaging with cargo-packager...'
-    & cargo packager --release -c (Join-Path $root 'Packager.toml')
+    & cargo packager --release -p image-view -c (Join-Path $root 'Packager.toml')
     if ($LASTEXITCODE -ne 0) {
         throw "cargo packager failed with exit code $LASTEXITCODE."
     }

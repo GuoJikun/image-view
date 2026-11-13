@@ -1,0 +1,79 @@
+[package]
+name = "image-view"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "轻量级 Rust 桌面图片查看器"
+build = "build.rs"
+
+# 图片格式能力与平台无关，保持为普通编译特性；由解码 crate 实现。
+[features]
+default = ["avif", "heic", "svg"]
+avif = ["iv-image-decode/avif"]
+heic = ["iv-image-decode/heic"]
+svg = ["iv-image-decode/svg"]
+
+[dependencies]
+iv-application = { path = "../../crates/iv-application" }
+iv-cache = { path = "../../crates/iv-cache" }
+iv-domain = { path = "../../crates/iv-domain" }
+iv-gui-contract = { path = "../../crates/iv-gui-contract" }
+iv-image-decode = { path = "../../crates/iv-image-decode" }
+iv-image-render = { path = "../../crates/iv-image-render" }
+iv-infra = { path = "../../crates/iv-infra" }
+iv-metadata = { path = "../../crates/iv-metadata" }
+iv-platform = { path = "../../crates/iv-platform" }
+
+# 使用 glow（OpenGL）而非默认 wgpu：egui-wgpu 不支持纹理 mipmap_mode。
+# 平台专属的窗口后端特性（wayland/x11）见下方 target 段。
+eframe = { workspace = true, features = [
+    "persistence",
+    "glow",
+    "default_fonts",
+    "system_fonts",
+    "clipboard",
+    "accesskit",
+    "links",
+] }
+egui = { workspace = true }
+# 窗口图标用 PNG；缩略图磁盘缓存用 QOI 读写。
+image = { workspace = true, features = ["png", "qoi"] }
+# 文件对话框：Windows/macOS 使用系统 API，无需额外特性；Linux/BSD 的后端特性见 target 段。
+rfd = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = { workspace = true }
+sha2 = { workspace = true }
+sys-locale = { workspace = true }
+ureq = { workspace = true }
+# 更新说明为 Markdown：用 pulldown-cmark 解析，关闭图片加载等默认特性。
+egui_commonmark = { workspace = true, features = ["pulldown_cmark"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# 更新下载读取 Windows 系统代理（Internet Settings），并保留 ALL_PROXY/HTTPS_PROXY 等环境变量优先。
+ureq = { workspace = true, features = ["win-system-proxy"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+# Linux/BSD：X11 + Wayland 窗口后端、XDG portal 文件对话框。
+eframe = { workspace = true, features = ["wayland", "x11"] }
+rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
+
+[dev-dependencies]
+# 仅示例夹具需要写回各格式；主程序只解码窗口图标 PNG。
+image = { workspace = true, features = [
+    "png",
+    "jpeg",
+    "gif",
+    "webp",
+    "bmp",
+    "tiff",
+    "ico",
+    "qoi",
+    "tga",
+    "pnm",
+    "hdr",
+    "exr",
+] }
+lcms2 = { workspace = true }
+bytemuck = { workspace = true }
