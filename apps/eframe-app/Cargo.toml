@@ -3,6 +3,7 @@ name = "image-view"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "轻量级 Rust 桌面图片查看器"
 build = "build.rs"
 

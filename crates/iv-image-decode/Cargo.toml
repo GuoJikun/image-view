@@ -3,6 +3,7 @@ name = "iv-image-decode"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "ImageViewer 格式识别与后台解码（不依赖 GUI）"
 
 [features]

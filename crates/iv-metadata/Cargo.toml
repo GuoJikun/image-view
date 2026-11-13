@@ -3,6 +3,7 @@ name = "iv-metadata"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "ImageViewer 色彩管理：ICC profile 解析与 sRGB 转换"
 
 [dependencies]

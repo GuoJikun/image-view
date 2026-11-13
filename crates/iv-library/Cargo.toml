@@ -3,6 +3,7 @@ name = "iv-library"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "ImageViewer 图片库索引（SQLite、收藏、标签、搜索）"
 
 [dependencies]

@@ -3,6 +3,7 @@ name = "iv-task"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "ImageViewer 后台任务代数与取消判定（不依赖 GUI）"
 
 [dependencies]

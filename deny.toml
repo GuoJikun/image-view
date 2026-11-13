@@ -2,6 +2,8 @@
 #
 # Install: cargo install cargo-deny --locked
 # Run:     cargo deny check
+# Add `--offline` when GitHub is unreachable; the advisories check then uses
+# the locally cached advisory database.
 
 [graph]
 # Release targets: Windows x64, Linux x64 and macOS Apple Silicon.
@@ -25,12 +27,20 @@ ignore = []
 # eframe/egui and the image decoders still pull in duplicate transitive crates.
 multiple-versions = "warn"
 wildcards = "deny"
+# Workspace crates depend on each other by path only; they are never published
+# to a registry, so a version requirement would just duplicate the workspace
+# version.
+allow-wildcard-paths = true
 highlight = "all"
 
 [bans.workspace-dependencies]
 duplicates = "deny"
 include-path-dependencies = false
-unused = "deny"
+# Left as a warning: cargo-deny resolves crates.io entries through the Cargo
+# source replacement, so a crates.io mirror (for example rsproxy) makes every
+# registry entry look unused. Set to "deny" on CI, which uses crates.io
+# directly.
+unused = "warn"
 
 [sources]
 unknown-registry = "deny"

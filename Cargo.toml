@@ -7,6 +7,9 @@ default-members = ["apps/eframe-app"]
 version = "1.3.0"
 edition = "2024"
 rust-version = "1.95"
+# Not published to crates.io; also lets cargo-deny skip the workspace crates
+# when checking licenses.
+publish = false
 
 [workspace.dependencies]
 # GUI 层：只有 apps/eframe-app 依赖 eframe/egui。

@@ -3,6 +3,7 @@ name = "iv-image-render"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "ImageViewer 视口计算与视图变换（不依赖 GUI）"
 
 [dependencies]

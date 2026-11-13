@@ -3,6 +3,7 @@ name = "iv-platform"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 description = "ImageViewer 平台集成：回收站、文件管理器定位"
 
 [dependencies]
