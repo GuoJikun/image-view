@@ -1,0 +1,6 @@
+# Use the stable channel for local development. The minimum supported Rust
+# version is declared as `rust-version = "1.95"` in the workspace manifest.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -188,6 +188,8 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 
 ```
 Cargo.toml        虚拟 workspace：成员、共享依赖与 release profile
+rust-toolchain.toml  Rust stable 工具链与 rustfmt/clippy 组件
+deny.toml            cargo-deny 依赖审计、许可证与来源配置
 apps/
   eframe-app/     唯一的 GUI 可执行包（package 名 `image-view`）
     src/

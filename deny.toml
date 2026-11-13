@@ -1,0 +1,65 @@
+# cargo-deny configuration.
+#
+# Install: cargo install cargo-deny --locked
+# Run:     cargo deny check
+
+[graph]
+# Release targets: Windows x64, Linux x64 and macOS Apple Silicon.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+]
+# Check optional features too, so AVIF/HEIF/SVG dependencies are covered.
+all-features = true
+
+[advisories]
+# Fail on unmaintained or unsound direct dependencies, but only warn about
+# transitive ones; GUI stacks often lag behind on minor dependencies.
+unmaintained = "workspace"
+unsound = "workspace"
+yanked = "warn"
+ignore = []
+
+[bans]
+# eframe/egui and the image decoders still pull in duplicate transitive crates.
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[bans.workspace-dependencies]
+duplicates = "deny"
+include-path-dependencies = false
+unused = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[licenses]
+confidence-threshold = 0.93
+unused-allowed-license = "allow"
+# Workspace members are private application crates and do not declare a license.
+private = { ignore = true }
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "NCSA",
+    "OFL-1.1",
+    "Ubuntu-font-1.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+exceptions = []
