@@ -12,7 +12,7 @@
 
 ### 修复
 
-- Linux（Wayland）：启用 Adwaita 客户端装饰。GNOME/Mutter 与 WSLg 的 Weston 不提供服务端装饰，此前会退回 SCTK 的 fallback frame，关闭按钮显示为实心方块；现在标题栏的最小化、最大化、关闭按钮均为正常图标。
+- Linux：窗口按钮改为 egui 自绘标题栏。GNOME/Mutter 与 WSLg 的 Weston 不提供服务端装饰，此前会退回 SCTK 的 fallback frame（关闭按钮是实心方块）；启用 Adwaita 客户端装饰后，在分数缩放下三个按钮又会糊成一片。现在 Linux 关闭系统装饰，标题栏、最小化/最大化/关闭按钮与窗口边缘缩放把手全部由应用绘制，走 GL 管线按窗口缩放渲染，任意 DPI 下都清晰；标题栏支持拖动移动窗口与双击最大化。
 
 ## [1.2.0] - 2026-11-12
 

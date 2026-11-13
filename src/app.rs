@@ -16,6 +16,8 @@ use crate::logging;
 use crate::settings::Settings;
 use crate::theme::{self, ThemeSetting};
 use crate::thumbs::{self, ThumbnailCache, ThumbnailLoader};
+#[cfg(target_os = "linux")]
+use crate::titlebar;
 use crate::ui;
 use crate::update::{UpdateState, Updater};
 use crate::viewer::{self, ViewMode, ViewState};
@@ -906,6 +908,23 @@ impl eframe::App for ImageViewerApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // Linux 关闭了系统装饰：先画自绘标题栏（全屏时隐藏），再叠加缩放把手。
+        #[cfg(target_os = "linux")]
+        {
+            let (maximized, viewport_fullscreen) = ui.ctx().input(|input| {
+                let viewport = input.viewport();
+                (
+                    viewport.maximized.unwrap_or(false),
+                    viewport.fullscreen.unwrap_or(false),
+                )
+            });
+            let fullscreen = self.fullscreen || viewport_fullscreen;
+            if !fullscreen {
+                titlebar::show(ui, &self.title_cache);
+            }
+            titlebar::resize_grips(ui.ctx(), maximized, fullscreen);
+        }
+
         let center_title = self.fullscreen_title(ui.ctx());
         let toolbar_state = ui::ToolbarState {
             can_prev: self.folder.can_prev(),
