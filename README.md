@@ -55,6 +55,7 @@ git push origin v1.3.0
 工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.3.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
+- **文件关联**：安装时注册 19 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
 - **卸载**：从「设置 → 应用」或开始菜单卸载。
 
 ### macOS（arm64 / x64）
@@ -186,7 +187,8 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - 16-bit 图片以 8-bit 纹理显示（色彩转换阶段仍保留 16-bit 精度）；10-bit/HDR 输出不在当前版本范围内。
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
-- Windows 10/11 的默认应用由系统 `UserChoice` 保护，安装器无法静默夺取常见扩展名的默认查看器；请在“设置 → 应用 → 默认应用”中确认。
+- Windows 10/11 的默认应用由系统 `UserChoice` 保护：安装器写入扩展名关联后，若用户此前已在系统中选定其它默认应用，系统仍以 `UserChoice` 为准；请在「设置 → 应用 → 默认应用」中确认。
+- 文件关联分两层写入：打包声明（`bundle.fileAssociations`）写 ProgID 与扩展名默认值，`app/src-tauri/installer/hooks.nsh` 写 `OpenWithProgids`、`Applications\<exe>\SupportedTypes` 与 `RegisteredApplications` + `Capabilities` 能力项。前者让双击可用，后者保证本程序始终出现在右键「打开方式」与「设置 → 默认应用」列表中；默认处理器本身仍由系统 `UserChoice` 决定，安装器不会强行改写。
 - 安装向导支持英文 / 简体中文；应用内界面也可在“跟随系统 / 简体中文 / English”之间切换。自动更新只做 SHA-256 校验、没有代码签名；网络受限或需要回滚时，请从发布页手动下载安装包覆盖安装。
 - 日志与崩溃转储写入安装目录的 `logs\`（Windows 即 `%LOCALAPPDATA%\image-view\logs`），卸载时随安装目录一并删除。若需长期保留问题现场，请在卸载前复制该目录。
 
@@ -208,7 +210,8 @@ app/              Tauri 2 + Vue 3 GUI 应用
     types/ipc.ts      DTO 类型定义
   src-tauri/      Rust 适配层：Commands、Events、iviewer:// 协议、更新命令
     Cargo.toml    package: image-view
-    tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、updater、identifier（dev.jikun.imageview）
+    tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、文件关联、updater、identifier（dev.jikun.imageview）
+    installer/hooks.nsh  NSIS 钩子：OpenWithProgids、Applications、默认应用能力项（安装写入、卸载清理）
     capabilities/ 权限声明
     icons/        应用图标（exe、安装包与窗口共用）
     src/

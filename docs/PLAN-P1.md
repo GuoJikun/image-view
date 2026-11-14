@@ -475,3 +475,4 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 | 2026-11-12 | 范围调整：自动更新与中/英多语言从“v1.1/v1.2 候选”提升为 v1.0 收尾项，新增 P1-M8 / P1-M9；图库（M6）后移 v1.1，动画（M7）后移 v1.2，v1.0 门槛改为 M1~M5 + M8 + M9 |
 | 2026-11-12 | 完成 P1-M8：`update.json` 清单、后台检查/下载、SHA-256 校验、NSIS 静默安装、`.part` 清理；网络栈升级为 `ureq` 3.5 + `sha2` 0.11 |
 | 2026-11-12 | 完成 P1-M9：`i18n` 资源表、跟随系统/中/英切换与设置持久化，覆盖工具栏、菜单、状态栏、帮助、错误横幅与更新窗口 |
+| 2026-11-14 | 恢复 1.2.0 移除的文件关联，改用打包声明式：`tauri.conf.json` 的 `bundle.fileAssociations` 覆盖 19 个扩展名，NSIS 写 ProgID `ImageView.<ext>` 与扩展名默认值（备份原型、卸载还原），macOS / Linux 侧同步生成 `CFBundleDocumentTypes` 与 `MimeType`；另加 `installer/hooks.nsh`（`windows.nsis.installerHooks`）补齐 `OpenWithProgids`、`Applications\<exe>\SupportedTypes` 与 `RegisteredApplications` + `Capabilities`，使「打开方式」与「默认应用」列表不再依赖默认处理器归属 |

@@ -2,6 +2,14 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
+## [未发布]
+
+### 新增
+
+- 恢复 1.2.0 移除的图片格式「打开方式」注册（改为打包声明式）：19 个扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `avif` / `heic` / `heif` / `svg`）注册 ProgID `ImageView.<ext>`、资源管理器「类型」列名称与打开命令；安装前的默认处理器自动备份，卸载时还原。
+- Windows 安装包补齐协助程序声明：`OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` + `Capabilities` 能力项，本程序始终出现在右键「打开方式」与「设置 → 默认应用」中，不再依赖是否持有默认处理器；卸载时清理上述键值。
+- macOS 与 Linux 同步声明文档类型（`CFBundleDocumentTypes` / `.desktop` 的 `MimeType`），三端「打开方式」菜单均可列出本程序。
+
 ## [1.3.0] - 2026-11-14
 
 统一安装与运行标识，日志改为随安装目录存放；从 1.2.0 升级需先卸载旧版。

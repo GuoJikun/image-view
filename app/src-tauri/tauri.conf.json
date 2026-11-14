@@ -33,10 +33,32 @@
     "icon": ["icons/icon.png", "icons/icon.ico"],
     "shortDescription": "图片查看器 / Image Viewer",
     "longDescription": "一款快速、简洁的跨平台图片查看器，支持缩放、翻页、缩略图预览、色彩管理。A fast, clean cross-platform image viewer with zoom, navigation, thumbnail strip and color management.",
+    "fileAssociations": [
+      { "ext": ["png"], "name": "ImageView.png", "description": "PNG 图片", "mimeType": "image/png", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["jpg"], "name": "ImageView.jpg", "description": "JPEG 图片", "mimeType": "image/jpeg", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["jpeg"], "name": "ImageView.jpeg", "description": "JPEG 图片", "mimeType": "image/jpeg", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["gif"], "name": "ImageView.gif", "description": "GIF 图片", "mimeType": "image/gif", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["webp"], "name": "ImageView.webp", "description": "WebP 图片", "mimeType": "image/webp", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["bmp"], "name": "ImageView.bmp", "description": "BMP 图片", "mimeType": "image/bmp", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["tif"], "name": "ImageView.tif", "description": "TIFF 图片", "mimeType": "image/tiff", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["tiff"], "name": "ImageView.tiff", "description": "TIFF 图片", "mimeType": "image/tiff", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["ico"], "name": "ImageView.ico", "description": "ICO 图标", "mimeType": "image/x-icon", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["qoi"], "name": "ImageView.qoi", "description": "QOI 图片", "mimeType": "image/qoi", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["tga"], "name": "ImageView.tga", "description": "TGA 图片", "mimeType": "image/x-tga", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["pnm"], "name": "ImageView.pnm", "description": "PNM 图片", "mimeType": "image/x-portable-anymap", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["hdr"], "name": "ImageView.hdr", "description": "HDR 图片", "mimeType": "image/vnd.radiance", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["exr"], "name": "ImageView.exr", "description": "EXR 图片", "mimeType": "image/x-exr", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["dds"], "name": "ImageView.dds", "description": "DDS 图片", "mimeType": "image/vnd-ms.dds", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["avif"], "name": "ImageView.avif", "description": "AVIF 图片", "mimeType": "image/avif", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["heic"], "name": "ImageView.heic", "description": "HEIC 图片", "mimeType": "image/heic", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["heif"], "name": "ImageView.heif", "description": "HEIF 图片", "mimeType": "image/heif", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["svg"], "name": "ImageView.svg", "description": "SVG 图片", "mimeType": "image/svg+xml", "role": "Viewer", "rank": "Alternate" }
+    ],
     "windows": {
       "nsis": {
         "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "installerHooks": "installer/hooks.nsh"
       }
     }
   },
