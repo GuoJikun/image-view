@@ -61,6 +61,8 @@ jobs:
         include:
           - platform: windows-latest
             args: ''
+          - platform: windows-11-arm
+            args: '--target aarch64-pc-windows-msvc'
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
           - platform: macos-latest
