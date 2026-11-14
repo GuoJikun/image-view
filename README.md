@@ -41,8 +41,8 @@
 
 ```powershell
 cd app
-npm install
-npm run tauri build
+pnpm install
+pnpm tauri build
 ```
 
 产物位于 `app\src-tauri\target\release\bundle\nsis\`。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
@@ -63,8 +63,8 @@ git push origin v1.3.0
 
 ```bash
 cd app
-npm install
-npm run tauri build -- --target aarch64-apple-darwin
+pnpm install
+pnpm tauri build -- --target aarch64-apple-darwin
 ```
 
 产物为 `.dmg` 安装包。Intel Mac 用 `--target x86_64-apple-darwin`。
@@ -73,8 +73,8 @@ npm run tauri build -- --target aarch64-apple-darwin
 
 ```bash
 cd app
-npm install
-npm run tauri build
+pnpm install
+pnpm tauri build
 ```
 
 自动产出 `.deb`、`.rpm` 与 `.AppImage` 三种格式。
@@ -87,13 +87,13 @@ npm run tauri build
 
 ## 运行
 
-需要 Rust 1.95+（edition 2024）与 Node.js 22+。
+需要 Rust 1.95+（edition 2024）、Node.js 22+ 与 pnpm。
 
 ```powershell
 cd app
-npm install
-npm run tauri dev          # 开发模式（自动启动 Vite + 热更新）
-npm run tauri build        # 构建 release + 安装包
+pnpm install
+pnpm tauri dev          # 开发模式（自动启动 Vite + 热更新）
+pnpm tauri build        # 构建 release + 安装包
 ```
 
 构建产物位于 `app\src-tauri\target\release\`。
@@ -101,8 +101,8 @@ npm run tauri build        # 构建 release + 安装包
 前端单独构建：
 
 ```powershell
-cd app\frontend
-npm run build              # vue-tsc --noEmit && vite build
+cd app
+pnpm build              # vue-tsc --noEmit && vite build
 ```
 
 HEIC/AVIF 与 SVG 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
@@ -199,7 +199,14 @@ rust-toolchain.toml  Rust stable 工具链与 rustfmt/clippy 组件
 deny.toml            cargo-deny 依赖审计、许可证与来源配置
 THIRD-PARTY-LICENSES.md  自动生成的第三方依赖许可证与版权声明
 app/              Tauri 2 + Vue 3 GUI 应用
-  package.json    Tauri CLI 入口（dev/build）
+  package.json    依赖与脚本（pnpm：dev / build / tauri）
+  index.html      前端入口
+  vite.config.ts  Vite 配置（固定端口 1420）
+  src/            Vue 3 + TypeScript + Vite + Pinia 前端
+    services/ipc.ts   前端唯一的 Tauri 边界
+    stores/           Pinia 状态管理
+    components/       TitleBar、MenuBar、ZoomControl、Canvas、缩略图条、对话框
+    types/ipc.ts      DTO 类型定义
   src-tauri/      Rust 适配层：Commands、Events、iviewer:// 协议、更新命令
     Cargo.toml    package: image-view-tauri
     tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、updater
@@ -217,12 +224,6 @@ app/              Tauri 2 + Vue 3 GUI 应用
         file.rs   文件管理命令
         task.rs   任务取消命令
         update.rs 更新命令（check/download/cancel/install）
-  frontend/       Vue 3 + TypeScript + Vite + Pinia
-    src/
-      services/ipc.ts   前端唯一的 Tauri 边界
-      stores/           Pinia 状态管理
-      components/       TitleBar、MenuBar、ZoomControl、Canvas、缩略图条、对话框
-      types/ipc.ts      DTO 类型定义
 crates/
   iv-domain/       排序、语言、主题与支持的扩展名
   iv-files/        目录扫描与自然/时间排序
@@ -266,13 +267,13 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 
 # 前端
-cd app\frontend
-npm run build
+cd app
+pnpm build
 
 # Tauri 开发与构建
 cd app
-npm run tauri dev
-npm run tauri build
+pnpm tauri dev
+pnpm tauri build
 ```
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。

@@ -1,5 +1,5 @@
 target
 dist
 node_modules
-/apps/tauri-app/src-tauri/gen/schemas
+/app/src-tauri/gen/schemas
 /.workbuddy

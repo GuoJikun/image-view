@@ -8,33 +8,34 @@
 
 ```text
 app/
-├── package.json              # Tauri CLI 入口（dev/build）
-├── src-tauri/
-│   ├── Cargo.toml            # package: image-view-tauri
-│   ├── build.rs
-│   ├── tauri.conf.json       # 窗口、CSP、beforeDev/Build、bundle
-│   ├── capabilities/
-│   │   └── default.json      # 仅 core:default
-│   ├── icons/
-│   └── src/
-│       ├── main.rs           # 桌面入口，调用 lib::run
-│       ├── lib.rs            # Builder 装配、单实例、命令注册
-│       ├── dto.rs            # Command/Event DTO 与稳定错误码
-│       ├── state.rs          # 目录导航、ImageId 授权表、用例编排
-│       ├── preview.rs        # 预览解码线程、latest-wins、PNG 缓存
-│       ├── thumbnails.rs     # 缩略图解码与内存 LRU
-│       ├── protocol.rs       # iviewer:// 资源协议
-│       └── commands/
-│           ├── image.rs
-│           ├── file.rs
-│           └── task.rs
-└── frontend/
-    ├── package.json          # Vue 3 + Vite + Pinia + vue-tsc
+├── package.json              # 依赖与脚本（pnpm：dev / build / tauri）
+├── index.html                # 前端入口
+├── vite.config.ts            # Vite 配置（固定端口 1420）
+├── src/                      # Vue 3 + TypeScript + Vite + Pinia
+│   ├── services/ipc.ts       # 前端唯一的 Tauri 边界
+│   ├── stores/viewer.ts      # 只保存 ID/DTO/视图参数
+│   ├── components/           # 工具栏、画布、元数据、缩略图、状态栏
+│   └── types/ipc.ts
+└── src-tauri/
+    ├── Cargo.toml            # package: image-view-tauri
+    ├── build.rs
+    ├── tauri.conf.json       # 窗口、CSP、beforeDev/Build、bundle
+    ├── capabilities/
+    │   └── default.json      # 仅 core:default
+    ├── icons/
     └── src/
-        ├── services/ipc.ts   # 前端唯一的 Tauri 边界
-        ├── stores/viewer.ts  # 只保存 ID/DTO/视图参数
-        ├── components/       # 工具栏、画布、元数据、缩略图、状态栏
-        └── types/ipc.ts
+        ├── main.rs           # 桌面入口，调用 lib::run
+        ├── lib.rs            # Builder 装配、单实例、命令注册
+        ├── dto.rs            # Command/Event DTO 与稳定错误码
+        ├── state.rs          # 目录导航、ImageId 授权表、用例编排
+        ├── preview.rs        # 预览解码线程、latest-wins、PNG 缓存
+        ├── thumbnails.rs     # 缩略图解码与内存 LRU
+        ├── protocol.rs       # iviewer:// 资源协议
+        └── commands/
+            ├── image.rs
+            ├── file.rs
+            ├── task.rs
+            └── update.rs
 ```
 
 `src-tauri` 只做适配与装配：目录扫描与导航复用 `iv-application::FolderNav`，解码复用 `iv-image-decode`，缩略图缓存复用 `iv-cache::LruCache`，文件管理器定位复用 `iv-platform`，日志复用 `iv-infra::logging`。Core/Application 不依赖 Tauri 或 WebView。
@@ -42,16 +43,16 @@ app/
 ## 2. 运行与构建
 
 ```powershell
-cd apps\tauri-app
-npm install
-npm run dev                 # tauri dev，自动启动 frontend 的 Vite
-npm run build               # tauri build（release + 安装包）
+cd app
+pnpm install
+pnpm tauri dev              # tauri dev，自动启动 Vite 开发服务器
+pnpm tauri build            # tauri build（release + 安装包）
 ```
 
 仅验证编译、不生成安装包：
 
 ```powershell
-npx tauri build --no-bundle
+pnpm tauri build --no-bundle
 ```
 
 打包需要下载 WiX 与 NSIS 工具链。若 GitHub 下载超时，先设置代理环境变量（Tauri 的下载器读取 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`）：
@@ -59,14 +60,14 @@ npx tauri build --no-bundle
 ```powershell
 $env:HTTPS_PROXY = 'http://127.0.0.1:10808'
 $env:HTTP_PROXY = 'http://127.0.0.1:10808'
-npm run build
+pnpm tauri build
 ```
 
 前端单独构建：
 
 ```powershell
-cd app\frontend
-npm run build               # vue-tsc --noEmit && vite build
+cd app
+pnpm build                  # vue-tsc --noEmit && vite build
 ```
 
 Rust 侧检查：
