@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>image-view · macOS 优先 UI 设计稿</title>
+<style>
+  :root {
+    --font-ui: -apple-system, "SF Pro Text", "PingFang SC",
+               "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI",
+               "Inter", "Noto Sans CJK SC", "Noto Sans", sans-serif;
+    --page: #E7E7EB;
+    --gtext: #1D1D1F;
+    --gtext2: #6E6E73;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--page);
+    color: var(--gtext);
+    padding: 28px 24px 64px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 画廊外壳 ---------- */
+  .gallery-head { max-width: 1228px; margin: 0 auto 20px; }
+  .gallery-head h1 { font-size: 19px; font-weight: 650; letter-spacing: .2px; }
+  .gallery-head p { font-size: 12.5px; color: var(--gtext2); margin-top: 6px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .tab {
+    border: 1px solid rgba(0,0,0,.10); background: #fff; color: var(--gtext);
+    font: inherit; font-size: 12.5px; height: 30px; padding: 0 14px;
+    border-radius: 15px; cursor: pointer;
+  }
+  .tab:hover { background: rgba(0,0,0,.05); }
+  .tab.active { background: #0A7CFF; border-color: #0A7CFF; color: #fff; }
+
+  .scene { display: none; max-width: 1228px; margin: 22px auto 0; }
+  .scene.active { display: block; }
+  .caption {
+    font-size: 12px; color: var(--gtext2); text-align: center; margin-top: 14px; line-height: 1.7;
+  }
+  .caption b { color: var(--gtext); font-weight: 600; }
+
+  /* ---------- 窗口主题令牌 ---------- */
+  .win {
+    --chrome: #F6F6F7; --strip: #EFEFF1; --hairline: #E4E4E7; --control: #FFFFFF;
+    --text: #1D1D1F; --text2: #6E6E73; --text3: #98989D; --icon: #48484C;
+    --accent: #0A7CFF; --accent-soft: rgba(10,124,255,.13);
+    --canvas: #1C1C1E; --track: #E9E9EB;
+    --hover: rgba(0,0,0,.055); --press: rgba(0,0,0,.10);
+    --danger: #E5484D; --danger-soft: #FDECEC; --danger-text: #8C2F32;
+    --success: #2F8F4E; --tile-border: rgba(0,0,0,.07);
+    --menu-shadow: 0 8px 24px rgba(0,0,0,.18);
+  }
+  .win.dark {
+    --chrome: #2A2A2D; --strip: #232326; --hairline: #3A3A3D; --control: #3A3A3D;
+    --text: #F5F5F7; --text2: #A1A1A6; --text3: #7C7C82; --icon: #D3D3D9;
+    --accent: #0A84FF; --accent-soft: rgba(10,132,255,.20);
+    --canvas: #101012; --track: #3A3A3D;
+    --hover: rgba(255,255,255,.07); --press: rgba(255,255,255,.13);
+    --danger: #FF6961; --danger-soft: #3A2526; --danger-text: #FFB4B0;
+    --success: #6EC88C; --tile-border: rgba(255,255,255,.07);
+    --menu-shadow: 0 8px 24px rgba(0,0,0,.45);
+  }
+
+  .win {
+    width: 1180px; height: 760px; margin: 0 auto;
+    background: var(--chrome); border-radius: 10px; overflow: hidden;
+    display: flex; flex-direction: column;
+    box-shadow: 0 24px 64px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06);
+    position: relative;
+  }
+  .win[data-platform="linux"] { border-radius: 8px; }
+
+  /* ---------- 标题栏（28 px）：macOS 原生 / Win·Linux 自绘 ---------- */
+  .titlebar {
+    height: 28px; flex: none; display: flex; align-items: center;
+    background: var(--chrome); border-bottom: 1px solid var(--hairline);
+    padding: 0 12px; position: relative;
+  }
+  .win[data-platform="macos"] .titlebar { padding-left: 8px; }
+  .tb-title {
+    position: absolute; left: 50%; top: 0; height: 28px;
+    transform: translateX(-50%); display: flex; align-items: center;
+    font-size: 13px; font-weight: 600; color: var(--text);
+    max-width: 50%; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; pointer-events: none;
+  }
+
+  .traffic { display: flex; gap: 8px; padding: 0 8px 0 12px; margin-right: 10px; }
+  .tl { width: 12px; height: 12px; border-radius: 50%; }
+  .tl.c { background: #FF5F57; } .tl.m { background: #FEBC2E; } .tl.x { background: #28C840; }
+
+  .capbtns { display: flex; margin-left: auto; height: 28px; }
+  .capbtn {
+    width: 46px; height: 28px; display: flex; align-items: center; justify-content: center;
+    color: var(--text);
+  }
+  .capbtn.close:hover { background: #C42B1C; color: #fff; }
+  .capbtn svg { width: 11px; height: 11px; }
+
+  .lnxbtns { display: flex; margin-left: auto; gap: 4px; align-items: center; }
+  .lnxbtn {
+    width: 26px; height: 28px; border-radius: 6px; display: flex;
+    align-items: center; justify-content: center; color: var(--icon);
+  }
+  .lnxbtn:hover { background: var(--hover); }
+  .lnxbtn.close:hover { background: var(--danger); color: #fff; }
+  .lnxbtn svg { width: 13px; height: 13px; }
+
+  /* ---------- 工具栏（52 px，三端一致） ---------- */
+  .bar {
+    height: 52px; flex: none; display: flex; align-items: center;
+    background: var(--chrome); border-bottom: 1px solid var(--hairline);
+    padding: 0 12px; position: relative;
+  }
+  .bar-left, .bar-right { display: flex; align-items: center; flex: none; }
+  .bar-right { margin-left: auto; }
+
+  /* 图标按钮 30×30 / 图标 17 */
+  .ib {
+    width: 30px; height: 30px; border: 0; background: transparent; padding: 0;
+    border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+    color: var(--icon); cursor: default;
+  }
+  .ib:hover { background: var(--hover); }
+  .ib:active { background: var(--press); }
+  .ib.active { background: var(--accent-soft); color: var(--accent); }
+  .ib.text {
+    width: auto; min-width: 62px; padding: 0 8px 0 10px; gap: 3px;
+    color: var(--text); font-size: 12px;
+  }
+  .ic { width: 17px; height: 17px; display: block; }
+  .ic.sm { width: 13px; height: 13px; }
+  .ic.xs { width: 11px; height: 11px; }
+
+  .vdiv { width: 1px; height: 18px; background: var(--hairline); margin: 0 12px; flex: none; }
+  .gap-4 { width: 4px; } .gap-10 { width: 10px; } .gap-12 { width: 12px; }
+
+  /* 胶囊缩放分段控件 118×30 */
+  .zoom {
+    width: 118px; height: 30px; display: flex; align-items: center;
+    background: var(--track); border: 1px solid var(--hairline);
+    border-radius: 7px;
+  }
+  .zb {
+    width: 37px; height: 28px; border: 0; background: transparent; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--icon); border-radius: 6px;
+  }
+  .zb:hover { background: var(--hover); }
+  .zv {
+    flex: 1; height: 24px; margin: 2px 1px; background: var(--control);
+    border: 1px solid var(--tile-border); border-radius: 5px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.10);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 画布（恒深） ---------- */
+  .canvas {
+    flex: 1; background: var(--canvas); display: flex;
+    align-items: center; justify-content: center; min-height: 0;
+  }
+  .photo {
+    width: 58%; aspect-ratio: 3 / 2; border-radius: 2px; overflow: hidden;
+    box-shadow: 0 6px 28px rgba(0,0,0,.38);
+  }
+  .photo svg { width: 100%; height: 100%; display: block; }
+
+  /* 空状态 */
+  .empty {
+    display: flex; flex-direction: column; align-items: center;
+    transform: translateY(-24px);
+  }
+  .empty .eicon { width: 60px; height: 60px; color: var(--text3); }
+  .empty h2 { font-size: 15px; font-weight: 600; color: var(--text); margin-top: 14px; }
+  .empty p { font-size: 12px; color: var(--text2); margin-top: 6px; }
+  .btn-primary {
+    margin-top: 18px; height: 28px; padding: 0 16px; border: 0; border-radius: 6px;
+    background: var(--accent); color: #fff; font: inherit; font-size: 12.5px;
+  }
+
+  /* ---------- 缩略图条 ---------- */
+  .strip {
+    height: 88px; flex: none; background: var(--strip);
+    border-top: 1px solid var(--hairline);
+    display: flex; align-items: center; gap: 9px; padding: 0 16px; overflow: hidden;
+  }
+  .tile {
+    width: 76px; height: 56px; border-radius: 8px; flex: none;
+    border: 1px solid var(--tile-border); background-size: cover; background-position: center;
+  }
+  .tile.sel {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.22);
+  }
+
+  /* ---------- 状态栏 ---------- */
+  .status {
+    height: 26px; flex: none; background: var(--chrome);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; font-size: 11px; color: var(--text2);
+    font-variant-numeric: tabular-nums;
+  }
+  .status.solo { border-top: 1px solid var(--hairline); }
+  .dot { color: var(--text3); margin: 0 7px; }
+  .warn { color: #E6A032; }
+  .st-notice { color: var(--success); margin-right: 14px; }
+
+  /* ---------- 菜单：VS Code 式（Win/Linux）/ 原生同构（macOS） ---------- */
+  .menubar { display: flex; align-items: center; gap: 2px; flex: none; }
+  .mb-item {
+    height: 28px; padding: 0 8px; display: inline-flex; align-items: center;
+    font-size: 12.5px; color: var(--text); border-radius: 4px;
+  }
+  .mb-item:hover { background: var(--hover); }
+  .mb-item.open { background: var(--accent-soft); color: var(--accent); }
+
+  .menu {
+    position: absolute; min-width: 252px; background: var(--control);
+    border: 1px solid var(--tile-border); border-radius: 6px;
+    box-shadow: var(--menu-shadow); padding: 5px; z-index: 5;
+  }
+  .mi {
+    height: 26px; border-radius: 4px; padding-right: 8px; display: flex; align-items: center;
+    font-size: 13px; color: var(--text);
+  }
+  .mi .gut {
+    width: 22px; flex: none; display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+  }
+  .mi .lbl { flex: 1; padding-right: 28px; }
+  .mi .sc {
+    margin-left: auto; font-size: 12px; color: var(--text3);
+    font-variant-numeric: tabular-nums;
+  }
+  .mi.hover-item { background: var(--accent); color: #fff; }
+  .mi.hover-item .sc, .mi.hover-item .gut { color: rgba(255,255,255,.85); }
+  .mi.danger .lbl { color: var(--danger); }
+  .mi.hover-item.danger .lbl { color: #fff; }
+  .msep { height: 1px; background: var(--hairline); margin: 5px 4px 5px 30px; }
+
+  /* macOS 屏幕菜单栏（系统绘制示意） */
+  .screenbar {
+    height: 26px; display: flex; align-items: center; gap: 2px;
+    padding: 0 14px; margin-bottom: 12px;
+    background: rgba(246,246,247,.92); border: 1px solid rgba(0,0,0,.06);
+    border-radius: 8px; width: fit-content; margin-left: auto; margin-right: auto;
+    box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  }
+  .screenbar .sb-item {
+    padding: 0 10px; height: 22px; display: inline-flex; align-items: center;
+    font-size: 12.5px; color: var(--gtext); border-radius: 5px;
+  }
+  .screenbar .sb-item.open { background: var(--accent, #0A7CFF); color: #fff; }
+  .screenbar .sb-app { font-weight: 650; }
+
+  /* ---------- 规格板 ---------- */
+  .spec-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;
+    max-width: 1228px; margin: 0 auto;
+  }
+  .card {
+    background: #fff; border: 1px solid rgba(0,0,0,.07); border-radius: 12px;
+    padding: 20px 22px; box-shadow: 0 2px 10px rgba(0,0,0,.04);
+  }
+  .card.full { grid-column: 1 / -1; }
+  .card h3 {
+    font-size: 13px; font-weight: 650; margin-bottom: 14px; color: var(--gtext);
+  }
+  .card h3 span { font-weight: 400; color: var(--gtext2); font-size: 11.5px; margin-left: 8px; }
+  .sw-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .sw { width: 92px; }
+  .sw .chip {
+    height: 44px; border-radius: 8px; border: 1px solid rgba(0,0,0,.08); margin-bottom: 6px;
+  }
+  .sw .name { font-size: 10.5px; color: var(--gtext2); line-height: 1.5; }
+  .sw .name code { font-family: ui-monospace, Consolas, monospace; font-size: 10px; }
+  .type-row { display: flex; align-items: baseline; gap: 16px; padding: 7px 0; border-bottom: 1px solid #EFEFF1; }
+  .type-row:last-child { border-bottom: 0; }
+  .type-tag {
+    width: 132px; flex: none; font-size: 10.5px; color: var(--gtext2);
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  .radii { display: flex; gap: 14px; align-items: flex-end; }
+  .rbox { text-align: center; }
+  .rbox .shape { width: 72px; height: 48px; background: #EAF2FF; border: 1.5px solid #0A7CFF; margin-bottom: 6px; }
+  .rbox .lb { font-size: 10.5px; color: var(--gtext2); line-height: 1.5; }
+  .ctrl-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ctrl-lb { font-size: 10.5px; color: var(--gtext2); width: 88px; flex: none; }
+  .keycap {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 22px; min-width: 26px; padding: 0 7px; border-radius: 4px;
+    background: var(--track, #E9E9EB); border: 1px solid rgba(0,0,0,.12);
+    box-shadow: 0 1px 0 rgba(0,0,0,.06); font-size: 11px; color: var(--gtext);
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-shell {
+    height: 44px; border-radius: 8px; display: flex; align-items: center;
+    padding: 0 10px; gap: 8px; border: 1px solid rgba(0,0,0,.07); margin-bottom: 10px;
+  }
+  .mini-shell .m-name { font-size: 11px; color: var(--gtext2); margin-left: auto; }
+  .mini-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .mini-btn {
+    width: 18px; height: 18px; border-radius: 4px; background: rgba(0,0,0,.06);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: var(--gtext2);
+  }
+  .note {
+    margin-top: 12px; font-size: 11px; color: var(--gtext2); line-height: 1.8;
+    background: #F6F6F7; border-radius: 8px; padding: 10px 12px;
+  }
+  .demo-pill {
+    display: inline-flex; height: 30px; align-items: center; background: #E9E9EB;
+    border: 1px solid #E4E4E7; border-radius: 7px;
+  }
+  .demo-pill .pv {
+    width: 40px; height: 24px; margin: 2px 1px; background: #fff; border: 1px solid rgba(0,0,0,.10);
+    border-radius: 5px; box-shadow: 0 1px 2px rgba(0,0,0,.10);
+    display: flex; align-items: center; justify-content: center; font-size: 11px;
+  }
+  .demo-pill .pb {
+    width: 37px; height: 28px; display: flex; align-items: center; justify-content: center;
+    color: #48484C;
+  }
+  .demo-check {
+    width: 16px; height: 16px; border-radius: 4px; background: #0A7CFF;
+    display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px;
+  }
+  .demo-check.off { background: transparent; border: 1px solid #98989D; }
+  .demo-menu {
+    width: 210px; background: #fff; border: 1px solid rgba(0,0,0,.08); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12); padding: 5px;
+  }
+  .demo-menu .dm {
+    height: 26px; border-radius: 5px; display: flex; align-items: center; padding: 0 10px;
+    font-size: 12px; color: var(--gtext);
+  }
+  .demo-menu .dm.sel { background: #0A7CFF; color: #fff; }
+  .demo-menu .dm .k { margin-left: auto; font-size: 11px; color: #98989D; }
+  .demo-menu .dm.sel .k { color: rgba(255,255,255,.85); }
+</style>
+</head>
+<body>
+
+<!-- 图标定义 -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <g id="g-stroke" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></g>
+  </defs>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 7.5A2 2 0 0 1 5 5.5h3.6l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+  </symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 6.5 9 12l5.5 5.5"/>
+  </symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 6.5 15 12l-5.5 5.5"/>
+  </symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.5 9.5 12 15l5.5-5.5"/>
+  </symbol>
+  <symbol id="i-sidebar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M10 5v14"/>
+  </symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8.5 6.2 18 12l-9.5 5.8z"/>
+  </symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9.5 6.5v11M14.5 6.5v11"/>
+  </symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <path d="M6.5 12h11"/>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <path d="M12 6.5v11M6.5 12h11"/>
+  </symbol>
+  <symbol id="i-ellipsis" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/>
+  </symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4.5 17.5 9.5 13l3.5 3 2.5-2.2 4 3.7"/>
+  </symbol>
+  <symbol id="i-gmin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+    <path d="M6 12h12"/>
+  </symbol>
+  <symbol id="i-gmax" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="7" y="7" width="10" height="10" rx="1"/>
+  </symbol>
+  <symbol id="i-gclose" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+    <path d="M7.5 7.5l9 9M16.5 7.5l-9 9"/>
+  </symbol>
+  <symbol id="i-grestore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="9" width="9" height="9" rx="1"/><path d="M9 6h9v9"/>
+  </symbol>
+
+  <!-- 示例照片：日落湖景 -->
+  <symbol id="photo-scene" viewBox="0 0 720 480">
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#28395F"/><stop offset=".38" stop-color="#B25B57"/>
+        <stop offset=".62" stop-color="#E98A5B"/><stop offset=".8" stop-color="#F5C87C"/>
+        <stop offset="1" stop-color="#F8DFA6"/>
+      </linearGradient>
+      <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#D8956B"/><stop offset=".55" stop-color="#5A5E7C"/>
+        <stop offset="1" stop-color="#2A3252"/>
+      </linearGradient>
+    </defs>
+    <rect width="720" height="480" fill="url(#sky)"/>
+    <circle cx="368" cy="262" r="42" fill="#FFEFC0" opacity=".95"/>
+    <circle cx="368" cy="262" r="78" fill="#FFD98E" opacity=".18"/>
+    <path d="M0 296 L110 208 L196 276 L298 196 L412 300 L516 226 L628 304 L720 246 L720 330 L0 330 Z" fill="#46567E" opacity=".75"/>
+    <path d="M0 322 L86 262 L184 322 L282 258 L388 330 L498 272 L610 336 L720 282 L720 372 L0 372 Z" fill="#2B3757"/>
+    <path d="M0 348 L72 316 L168 350 L268 312 L376 354 L482 320 L596 358 L720 326 L720 380 L0 380 Z" fill="#1F2942" opacity=".9"/>
+    <rect y="372" width="720" height="108" fill="url(#lake)"/>
+    <g opacity=".28" stroke="#FFE2AE" stroke-linecap="round">
+      <path d="M250 396 h230" stroke-width="5"/><path d="M290 416 h150" stroke-width="4"/>
+      <path d="M236 436 h260" stroke-width="3"/><path d="M310 454 h110" stroke-width="3"/>
+    </g>
+    <path d="M0 372 q90 -10 180 0 t180 0 t180 0 t180 0 v10 H0 Z" fill="#1F2942" opacity=".55"/>
+  </symbol>
+</svg>
+
+<div class="gallery-head">
+  <h1>image-view · 界面设计稿（macOS 优先 · 三端和谐）</h1>
+  <p>功能基线来自代码现状（apps/eframe-app）；视觉语言以 macOS HIG 为基准，Windows / Linux 保持同一套控件与配色，仅窗口外壳按平台惯例适配。规格详见同目录 README.md。</p>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-scene="s-mac">macOS · 浅色</button>
+    <button class="tab" data-scene="s-mac-dark">macOS · 深色</button>
+    <button class="tab" data-scene="s-win">Windows · 浅色</button>
+    <button class="tab" data-scene="s-linux">Linux · 浅色</button>
+    <button class="tab" data-scene="s-empty">空状态</button>
+    <button class="tab" data-scene="s-menu">菜单 · VS Code</button>
+    <button class="tab" data-scene="s-menu-mac">菜单 · macOS 原生</button>
+    <button class="tab" data-scene="s-spec">规格板</button>
+  </nav>
+</div>
+
+<!-- ================= 场景 1：macOS 浅色主视图 ================= -->
+<section class="scene active" id="s-mac">
+  <div class="win" data-platform="macos">
+    <div class="titlebar">
+      <div class="traffic"><span class="tl c"></span><span class="tl m"></span><span class="tl x"></span></div>
+      <div class="tb-title">sunset.jpg — 图片查看器</div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">68%</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="photo"><svg><use href="#photo-scene"/></svg></div>
+    </div>
+    <div class="strip">
+      <div class="tile" style="background:linear-gradient(135deg,#7BA3C9,#2E4A6B)"></div>
+      <div class="tile sel" style="background:linear-gradient(150deg,#E98A5B,#F5C87C 60%,#2B3757)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#2F5D50,#8FBF9F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#8C5A6E,#E7B7C8)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3A4E78,#93A9D6)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#B98E5A,#F0D9AE)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#4A4A52,#A8A8B4)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#5B7DB1,#C8D8F0)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#7C4B4B,#D8A08F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3E6B4E,#B7D2B0)"></div>
+    </div>
+    <div class="status">
+      <div>4032 × 3024<span class="dot">·</span>8 bit<span class="dot">·</span>JPEG<span class="dot">·</span>Display P3 → sRGB</div>
+      <div>2 / 14</div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 1 · 主视图 · macOS 浅色</b> —— <b>原生标题栏 28 px</b>（红绿灯 / 拖拽 / 全屏由系统提供）+ 自绘工具栏 52 px（「打开 ‹ ›」在左，「缩略图 · 幻灯片 · 排序 | 胶囊缩放」在右，无 ⋯）。画布恒深；缩略图条 88 px（卡片 76×56 r8，选中 2 px 强调色外环），状态栏 26 px。</p>
+</section>
+
+<!-- ================= 场景 2：macOS 深色 ================= -->
+<section class="scene" id="s-mac-dark">
+  <div class="win dark" data-platform="macos">
+    <div class="titlebar">
+      <div class="traffic"><span class="tl c"></span><span class="tl m"></span><span class="tl x"></span></div>
+      <div class="tb-title">sunset.jpg — 图片查看器</div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">68%</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="photo"><svg><use href="#photo-scene"/></svg></div>
+    </div>
+    <div class="strip">
+      <div class="tile" style="background:linear-gradient(135deg,#7BA3C9,#2E4A6B)"></div>
+      <div class="tile sel" style="background:linear-gradient(150deg,#E98A5B,#F5C87C 60%,#2B3757)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#2F5D50,#8FBF9F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#8C5A6E,#E7B7C8)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3A4E78,#93A9D6)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#B98E5A,#F0D9AE)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#4A4A52,#A8A8B4)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#5B7DB1,#C8D8F0)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#7C4B4B,#D8A08F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3E6B4E,#B7D2B0)"></div>
+    </div>
+    <div class="status">
+      <div>4032 × 3024<span class="dot">·</span>8 bit<span class="dot">·</span>JPEG<span class="dot">·</span>Display P3 → sRGB</div>
+      <div>2 / 14</div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 2 · 主视图 · macOS 深色</b> —— 画布保持 #101012，chrome 与控件整体切换深色令牌；强调色使用深色变体 #0A84FF。缩略图、菜单、弹窗同步切换，布局与浅色完全一致。</p>
+</section>
+
+<!-- ================= 场景 3：Windows 浅色 ================= -->
+<section class="scene" id="s-win">
+  <div class="win" data-platform="windows">
+    <div class="titlebar">
+      <div class="menubar">
+        <span class="mb-item">文件</span><span class="mb-item">显示</span><span class="mb-item">帮助</span>
+      </div>
+      <div class="tb-title">sunset.jpg — 图片查看器</div>
+      <div class="capbtns">
+        <div class="capbtn"><svg class="ic xs"><use href="#i-gmin"/></svg></div>
+        <div class="capbtn"><svg class="ic xs"><use href="#i-gmax"/></svg></div>
+        <div class="capbtn close"><svg class="ic xs"><use href="#i-gclose"/></svg></div>
+      </div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">68%</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="photo"><svg><use href="#photo-scene"/></svg></div>
+    </div>
+    <div class="strip">
+      <div class="tile" style="background:linear-gradient(135deg,#7BA3C9,#2E4A6B)"></div>
+      <div class="tile sel" style="background:linear-gradient(150deg,#E98A5B,#F5C87C 60%,#2B3757)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#2F5D50,#8FBF9F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#8C5A6E,#E7B7C8)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3A4E78,#93A9D6)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#B98E5A,#F0D9AE)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#4A4A52,#A8A8B4)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#5B7DB1,#C8D8F0)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#7C4B4B,#D8A08F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3E6B4E,#B7D2B0)"></div>
+    </div>
+    <div class="status">
+      <div>4032 × 3024<span class="dot">·</span>8 bit<span class="dot">·</span>JPEG<span class="dot">·</span>Display P3 → sRGB</div>
+      <div>2 / 14</div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 3 · 主视图 · Windows 11</b> —— <b>自绘标题栏 28 px</b>（对齐 macOS 原生高度）：文件名居中、caption 按钮 46 × 28 右上（悬停仅关闭键变红）；工具栏与其余部分与 macOS 逐像素一致。不使用 Mica 材质。</p>
+</section>
+
+<!-- ================= 场景 4：Linux 浅色 ================= -->
+<section class="scene" id="s-linux">
+  <div class="win" data-platform="linux">
+    <div class="titlebar">
+      <div class="menubar">
+        <span class="mb-item">文件</span><span class="mb-item">显示</span><span class="mb-item">帮助</span>
+      </div>
+      <div class="tb-title">sunset.jpg — 图片查看器</div>
+      <div class="lnxbtns">
+        <div class="lnxbtn"><svg><use href="#i-gmin"/></svg></div>
+        <div class="lnxbtn"><svg><use href="#i-grestore"/></svg></div>
+        <div class="lnxbtn close"><svg><use href="#i-gclose"/></svg></div>
+      </div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">68%</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="photo"><svg><use href="#photo-scene"/></svg></div>
+    </div>
+    <div class="strip">
+      <div class="tile" style="background:linear-gradient(135deg,#7BA3C9,#2E4A6B)"></div>
+      <div class="tile sel" style="background:linear-gradient(150deg,#E98A5B,#F5C87C 60%,#2B3757)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#2F5D50,#8FBF9F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#8C5A6E,#E7B7C8)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3A4E78,#93A9D6)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#B98E5A,#F0D9AE)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#4A4A52,#A8A8B4)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#5B7DB1,#C8D8F0)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#7C4B4B,#D8A08F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3E6B4E,#B7D2B0)"></div>
+    </div>
+    <div class="status">
+      <div>4032 × 3024<span class="dot">·</span>8 bit<span class="dot">·</span>JPEG<span class="dot">·</span>Display P3 → sRGB</div>
+      <div>2 / 14</div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 4 · 主视图 · Linux（GNOME 系）</b> —— <b>自绘标题栏 28 px</b>（现状 32 → 28，对齐 macOS）：文件名居中、圆形三钮右上（悬停示意），窗口圆角 8 px、四角透明。工具栏、色板、字体尺寸与其他两端一致。</p>
+</section>
+
+<!-- ================= 场景 5：空状态 ================= -->
+<section class="scene" id="s-empty">
+  <div class="win" data-platform="macos">
+    <div class="titlebar">
+      <div class="traffic"><span class="tl c"></span><span class="tl m"></span><span class="tl x"></span></div>
+      <div class="tb-title">图片查看器</div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">—</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="empty">
+        <svg class="eicon"><use href="#i-photo"/></svg>
+        <h2>还没有打开图片</h2>
+        <p>拖入文件，或按 Ctrl+O 选择</p>
+        <button class="btn-primary">打开图片…</button>
+      </div>
+    </div>
+    <div class="status solo">
+      <div style="color:var(--text3)">没有图片</div>
+      <div></div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 5 · 空状态</b> —— 无图片时缩略图条整条隐藏；画布中央为 60 px 图标 + 15 px 标题 + 12 px 说明 + 强调色主按钮（高 28 r6）。缩放控件显示「—」并禁用，状态栏提示「没有图片」。</p>
+</section>
+
+<!-- ================= 场景 6：菜单展开 ================= -->
+<section class="scene" id="s-menu">
+  <div class="win" data-platform="windows">
+    <div class="titlebar">
+      <div class="menubar">
+        <span class="mb-item">文件</span><span class="mb-item open">显示</span><span class="mb-item">帮助</span>
+      </div>
+      <div class="tb-title">sunset.jpg — 图片查看器</div>
+      <div class="capbtns">
+        <div class="capbtn"><svg class="ic xs"><use href="#i-gmin"/></svg></div>
+        <div class="capbtn"><svg class="ic xs"><use href="#i-gmax"/></svg></div>
+        <div class="capbtn close"><svg class="ic xs"><use href="#i-gclose"/></svg></div>
+      </div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">68%</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="photo"><svg><use href="#photo-scene"/></svg></div>
+    </div>
+    <div class="strip">
+      <div class="tile" style="background:linear-gradient(135deg,#7BA3C9,#2E4A6B)"></div>
+      <div class="tile sel" style="background:linear-gradient(150deg,#E98A5B,#F5C87C 60%,#2B3757)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#2F5D50,#8FBF9F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#8C5A6E,#E7B7C8)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3A4E78,#93A9D6)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#B98E5A,#F0D9AE)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#4A4A52,#A8A8B4)"></div>
+    </div>
+    <div class="status">
+      <div>4032 × 3024<span class="dot">·</span>8 bit<span class="dot">·</span>JPEG<span class="dot">·</span>Display P3 → sRGB</div>
+      <div>2 / 14</div>
+    </div>
+
+    <!-- VS Code 式下拉：「显示」菜单 -->
+    <div class="menu" style="top:33px; left:52px;">
+      <div class="mi"><span class="gut">✓</span><span class="lbl">缩略图条</span><span class="sc"></span></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">幻灯片</span><span class="sc">Space</span></div>
+      <div class="msep"></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">排序</span><span class="sc">›</span></div>
+      <div class="msep"></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">放大</span><span class="sc">Ctrl+=</span></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">缩小</span><span class="sc">Ctrl+-</span></div>
+      <div class="mi hover-item"><span class="gut"></span><span class="lbl">适配窗口</span><span class="sc">Ctrl+0</span></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">实际大小</span><span class="sc">Ctrl+1</span></div>
+      <div class="msep"></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">主题</span><span class="sc">›</span></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">语言</span><span class="sc">›</span></div>
+      <div class="msep"></div>
+      <div class="mi"><span class="gut"></span><span class="lbl">显示色彩转换标记</span><span class="sc"></span></div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 6 · 菜单展开 · Windows / Linux（VS Code 式）</b> —— 菜单栏文本项居标题栏左侧（展开项 accent-soft 底 + accent 字），下拉圆角 6：左侧 22 px 图标槽放勾选（<b>左对齐</b>）、标签 13 px、快捷键右对齐 12 px；悬停整行 accent 填充白字。原 `⋯` 的全部条目收入 文件 / 显示 / 帮助 三个菜单，工具栏不再有 ⋯。</p>
+</section>
+
+<!-- ================= 场景 7：macOS 原生菜单 ================= -->
+<section class="scene" id="s-menu-mac" style="position:relative">
+  <div class="screenbar">
+    <span class="sb-item sb-app">图片查看器</span>
+    <span class="sb-item">文件</span>
+    <span class="sb-item open">显示</span>
+    <span class="sb-item">帮助</span>
+  </div>
+
+  <!-- macOS 原生下拉：系统绘制，勾选左、⌘ 快捷键右 -->
+  <div class="menu" style="position:absolute; top:32px; left:calc(50% - 60px); z-index:10;">
+    <div class="mi"><span class="gut">✓</span><span class="lbl">缩略图条</span><span class="sc"></span></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">幻灯片</span><span class="sc">Space</span></div>
+    <div class="msep"></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">排序</span><span class="sc">›</span></div>
+    <div class="msep"></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">放大</span><span class="sc">⌘=</span></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">缩小</span><span class="sc">⌘−</span></div>
+    <div class="mi hover-item"><span class="gut"></span><span class="lbl">适配窗口</span><span class="sc">⌘0</span></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">实际大小</span><span class="sc">⌘1</span></div>
+    <div class="msep"></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">主题</span><span class="sc">›</span></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">语言</span><span class="sc">›</span></div>
+    <div class="msep"></div>
+    <div class="mi"><span class="gut"></span><span class="lbl">显示色彩转换标记</span><span class="sc"></span></div>
+  </div>
+
+  <div class="win" data-platform="macos">
+    <div class="titlebar">
+      <div class="traffic"><span class="tl c"></span><span class="tl m"></span><span class="tl x"></span></div>
+      <div class="tb-title">sunset.jpg — 图片查看器</div>
+    </div>
+    <div class="bar">
+      <div class="bar-left">
+        <button class="ib"><svg class="ic"><use href="#i-folder"/></svg></button>
+        <span class="vdiv"></span>
+        <button class="ib"><svg class="ic"><use href="#i-chev-l"/></svg></button>
+        <button class="ib"><svg class="ic"><use href="#i-chev-r"/></svg></button>
+      </div>
+      <div class="bar-right">
+        <button class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="gap-4"></span>
+        <button class="ib text"><span>名称</span><svg class="ic sm"><use href="#i-chev-d"/></svg></button>
+        <span class="vdiv"></span>
+        <div class="zoom">
+          <button class="zb"><svg class="ic sm"><use href="#i-minus"/></svg></button>
+          <button class="zv">68%</button>
+          <button class="zb"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="photo"><svg><use href="#photo-scene"/></svg></div>
+    </div>
+    <div class="strip">
+      <div class="tile" style="background:linear-gradient(135deg,#7BA3C9,#2E4A6B)"></div>
+      <div class="tile sel" style="background:linear-gradient(150deg,#E98A5B,#F5C87C 60%,#2B3757)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#2F5D50,#8FBF9F)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#8C5A6E,#E7B7C8)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#3A4E78,#93A9D6)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#B98E5A,#F0D9AE)"></div>
+      <div class="tile" style="background:linear-gradient(140deg,#4A4A52,#A8A8B4)"></div>
+    </div>
+    <div class="status">
+      <div>4032 × 3024<span class="dot">·</span>8 bit<span class="dot">·</span>JPEG<span class="dot">·</span>Display P3 → sRGB</div>
+      <div>2 / 14</div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 7 · 菜单展开 · macOS（系统原生）</b> —— 菜单走屏幕顶部系统菜单栏（ 图片查看器 · 文件 · 显示 · 帮助），窗口内不绘制菜单；下拉由系统绘制。与场景 6 内容完全一致，差异仅在快捷键符号（⌘0 vs Ctrl+0）与绘制来源。两套菜单的勾选都在<b>左侧</b>，快捷键右对齐。</p>
+</section>
+
+<!-- ================= 场景 8：规格板 ================= -->
+<section class="scene" id="s-spec">
+  <div class="spec-grid">
+    <div class="card full">
+      <h3>色板 <span>light / dark · 单一强调色，其余靠中性灰明度分层</span></h3>
+      <div class="sw-row">
+        <div class="sw"><div class="chip" style="background:#F6F6F7"></div><div class="name">chrome<br><code>#F6F6F7</code></div></div>
+        <div class="sw"><div class="chip" style="background:#EFEFF1"></div><div class="name">strip<br><code>#EFEFF1</code></div></div>
+        <div class="sw"><div class="chip" style="background:#E4E4E7"></div><div class="name">hairline<br><code>#E4E4E7</code></div></div>
+        <div class="sw"><div class="chip" style="background:#FFFFFF"></div><div class="name">control<br><code>#FFFFFF</code></div></div>
+        <div class="sw"><div class="chip" style="background:#1D1D1F"></div><div class="name">text<br><code>#1D1D1F</code></div></div>
+        <div class="sw"><div class="chip" style="background:#6E6E73"></div><div class="name">text2<br><code>#6E6E73</code></div></div>
+        <div class="sw"><div class="chip" style="background:#0A7CFF"></div><div class="name">accent 浅<br><code>#0A7CFF</code></div></div>
+        <div class="sw"><div class="chip" style="background:#1C1C1E"></div><div class="name">canvas<br><code>#1C1C1E</code></div></div>
+        <div class="sw"><div class="chip" style="background:#E5484D"></div><div class="name">danger<br><code>#E5484D</code></div></div>
+        <div class="sw"><div class="chip" style="background:#2A2A2D"></div><div class="name">chrome 深<br><code>#2A2A2D</code></div></div>
+        <div class="sw"><div class="chip" style="background:#3A3A3D"></div><div class="name">control 深<br><code>#3A3A3D</code></div></div>
+        <div class="sw"><div class="chip" style="background:#0A84FF"></div><div class="name">accent 深<br><code>#0A84FF</code></div></div>
+        <div class="sw"><div class="chip" style="background:#101012"></div><div class="name">canvas 深<br><code>#101012</code></div></div>
+        <div class="sw"><div class="chip" style="background:#FF6961"></div><div class="name">danger 深<br><code>#FF6961</code></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>字体 <span>三端字号/字重一致，仅字体族按平台</span></h3>
+      <div class="type-row"><div class="type-tag">title 13 / 600</div><div style="font-size:13px;font-weight:600">sunset.jpg — 图片查看器</div></div>
+      <div class="type-row"><div class="type-tag">heading 15 / 600</div><div style="font-size:15px;font-weight:600">还没有打开图片</div></div>
+      <div class="type-row"><div class="type-tag">body 13 / 400</div><div style="font-size:13px">在文件管理器中显示 · 主题 · 语言</div></div>
+      <div class="type-row"><div class="type-tag">button 12.5</div><div style="font-size:12.5px">打开图片… · 稍后</div></div>
+      <div class="type-row"><div class="type-tag">small 11</div><div style="font-size:11px;color:#6E6E73">4032 × 3024 · 8 bit · JPEG</div></div>
+      <div class="type-row"><div class="type-tag">num · tabular</div><div style="font-size:12px;font-variant-numeric:tabular-nums">68% &nbsp;·&nbsp; 2 / 14 &nbsp;·&nbsp; 12.4 MiB</div></div>
+      <div class="note">字体栈：macOS → SF Pro Text / PingFang SC；Windows → Segoe UI / 微软雅黑 UI；Linux → Inter / Noto Sans。数字启用 tabular-nums，翻页不抖动。</div>
+    </div>
+
+    <div class="card">
+      <h3>形状与间距 <span>radius 6 / 8 / 10 · 4 px 网格</span></h3>
+      <div class="radii">
+        <div class="rbox"><div class="shape" style="border-radius:6px"></div><div class="lb">r6 控件<br>按钮 / 分段 / 勾选</div></div>
+        <div class="rbox"><div class="shape" style="border-radius:8px"></div><div class="lb">r8 菜单 / 缩略图<br>弹出层</div></div>
+        <div class="rbox"><div class="shape" style="border-radius:10px"></div><div class="lb">r10 窗口 / 弹窗<br>macOS &amp; Linux</div></div>
+      </div>
+      <div class="note">
+        间距基数 4 px（8 / 12 / 16 / 24）；发丝线恒 1 px。<br>
+        投影：弹出层 <code>0 8 24 rgba(0,0,0,.18)</code>（深色 .45）；选中物 <code>0 2 8 rgba(0,0,0,.22)</code>。<br>
+        动效：菜单 120 ms ease-out（0.96 缩放 + 4 px 下移淡入）；按钮背景 60 ms；短提示 4 s 后淡出。
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>控件状态 <span>图标按钮 / 胶囊缩放 / 勾选 / 菜单项</span></h3>
+      <div class="ctrl-row">
+        <div class="ctrl-lb">图标按钮 30×30</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="ib" style="color:#48484C"><svg class="ic"><use href="#i-sidebar"/></svg></span>
+          <span class="ib" style="background:rgba(0,0,0,.055)"><svg class="ic"><use href="#i-sidebar"/></svg></span>
+          <span class="ib" style="background:rgba(0,0,0,.10)"><svg class="ic"><use href="#i-sidebar"/></svg></span>
+          <span class="ib active"><svg class="ic"><use href="#i-sidebar"/></svg></span>
+          <span class="ib" style="color:#98989D"><svg class="ic"><use href="#i-sidebar"/></svg></span>
+          <span style="font-size:10px;color:#98989D">默认 / 悬停 / 按下 / 激活 / 禁用</span>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-lb">胶囊缩放 118×30</div>
+        <div class="demo-pill">
+          <div class="pb"><svg class="ic sm"><use href="#i-minus"/></svg></div>
+          <div class="pv">68%</div>
+          <div class="pb"><svg class="ic sm"><use href="#i-plus"/></svg></div>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-lb">勾选（右对齐）</div>
+        <div style="display:flex;gap:12px;align-items:center;font-size:12px;color:#1D1D1F">
+          <span style="display:inline-flex;align-items:center;gap:8px">显示色彩转换标记 <span class="demo-check">✓</span></span>
+          <span style="display:inline-flex;align-items:center;gap:8px">启动时检查更新 <span class="demo-check off"></span></span>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-lb">键帽（帮助弹窗）</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="keycap">⌘</span><span class="keycap">⇧</span><span class="keycap">C</span>
+          <span style="font-size:11px;color:#6E6E73;margin-left:6px">复制路径（macOS）</span>
+          <span class="keycap">Ctrl</span><span class="keycap">Shift</span><span class="keycap">C</span>
+          <span style="font-size:11px;color:#6E6E73">Win / Linux</span>
+        </div>
+      </div>
+      <div class="ctrl-row" style="align-items:flex-start">
+        <div class="ctrl-lb">菜单项 26 px</div>
+        <div class="demo-menu" style="width:250px">
+          <div class="dm" style="padding:0"><span style="width:22px;text-align:center">✓</span><span style="flex:1">缩略图条</span></div>
+          <div class="dm" style="padding:0"><span style="width:22px"></span><span style="flex:1">复制路径</span><span class="k">Ctrl+Shift+C</span></div>
+          <div class="dm sel" style="padding:0"><span style="width:22px"></span><span style="flex:1">适配窗口</span><span class="k">Ctrl+0</span></div>
+          <div class="dm" style="padding:0;color:#E5484D"><span style="width:22px"></span><span style="flex:1">移到废纸篓</span><span class="k">Delete</span></div>
+          <div style="height:1px;background:#E4E4E7;margin:5px 4px 5px 30px"></div>
+          <div class="dm" style="padding:0"><span style="width:22px"></span><span style="flex:1">主题</span><span class="k">›</span></div>
+        </div>
+        <div style="font-size:10.5px;color:#98989D;line-height:1.8;max-width:220px">
+          勾选/单选在<b>左侧 22 px 图标槽</b>（macOS 原生与 VS Code 一致）；快捷键右对齐 12 px；悬停整行 accent 填充白字；分隔线左缩进 30 px 对齐标签。
+        </div>
+      </div>
+    </div>
+
+    <div class="card full">
+      <h3>三端外壳适配 <span>「标题栏 28 + 工具栏 52」两段式；菜单：macOS 原生 / Win·Linux VS Code 式</span></h3>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+        <div>
+          <div class="mini-shell" style="background:#F6F6F7;height:auto;padding:0;border-radius:8px;overflow:hidden;display:block">
+            <div style="height:24px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid #E4E4E7">
+              <span class="mini-dot" style="background:#FF5F57;width:9px;height:9px"></span>
+              <span class="mini-dot" style="background:#FEBC2E;width:9px;height:9px"></span>
+              <span class="mini-dot" style="background:#28C840;width:9px;height:9px"></span>
+              <span class="m-name" style="margin:0 auto">sunset.jpg — 图片查看器</span>
+              <span style="width:42px"></span>
+            </div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px">
+              <span class="mini-btn">📁</span><span class="mini-btn">‹</span><span class="mini-btn">›</span>
+              <span class="m-name">◫ ▶ 名称▾ │ −68%+</span>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#6E6E73;line-height:1.8">
+            <b>macOS · 原生标题栏</b>：红绿灯 / 拖拽 / 双击缩放 / 全屏均系统提供，不自绘、不改色；工具栏紧随其下。菜单栏走屏幕顶部系统菜单栏；SF Pro。
+          </div>
+        </div>
+        <div>
+          <div class="mini-shell" style="background:#F6F6F7;height:auto;padding:0;border-radius:8px;overflow:hidden;display:block">
+            <div style="height:24px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid #E4E4E7">
+              <span style="font-size:9.5px;color:#6E6E73;flex:none">文件&nbsp;&nbsp;显示&nbsp;&nbsp;帮助</span>
+              <span class="m-name" style="margin:0 auto">sunset.jpg — 图片查看器</span>
+              <span style="display:flex;gap:2px;margin-left:auto">
+                <span class="mini-btn">—</span><span class="mini-btn">▢</span><span class="mini-btn" style="background:#F6F6F7">✕</span>
+              </span>
+            </div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px">
+              <span class="mini-btn">📁</span><span class="mini-btn">‹</span><span class="mini-btn">›</span>
+              <span class="m-name">◫ ▶ 名称▾ │ −68%+</span>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#6E6E73;line-height:1.8">
+            <b>Windows · 自绘标题栏 28 px</b>：<b>VS Code 式菜单栏</b>居左（文件 / 显示 / 帮助），caption 按钮 46 × 28 右上（仅关闭键悬停变红）；高度对齐 macOS 原生标题栏。不用 Mica；Segoe UI。
+          </div>
+        </div>
+        <div>
+          <div class="mini-shell" style="background:#F6F6F7;height:auto;padding:0;border-radius:8px;overflow:hidden;display:block">
+            <div style="height:24px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid #E4E4E7">
+              <span style="font-size:9.5px;color:#6E6E73;flex:none">文件&nbsp;&nbsp;显示&nbsp;&nbsp;帮助</span>
+              <span class="m-name" style="margin:0 auto">sunset.jpg — 图片查看器</span>
+              <span style="display:flex;gap:2px;margin-left:auto">
+                <span class="mini-btn">—</span><span class="mini-btn">▢</span><span class="mini-btn" style="background:#F6F6F7">✕</span>
+              </span>
+            </div>
+            <div style="height:28px;display:flex;align-items:center;gap:6px;padding:0 10px">
+              <span class="mini-btn">📁</span><span class="mini-btn">‹</span><span class="mini-btn">›</span>
+              <span class="m-name">◫ ▶ 名称▾ │ −68%+</span>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#6E6E73;line-height:1.8">
+            <b>Linux · 自绘标题栏 28 px</b>：<b>VS Code 式菜单栏</b>居左（与 Windows 相同），圆形三钮右上（现状 32 → 28）；窗口圆角 8、四角透明。Inter / Noto Sans。
+          </div>
+        </div>
+      </div>
+      <div class="note">
+        和谐策略：三端均为「标题栏 28 + 工具栏 52」两段式，文件名一律标题栏居中，工具栏及其下内容逐像素一致；菜单内容/信息架构三端相同——macOS 走系统菜单栏，Win/Linux 走 VS Code 式菜单栏（标题栏左侧文本项 + 自绘下拉），工具栏均无 ⋯。
+        刻意不做：macOS 不把红绿灯挪进工具栏、不用自绘下拉；Windows 不用 Mica；Linux 不用 Adwaita 按钮造型。
+      </div>
+    </div>
+
+    <div class="card full">
+      <h3>体验优化清单（增量） <span>按收益 / 成本排序，随版本分批落地</span></h3>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px 28px;font-size:12px;color:#1D1D1F">
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#0A7CFF;flex:none">P1</b><div><b>窗口最小尺寸 720×520</b> —— 防止三段布局挤压崩版，小于阈值先隐藏缩略图条</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#0A7CFF;flex:none">P1</b><div><b>画布 / chrome 分界线</b> —— 深色下画布与缩略图条间补 1 px 黑色 10% 发丝线，防止深色块糊在一起</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#2F8F4E;flex:none">P2</b><div><b>拖放打开反馈</b> —— 拖入时画布叠加强调色内描边 + 蒙层「松开以打开」</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#2F8F4E;flex:none">P2</b><div><b>图片切换过渡</b> —— 旧图 120 ms 淡出 / 新图 160 ms 淡入，消除快速翻页闪黑</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#2F8F4E;flex:none">P2</b><div><b>全屏自动隐藏工具栏</b> —— 1.5 s 淡出，鼠标移至顶部唤出；与文件名 3 s 淡出错峰</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#2F8F4E;flex:none">P2</b><div><b>Tooltip 规范</b> —— macOS 式提示（圆角 5、深底浅字、延迟 400 ms），快捷键符号按平台后缀</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#98989D;flex:none">P3</b><div><b>键盘焦点环</b> —— Tab 遍历显示 2 px 强调色外环（偏移 2 px）</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#98989D;flex:none">P3</b><div><b>错误横幅自动收起</b> —— 8 s 后折叠为细条 + 红点，点击展开</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#98989D;flex:none">P3</b><div><b>缩略图条平滑滚动</b> —— 当前项居中 180 ms 动画，拖动惯性与触控板一致</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#98989D;flex:none">P3</b><div><b>加载骨架</b> —— 大图首次打开显示低对比 spinner + 尺寸占位文本，替代纯黑等待</div></div>
+        <div style="display:flex;gap:10px;line-height:1.7"><b style="color:#98989D;flex:none">P3</b><div><b>Alt 显隐菜单栏</b>（Win/Linux）—— 按 Alt 切换标题栏内菜单栏显示（VS Code 行为），给文件名释放空间</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="caption"><b>场景 8 · 规格板</b> —— 设计令牌总览。实现映射与落地优先级见 README.md 第八、九节。</p>
+</section>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      document.querySelectorAll('.scene').forEach(function (s) { s.classList.remove('active'); });
+      tab.classList.add('active');
+      var target = document.getElementById(tab.dataset.scene);
+      if (target) { target.classList.add('active'); }
+    });
+  });
+</script>
+</body>
+</html>
