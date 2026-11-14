@@ -11,8 +11,6 @@ import type {
   PreviewReady,
   PreviewRequest,
   SortOrder,
-  UpdateInfo,
-  UpdateProgress,
 } from "../types/ipc";
 
 const isWindows = navigator.userAgent.includes("Windows");
@@ -93,33 +91,34 @@ export async function syncNativeMenu(locale: string): Promise<void> {
   return invoke<void>("sync_native_menu", { locale });
 }
 
-// ---- 更新 ----
+// ---- 更新（tauri-plugin-updater） ----
 
 /** 检查更新：返回比当前版本更新的版本信息；无更新返回 null。 */
-export async function checkUpdate(): Promise<UpdateInfo | null> {
-  return invoke<UpdateInfo | null>("check_update");
+export async function checkUpdate() {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  return check();
 }
 
-/** 下载并校验安装包；进度通过 `onUpdateProgress` 事件推送。返回安装包路径。 */
-export async function downloadUpdate(): Promise<string> {
-  return invoke<string>("download_update");
+/** 下载并安装更新；进度通过 onEvent 回调推送。 */
+export async function downloadAndInstallUpdate(
+  onEvent: (event: { event: string; data?: { contentLength?: number; chunkLength?: number } }) => void,
+): Promise<void> {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) throw new Error("no update available");
+  return update.downloadAndInstall(onEvent);
 }
 
-/** 取消正在进行的下载。 */
-export async function cancelUpdateDownload(): Promise<void> {
-  return invoke<void>("cancel_update_download");
+/** 重启应用。 */
+export async function relaunchApp(): Promise<void> {
+  const { relaunch } = await import("@tauri-apps/plugin-process");
+  return relaunch();
 }
 
-/** 启动安装器并退出应用。 */
-export async function installUpdate(path: string): Promise<void> {
-  return invoke<void>("install_update", { path });
-}
-
-/** 下载进度事件。 */
-export function onUpdateProgress(
-  handler: (payload: UpdateProgress) => void,
-): Promise<UnlistenFn> {
-  return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
+/** 退出应用。 */
+export async function exitApp(code = 0): Promise<void> {
+  const { exit } = await import("@tauri-apps/plugin-process");
+  return exit(code);
 }
 
 export function onPreviewReady(
