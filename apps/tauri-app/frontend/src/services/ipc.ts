@@ -11,6 +11,8 @@ import type {
   PreviewReady,
   PreviewRequest,
   SortOrder,
+  UpdateInfo,
+  UpdateProgress,
 } from "../types/ipc";
 
 const isWindows = navigator.userAgent.includes("Windows");
@@ -89,6 +91,35 @@ export async function openLogDir(): Promise<void> {
 /** macOS：让系统菜单栏跟随界面语言。其它平台为空实现。 */
 export async function syncNativeMenu(locale: string): Promise<void> {
   return invoke<void>("sync_native_menu", { locale });
+}
+
+// ---- 更新 ----
+
+/** 检查更新：返回比当前版本更新的版本信息；无更新返回 null。 */
+export async function checkUpdate(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("check_update");
+}
+
+/** 下载并校验安装包；进度通过 `onUpdateProgress` 事件推送。返回安装包路径。 */
+export async function downloadUpdate(): Promise<string> {
+  return invoke<string>("download_update");
+}
+
+/** 取消正在进行的下载。 */
+export async function cancelUpdateDownload(): Promise<void> {
+  return invoke<void>("cancel_update_download");
+}
+
+/** 启动安装器并退出应用。 */
+export async function installUpdate(path: string): Promise<void> {
+  return invoke<void>("install_update", { path });
+}
+
+/** 下载进度事件。 */
+export function onUpdateProgress(
+  handler: (payload: UpdateProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
 }
 
 export function onPreviewReady(

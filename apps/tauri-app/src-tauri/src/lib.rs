@@ -227,6 +227,7 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("iviewer", protocol::handle)
         .setup(move |app| {
             app.manage(AppState::new(app.handle(), startup_path.clone()));
+            app.manage(commands::update::UpdateState::new());
 
             if let Some(window) = app.get_webview_window("main") {
                 // macOS 保留系统原生标题栏与红绿灯；Win/Linux 使用 28 px 自绘标题栏。
@@ -267,6 +268,10 @@ pub fn run() {
             commands::file::reveal_image,
             commands::file::open_log_dir,
             commands::task::cancel_preview,
+            commands::update::check_update,
+            commands::update::download_update,
+            commands::update::cancel_update_download,
+            commands::update::install_update,
             sync_native_menu,
         ])
         .run(tauri::generate_context!())

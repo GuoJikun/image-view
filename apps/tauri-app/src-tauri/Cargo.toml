@@ -25,11 +25,16 @@ iv-platform = { path = "../../../crates/iv-platform" }
 tauri = { version = "2.12.5", features = [] }
 tauri-plugin-single-instance = "2.5.5"
 serde = { workspace = true }
+serde_json = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 # 自定义协议把解码结果编码为 WebView 可解码的 PNG；不经过 JSON/Base64。
 image = { workspace = true, features = ["png"] }
 rfd = { workspace = true }
 log = { workspace = true }
+# 更新功能：清单解析、版本比较、SHA-256 校验、HTTP 下载。
+semver = { workspace = true }
+sha2 = { workspace = true }
+ureq = { workspace = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 rfd = { workspace = true, features = ["xdg-portal", "wayland"] }

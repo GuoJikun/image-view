@@ -219,6 +219,18 @@ onMounted(async () => {
   } catch {
     // 忽略窗口事件不可用。
   }
+
+  // 启动时自动检查更新（静默；发现新版本只提示，不自动下载）。
+  if (ui.checkUpdatesOnLaunch) {
+    void ipc
+      .checkUpdate()
+      .then((result) => {
+        if (result) ui.notify(`${t("update.available")} — ${result.version}`);
+      })
+      .catch(() => {
+        // 静默失败；手动检查时才展示错误。
+      });
+  }
 });
 
 onBeforeUnmount(() => {

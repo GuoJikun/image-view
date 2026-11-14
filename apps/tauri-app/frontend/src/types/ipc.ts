@@ -56,3 +56,16 @@ export interface CommandError {
 
 export type FitMode = "fit" | "actual" | "custom";
 export type SortOrder = "name" | "modified";
+
+/** 更新清单（后端 `update.json` 解析结果）。 */
+export interface UpdateInfo {
+  version: string;
+  notes: string;
+  url: string;
+}
+
+/** 下载进度事件。 */
+export interface UpdateProgress {
+  received: number;
+  total: number | null;
+}
