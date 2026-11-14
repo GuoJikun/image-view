@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "image-view"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "image",
  "iv-application",
@@ -2370,7 +2370,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "iv-application"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "iv-domain",
  "iv-files",
@@ -2378,18 +2378,18 @@ dependencies = [
 
 [[package]]
 name = "iv-cache"
-version = "1.2.0"
+version = "1.2.1"
 
 [[package]]
 name = "iv-domain"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "iv-files"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "iv-domain",
  "log",
@@ -2398,14 +2398,14 @@ dependencies = [
 
 [[package]]
 name = "iv-gui-contract"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "iv-domain",
 ]
 
 [[package]]
 name = "iv-image-decode"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "bytemuck",
  "image",
@@ -2419,18 +2419,18 @@ dependencies = [
 
 [[package]]
 name = "iv-image-process"
-version = "1.2.0"
+version = "1.2.1"
 
 [[package]]
 name = "iv-image-render"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "emath",
 ]
 
 [[package]]
 name = "iv-infra"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "env_logger",
  "iv-domain",
@@ -2441,11 +2441,11 @@ dependencies = [
 
 [[package]]
 name = "iv-library"
-version = "1.2.0"
+version = "1.2.1"
 
 [[package]]
 name = "iv-metadata"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "bytemuck",
  "image",
@@ -2455,14 +2455,14 @@ dependencies = [
 
 [[package]]
 name = "iv-platform"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "trash",
 ]
 
 [[package]]
 name = "iv-task"
-version = "1.2.0"
+version = "1.2.1"
 
 [[package]]
 name = "javascriptcore-rs"

@@ -2,7 +2,9 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
-## [Unreleased]
+## [1.2.1] - 2026-11-14
+
+统一安装与运行标识，日志改为随安装目录存放；从 1.2.0 升级需先卸载旧版。
 
 ### 变更
 
