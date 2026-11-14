@@ -2,22 +2,29 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
-## [1.3.0] - 2026-11-12
+## [1.3.0] - 2026-11-14
 
-新增 macOS（Apple Silicon）打包支持。
+GUI 全面迁移至 Tauri 2 + Vue 3，界面按「macOS 优先、三端和谐」规范重做；新增 macOS 支持与 Windows arm64 安装包，Linux 增加 RPM 与 AppImage。
 
 ### 新增
 
-- 新增 macOS `.dmg` 打包配置与 `scripts/build-macos.sh`：仅构建 arm64，包含最低系统版本、DMG 窗口布局、文件关联、64～1024 px 图标与可选的签名/公证流程；构建与验证步骤见 `docs/BUILD-MACOS.md`。
+- macOS 支持：提供 `.dmg` 安装包，Apple Silicon（arm64）与 Intel（x64）独立构建。
+- Windows arm64 安装包（NSIS）。
+- Linux 新增 `.rpm` 与 `.AppImage` 安装包（`.deb` 保留）。
+- 单实例：程序已运行时再次打开图片（命令行参数或文件管理器），会转交给已运行的窗口并聚焦，不再重复开窗。
 
-### 改进
+### 变更
 
-- Linux 窗口四角改为圆角：窗口开启透明背景，窗口化时标题栏与状态栏的外角为 8 px 圆角、圆角处透出桌面；最大化与全屏贴边时保持直角。
+- GUI 从 egui 迁移到 Tauri 2 + Vue 3，界面全面重做；解码、色彩管理与目录导航继续由共享 crates 提供。macOS 使用原生标题栏与系统菜单栏，Windows / Linux 使用自绘标题栏与 VS Code 式菜单栏（文件 / 显示 / 帮助），三端菜单内容一致，窗口控件、间距与配色按平台习惯对齐；原「⋯」溢出菜单的条目收入这三个菜单。
+- 自动更新迁移至 Tauri 官方 `tauri-plugin-updater`，签名校验由 SHA-256 清单改为 minisign：「帮助 → 检查更新…」查看发布说明后下载，进度与字节数实时显示、可随时取消，完成后点「安装并重启」升级。
+- 安装包改由 Tauri bundler 统一产出（NSIS / DMG / DEB / RPM / AppImage）；推送 `v*` 标签后，GitHub Actions 在 Windows x64/arm64、macOS arm64/x64 与 Linux 并行构建，自动生成更新清单并创建 GitHub Release。
 
-### 修复
+### 移除
 
-- 菜单复选框（“显示色彩转换标记”“启动时检查更新”）选中态更明显：改为主色填充 + 白色对勾，未选中为描边框；此前深色下框体与菜单底色几乎同色且无描边，选中与否看不出来。
-- Linux：窗口按钮改为 egui 自绘标题栏。GNOME/Mutter 与 WSLg 的 Weston 不提供服务端装饰，此前会退回 SCTK 的 fallback frame（关闭按钮是实心方块）；启用 Adwaita 客户端装饰后，在分数缩放下三个按钮又会糊成一片。现在 Linux 关闭系统装饰，标题栏、最小化/最大化/关闭按钮与窗口边缘缩放把手全部由应用绘制，走 GL 管线按窗口缩放渲染，任意 DPI 下都清晰；标题栏支持拖动移动窗口与双击最大化。
+- egui 版的以下能力在这次 GUI 重写中暂未带上：
+  - 安装包注册图片格式「打开方式」菜单（18 种格式的文件关联）；
+  - 缩略图磁盘缓存（内存 LRU 512 张仍在，进程重启后缩略图需重新解码）；
+  - 记忆窗口位置/大小/最大化、恢复上次目录/图片，以及排序方式、缩略图条开关的持久化（主题与语言仍会记忆）。
 
 ## [1.2.0] - 2026-11-12
 
