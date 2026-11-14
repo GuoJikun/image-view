@@ -1200,12 +1200,30 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn repo_icon_svg_rasterizes_with_content() {
-        // 用仓库自带的真实图标（1024×1024，含 viewBox 与多段路径）做端到端校验。
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("design/icon-master.svg");
+    fn complex_svg_rasterizes_with_content() {
+        // 按真实应用图标的构造成分（viewBox + 渐变 defs + 多段路径 + 高饱和色块）
+        // 现场生成夹具，避免核心 crate 的单测依赖仓库级设计资源。
+        const ICON: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"
+     viewBox="0 0 1024 1024" role="img" aria-label="test icon">
+  <defs>
+    <linearGradient id="bg" x1="0.12" y1="0" x2="0.86" y2="1">
+      <stop offset="0" stop-color="#75C4FF"/>
+      <stop offset="1" stop-color="#3D62E4"/>
+    </linearGradient>
+    <radialGradient id="gloss" cx="0.32" cy="0.08" r="0.86">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#gloss)"/>
+  <path d="M256 640 L448 448 L576 576 L704 384 L832 640 Z" fill="#FFFFFF" fill-opacity="0.92"/>
+  <rect x="192" y="192" width="128" height="128" fill="#FF0000"/>
+</svg>"##;
+        let dir = temp_dir("svg-icon");
+        let path = dir.join("icon.svg");
+        std::fs::write(&path, ICON).expect("write fixture");
+
         let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode icon svg");
 
         assert_eq!(decoded.source_size, [1024, 1024]);
@@ -1220,6 +1238,16 @@ mod tests {
                 .any(|pixel| pixel[3] > 0),
             "渲染结果不应全透明"
         );
+
+        // 左上 128×128 纯红色块的中心点，用于确认填充与路径确实参与了栅格化。
+        let index = (256 * 1024 + 256) * 4;
+        let pixel = &decoded.rgba[index..index + 4];
+        assert!(
+            pixel[0] > 200 && pixel[1] < 60 && pixel[2] < 60 && pixel[3] > 200,
+            "色块中心应为不透明红色，实际为 {pixel:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 
     #[cfg(feature = "svg")]
