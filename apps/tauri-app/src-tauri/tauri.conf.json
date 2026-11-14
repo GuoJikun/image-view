@@ -28,9 +28,17 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "dmg", "deb", "rpm", "appimage"],
     "createUpdaterArtifacts": true,
-    "icon": ["icons/icon.png", "icons/icon.ico"]
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "shortDescription": "图片查看器 / Image Viewer",
+    "longDescription": "一款快速、简洁的跨平台图片查看器，支持缩放、翻页、缩略图预览、色彩管理。A fast, clean cross-platform image viewer with zoom, navigation, thumbnail strip and color management.",
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      }
+    }
   },
   "plugins": {
     "updater": {

@@ -7,7 +7,7 @@ publish.workspace = true
 description = "image-view 的 Tauri 2 + Vue 3 GUI adapter（POC）"
 build = "build.rs"
 
-# 与 eframe-app 保持同一组图片格式特性，业务能力由 workspace crates 提供。
+# 与 workspace crates 共享图片格式特性。
 [features]
 default = ["avif", "heic", "svg"]
 avif = ["iv-image-decode/avif"]

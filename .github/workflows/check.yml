@@ -18,7 +18,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
+  frontend:
+    name: Frontend type-check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/tauri-app/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/tauri-app/frontend
+        run: npm ci
+
+      - name: Type-check
+        working-directory: apps/tauri-app/frontend
+        run: npx vue-tsc --noEmit
+
+      - name: Build
+        working-directory: apps/tauri-app/frontend
+        run: npx vite build
+
+  rust:
     name: Format, clippy and tests
     runs-on: windows-latest
     timeout-minutes: 30

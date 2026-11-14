@@ -17,97 +17,104 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build Windows installer
-    runs-on: windows-latest
+  validate:
+    name: Validate tag and version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate tag and version
-        shell: pwsh
+      - name: Validate tag matches versions
+        shell: bash
         run: |
-          $tag = $env:GITHUB_REF_NAME
-          if (-not $tag.StartsWith('v') -or $tag.Length -lt 2) {
-            throw "Release tag must start with 'v' (got '$tag')."
-          }
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9] ]]; then
+            echo "::error::Release tag must start with 'v' followed by a number (got '$TAG')."
+            exit 1
+          fi
 
-          $cargoToml = Get-Content -LiteralPath 'Cargo.toml' -Raw -Encoding UTF8
-          if ($cargoToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
-            throw 'Cannot read the package version from Cargo.toml.'
-          }
-          $version = $Matches[1]
+          WS_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          TAURI_VERSION=$(python3 -c "import json; print(json.load(open('apps/tauri-app/src-tauri/tauri.conf.json'))['version'])")
 
-          if ($tag -ne "v$version") {
-            throw "Tag '$tag' does not match Cargo.toml version '$version' (expected 'v$version')."
-          }
+          if [[ "$TAG" != "v$WS_VERSION" ]]; then
+            echo "::error::Tag '$TAG' does not match workspace version '$WS_VERSION' (expected 'v$WS_VERSION')."
+            exit 1
+          fi
 
-          $packagerToml = Get-Content -LiteralPath 'apps/eframe-app/Packager.toml' -Raw -Encoding UTF8
-          if ($packagerToml -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
-            throw 'Cannot read the package version from apps/eframe-app/Packager.toml.'
-          }
-          if ($Matches[1] -ne $version) {
-            throw "apps/eframe-app/Packager.toml version '$($Matches[1])' does not match Cargo.toml version '$version'."
-          }
+          if [[ "$TAURI_VERSION" != "$WS_VERSION" ]]; then
+            echo "::error::tauri.conf.json version '$TAURI_VERSION' does not match workspace version '$WS_VERSION'."
+            exit 1
+          fi
 
-          Write-Host "Releasing image-view v$version"
+          echo "Releasing image-view v$WS_VERSION"
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: validate
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ''
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/tauri-app/frontend/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
 
-      - name: Cache cargo-packager
-        uses: actions/cache@v4
+      - name: Install frontend dependencies
+        working-directory: apps/tauri-app/frontend
+        run: npm ci
+
+      - name: Build and upload bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          path: ~/.cargo/bin/cargo-packager.exe
-          key: cargo-packager-0.11.8-${{ runner.os }}
-
-      - name: Install cargo-packager
-        shell: pwsh
-        run: |
-          if (-not (Get-Command cargo-packager -ErrorAction SilentlyContinue)) {
-            cargo install cargo-packager --version 0.11.8 --locked
-          }
-          cargo-packager --version
-
-      - name: Locate NSIS toolchain directory
-        shell: pwsh
-        run: |
-          "NSIS_TOOLCHAIN_DIR=$env:LOCALAPPDATA\.cargo-packager" >> $env:GITHUB_ENV
-
-      - name: Cache NSIS toolchain
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.NSIS_TOOLCHAIN_DIR }}
-          key: cargo-packager-nsis-3.09-${{ runner.os }}
-
-      - name: Build installer, manifest and checksums
-        shell: pwsh
-        run: ./apps/eframe-app/scripts/build-release.ps1 -AllowNsisDownload
-
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: image-view-${{ github.ref_name }}
-          path: |
-            apps/eframe-app/dist/image-view_*_x64-setup.exe
-            apps/eframe-app/dist/update.json
-            apps/eframe-app/dist/SHA256SUMS.txt
-          if-no-files-found: error
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: image-view ${{ github.ref_name }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            apps/eframe-app/dist/image-view_*_x64-setup.exe
-            apps/eframe-app/dist/update.json
-            apps/eframe-app/dist/SHA256SUMS.txt
+          projectPath: apps/tauri-app
+          tagName: ${{ github.ref_name }}
+          releaseName: 'image-view ${{ github.ref_name }}'
+          releaseBody: 'See the assets to download and install this version.'
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}
