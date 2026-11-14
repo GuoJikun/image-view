@@ -2,15 +2,15 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
-## [1.3.0] - 2026-11-14
+## [1.2.0] - 2026-11-14
 
-GUI 全面迁移至 Tauri 2 + Vue 3，界面按「macOS 优先、三端和谐」规范重做；新增 macOS 支持与 Windows arm64 安装包，Linux 增加 RPM 与 AppImage。
+GUI 全面迁移至 Tauri 2 + Vue 3，界面按「macOS 优先、三端和谐」规范重做；新增 macOS 支持与 Windows arm64 安装包，Linux 提供 DEB / RPM / AppImage。
 
 ### 新增
 
 - macOS 支持：提供 `.dmg` 安装包，Apple Silicon（arm64）与 Intel（x64）独立构建。
 - Windows arm64 安装包（NSIS）。
-- Linux 新增 `.rpm` 与 `.AppImage` 安装包（`.deb` 保留）。
+- Linux 新增 `.deb`、`.rpm`、`.AppImage` 安装包。
 - 单实例：程序已运行时再次打开图片（命令行参数或文件管理器），会转交给已运行的窗口并聚焦，不再重复开窗。
 
 ### 变更
@@ -25,14 +25,6 @@ GUI 全面迁移至 Tauri 2 + Vue 3，界面按「macOS 优先、三端和谐」
   - 安装包注册图片格式「打开方式」菜单（18 种格式的文件关联）；
   - 缩略图磁盘缓存（内存 LRU 512 张仍在，进程重启后缩略图需重新解码）；
   - 记忆窗口位置/大小/最大化、恢复上次目录/图片，以及排序方式、缩略图条开关的持久化（主题与语言仍会记忆）。
-
-## [1.2.0] - 2026-11-12
-
-新增 Debian/Ubuntu 打包支持。
-
-### 新增
-
-- 新增 Linux `.deb` 打包配置与 `scripts/build-deb.sh`：包含运行时依赖、桌面入口、MIME 文件关联与 64/256 px 图标；构建步骤见 `docs/BUILD-DEB.md`。
 
 ## [1.1.0] - 2026-11-12
 

@@ -26,7 +26,7 @@
 
 ## 版本与路线
 
-当前版本为 **v1.3.0（开发中）**。GUI 采用 Tauri 2 + Vue 3 架构，业务逻辑由 workspace crates 共享。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器。`1.2.0` 增加 Debian/Ubuntu 打包，`1.3.0` 增加 macOS 打包与 Tauri 迁移；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
+当前版本为 **v1.2.0**。GUI 采用 Tauri 2 + Vue 3 架构，业务逻辑由 workspace crates 共享。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器。`1.2.0` 增加 Linux（deb / rpm / appimage）与 macOS 打包、Tauri 迁移；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -48,11 +48,11 @@ pnpm tauri build
 产物位于 `app\src-tauri\target\release\bundle\nsis\`。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
 
 ```powershell
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
-工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.3.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
+工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.2.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view-tauri`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
 - **卸载**：从「设置 → 应用」或开始菜单卸载。
