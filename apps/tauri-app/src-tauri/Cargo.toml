@@ -24,8 +24,10 @@ iv-platform = { path = "../../../crates/iv-platform" }
 
 tauri = { version = "2.12.5", features = [] }
 tauri-plugin-single-instance = "2.5.5"
+# 更新功能：tauri-plugin-updater 提供检查/下载/签名校验；tokio 提供取消信号。
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tokio = { version = "1", features = ["sync", "macros"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { version = "1", features = ["v4"] }

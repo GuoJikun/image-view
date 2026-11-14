@@ -11,6 +11,8 @@ import type {
   PreviewReady,
   PreviewRequest,
   SortOrder,
+  UpdateInfo,
+  UpdateProgress,
 } from "../types/ipc";
 
 const isWindows = navigator.userAgent.includes("Windows");
@@ -91,34 +93,33 @@ export async function syncNativeMenu(locale: string): Promise<void> {
   return invoke<void>("sync_native_menu", { locale });
 }
 
-// ---- 更新（tauri-plugin-updater） ----
+// ---- 更新（tauri-plugin-updater + 自定义命令） ----
 
 /** 检查更新：返回比当前版本更新的版本信息；无更新返回 null。 */
-export async function checkUpdate() {
-  const { check } = await import("@tauri-apps/plugin-updater");
-  return check();
+export async function checkUpdate(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("check_update");
 }
 
-/** 下载并安装更新；进度通过 onEvent 回调推送。 */
-export async function downloadAndInstallUpdate(
-  onEvent: (event: { event: string; data?: { contentLength?: number; chunkLength?: number } }) => void,
-): Promise<void> {
-  const { check } = await import("@tauri-apps/plugin-updater");
-  const update = await check();
-  if (!update) throw new Error("no update available");
-  return update.downloadAndInstall(onEvent);
+/** 下载更新；进度通过 onUpdateProgress 事件推送。 */
+export async function downloadUpdate(): Promise<void> {
+  return invoke<void>("download_update");
 }
 
-/** 重启应用。 */
-export async function relaunchApp(): Promise<void> {
-  const { relaunch } = await import("@tauri-apps/plugin-process");
-  return relaunch();
+/** 取消正在进行的下载。 */
+export async function cancelUpdateDownload(): Promise<void> {
+  return invoke<void>("cancel_update_download");
 }
 
-/** 退出应用。 */
-export async function exitApp(code = 0): Promise<void> {
-  const { exit } = await import("@tauri-apps/plugin-process");
-  return exit(code);
+/** 安装已下载的更新（安装器启动后应用退出）。 */
+export async function installUpdate(): Promise<void> {
+  return invoke<void>("install_update");
+}
+
+/** 下载进度事件。 */
+export function onUpdateProgress(
+  handler: (payload: UpdateProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<UpdateProgress>("update:progress", (event) => handler(event.payload));
 }
 
 export function onPreviewReady(

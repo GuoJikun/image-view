@@ -1,35 +1,42 @@
 <script setup lang="ts">
 /**
- * 检查更新弹窗（460 px）— tauri-plugin-updater。
+ * 检查更新弹窗（460 px）— tauri-plugin-updater + 自定义 Rust 命令。
  * 状态机：idle → checking → [up-to-date | available | error]
- *          available → downloading → [done | error]
- *          done → relaunch
+ *          available → downloading → [ready | error | available(取消)]
+ *          ready → install（安装并退出）
  */
-import { onMounted, reactive, ref } from "vue";
+import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { t } from "../i18n";
 import { APP_VERSION } from "../constants";
 import * as ipc from "../services/ipc";
+import type { UpdateInfo, UpdateProgress } from "../types/ipc";
 
-type Phase = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "done" | "error";
-
-interface UpdateMeta {
-  version: string;
-  body: string | null;
-  date: string | null;
-}
+type Phase = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "ready" | "error";
 
 const emit = defineEmits<{ (event: "close"): void }>();
 const closeButton = ref<HTMLButtonElement | null>(null);
 
 const phase = ref<Phase>("idle");
-const info = ref<UpdateMeta | null>(null);
+const info = ref<UpdateInfo | null>(null);
 const errorMessage = ref("");
-const progress = reactive({ downloaded: 0, total: 0 });
+const progress = reactive<UpdateProgress>({ received: 0, total: null });
 
-onMounted(() => {
+let unlistenProgress: (() => void) | null = null;
+
+onMounted(async () => {
   closeButton.value?.focus();
+  try {
+    unlistenProgress = await ipc.onUpdateProgress((payload) => {
+      progress.received = payload.received;
+      progress.total = payload.total;
+    });
+  } catch {
+    // 浏览器预览没有事件系统。
+  }
   void check();
 });
+
+onBeforeUnmount(() => unlistenProgress?.());
 
 async function check(): Promise<void> {
   phase.value = "checking";
@@ -38,11 +45,7 @@ async function check(): Promise<void> {
   try {
     const result = await ipc.checkUpdate();
     if (result) {
-      info.value = {
-        version: result.version,
-        body: result.body ?? null,
-        date: result.date ?? null,
-      };
+      info.value = result;
       phase.value = "available";
     } else {
       phase.value = "up-to-date";
@@ -53,38 +56,44 @@ async function check(): Promise<void> {
   }
 }
 
-async function downloadAndInstall(): Promise<void> {
+async function download(): Promise<void> {
   phase.value = "downloading";
-  progress.downloaded = 0;
-  progress.total = 0;
+  progress.received = 0;
+  progress.total = null;
   try {
-    await ipc.downloadAndInstallUpdate((event) => {
-      if (event.event === "Started") {
-        progress.total = event.data?.contentLength ?? 0;
-      } else if (event.event === "Progress") {
-        progress.downloaded += event.data?.chunkLength ?? 0;
-      }
-    });
-    phase.value = "done";
+    await ipc.downloadUpdate();
+    phase.value = "ready";
+  } catch (caught) {
+    const err = ipc.normalizeError(caught);
+    if (err.code === "update_cancelled") {
+      phase.value = "available";
+    } else {
+      errorMessage.value = err.message;
+      phase.value = "error";
+    }
+  }
+}
+
+async function cancelDownload(): Promise<void> {
+  try {
+    await ipc.cancelUpdateDownload();
+  } catch {
+    // 忽略取消失败；download 命令会自行收尾。
+  }
+}
+
+async function install(): Promise<void> {
+  try {
+    await ipc.installUpdate();
   } catch (caught) {
     errorMessage.value = ipc.normalizeError(caught).message;
     phase.value = "error";
   }
 }
 
-async function relaunch(): Promise<void> {
-  try {
-    await ipc.relaunchApp();
-  } catch {
-    // 回退：退出应用，用户手动重启。
-    await ipc.exitApp(0).catch(() => undefined);
-    emit("close");
-  }
-}
-
 function progressPercent(): number {
   if (!progress.total || progress.total <= 0) return 0;
-  return Math.min(100, Math.round((progress.downloaded / progress.total) * 100));
+  return Math.min(100, Math.round((progress.received / progress.total) * 100));
 }
 
 function formatBytes(bytes: number): string {
@@ -136,7 +145,7 @@ function formatBytes(bytes: number): string {
           </div>
         </template>
 
-        <!-- 下载安装中 -->
+        <!-- 下载中 -->
         <template v-else-if="phase === 'downloading'">
           <div class="update-status">
             <span class="update-spinner" aria-hidden="true" />
@@ -152,13 +161,13 @@ function formatBytes(bytes: number): string {
             />
           </div>
           <p class="update-progress-detail">
-            {{ formatBytes(progress.downloaded) }}
+            {{ formatBytes(progress.received) }}
             <template v-if="progress.total"> / {{ formatBytes(progress.total) }}</template>
           </p>
         </template>
 
-        <!-- 完成 -->
-        <div v-else-if="phase === 'done'" class="update-status">
+        <!-- 就绪 -->
+        <div v-else-if="phase === 'ready'" class="update-status">
           <span class="update-check-mark" aria-hidden="true">✓</span>
           <div>
             <strong>{{ t("update.ready") }}</strong>
@@ -187,27 +196,34 @@ function formatBytes(bytes: number): string {
           </button>
         </template>
 
-        <!-- 完成：重启 -->
-        <template v-else-if="phase === 'done'">
+        <!-- 下载中：取消 -->
+        <template v-else-if="phase === 'downloading'">
+          <button type="button" class="btn btn-secondary" @click="cancelDownload">
+            {{ t("update.cancel") }}
+          </button>
+        </template>
+
+        <!-- 就绪：安装并重启 -->
+        <template v-else-if="phase === 'ready'">
           <button type="button" class="btn btn-secondary" @click="emit('close')">
             {{ t("dialog.close") }}
           </button>
-          <button ref="closeButton" type="button" class="btn btn-primary" @click="relaunch">
+          <button ref="closeButton" type="button" class="btn btn-primary" @click="install">
             {{ t("update.install") }}
           </button>
         </template>
 
-        <!-- 可用：下载安装 + 关闭 -->
+        <!-- 可用：下载 + 关闭 -->
         <template v-else-if="phase === 'available'">
           <button type="button" class="btn btn-secondary" @click="emit('close')">
             {{ t("dialog.close") }}
           </button>
-          <button ref="closeButton" type="button" class="btn btn-primary" @click="downloadAndInstall">
+          <button ref="closeButton" type="button" class="btn btn-primary" @click="download">
             {{ t("update.download") }}
           </button>
         </template>
 
-        <!-- idle / checking / up-to-date / downloading：关闭 -->
+        <!-- idle / checking / up-to-date：关闭 -->
         <template v-else>
           <button ref="closeButton" type="button" class="btn btn-primary" @click="emit('close')">
             {{ t("dialog.close") }}
