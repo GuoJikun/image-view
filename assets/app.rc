@@ -1,2 +1,0 @@
-// 仅包含应用图标，供 Windows exe 链接。版本信息由安装包与 CHANGELOG 维护。
-1 ICON "icon.ico"

@@ -17,9 +17,9 @@ app/
 │   ├── components/           # 工具栏、画布、元数据、缩略图、状态栏
 │   └── types/ipc.ts
 └── src-tauri/
-    ├── Cargo.toml            # package: image-view-tauri
+    ├── Cargo.toml            # package: image-view
     ├── build.rs
-    ├── tauri.conf.json       # 窗口、CSP、beforeDev/Build、bundle
+    ├── tauri.conf.json       # 窗口、CSP、beforeDev/Build、bundle、identifier（dev.jikun.imageview）
     ├── capabilities/
     │   └── default.json      # 仅 core:default
     ├── icons/
@@ -74,8 +74,8 @@ Rust 侧检查：
 
 ```powershell
 cargo fmt --all --check
-cargo clippy -p image-view-tauri --all-targets -- -D warnings
-cargo test -p image-view-tauri
+cargo clippy -p image-view --all-targets -- -D warnings
+cargo test -p image-view
 ```
 
 ## 3. IPC 边界
@@ -178,9 +178,9 @@ Pinia 只保存 `DirectorySnapshot`、`PreviewReady` 元数据、视图参数（
 
 ```text
 cargo fmt --all --check                         通过
-cargo clippy -p image-view-tauri --all-targets 通过（-D warnings）
+cargo clippy -p image-view --all-targets 通过（-D warnings）
 cargo test --workspace                          通过
-cargo test -p image-view-tauri                  9 个单元测试通过
+cargo test -p image-view                        9 个单元测试通过
 frontend: npm run build                         vue-tsc + vite 通过
 npm run build                                   MSI + NSIS 安装包生成成功
 release exe 冒烟启动                            带图片参数运行 10s，进程存活并记录启动路径
@@ -189,9 +189,9 @@ release exe 冒烟启动                            带图片参数运行 10s，
 产物：
 
 ```text
-target/release/image-view-tauri.exe
-target/release/bundle/msi/image-view-tauri_1.3.0_x64_en-US.msi      (6.32 MiB)
-target/release/bundle/nsis/image-view-tauri_1.3.0_x64-setup.exe     (4.43 MiB)
+target/release/image-view.exe
+target/release/bundle/msi/image-view_1.3.0_x64_en-US.msi      (6.32 MiB)
+target/release/bundle/nsis/image-view_1.3.0_x64-setup.exe     (4.43 MiB)
 ```
 
 仍需手工验证：
@@ -204,7 +204,7 @@ target/release/bundle/nsis/image-view-tauri_1.3.0_x64-setup.exe     (4.43 MiB)
 
 ## 7. 已知缺口
 
-- 缩略图只有内存 LRU，没有磁盘缓存；进程重启后需重新解码。
+- 缩略图不提供磁盘缓存，仅 512 张内存 LRU；进程重启后需重新解码。
 - 缩略图缓存键包含路径、修改时间与尺寸，但协议 URL 中的 revision 未参与缓存键；文件在运行期间被替换时，同一尺寸可能命中旧缩略图。
 - 动图只显示第一帧；EXIF 方向与 ICC 转换由 `iv-image-decode` 现有路径处理，与 eframe 版一致。
 - 预览缓存最多 4 张，未做相邻图片预加载；切换大图时仍可能看到短暂加载态。

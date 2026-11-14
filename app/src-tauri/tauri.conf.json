@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "image-view-tauri",
+  "productName": "image-view",
   "version": "1.2.0",
-  "identifier": "com.guojikun.imageview.tauri",
+  "identifier": "dev.jikun.imageview",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",

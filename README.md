@@ -10,19 +10,19 @@
 - 读取 JPEG/TIFF/PNG/WebP/HEIC/AVIF 内嵌 ICC profile 并转换到 sRGB；16-bit PNG/TIFF 在转换与缩放阶段保持精度，最终以 8-bit 纹理显示
 - 以光标为锚点的滚轮 / 触控板缩放，鼠标拖拽平移，双击在「适配」与「100%」之间切换
 - 同一目录内上一张 / 下一张（按文件名自然排序，不循环），可切换按修改时间排序
-- 底部缩略图条（可一键显示/隐藏）：懒加载 + 虚拟滚动，点击跳转，方向键/点击后自动居中当前项；缩略图使用独立内存 LRU（512 张、最长边 128 px）与磁盘缓存（`%LOCALAPPDATA%\image-view\thumbs`，上限 256 MB）
-- 记住窗口位置/大小/最大化、上次目录与图片、排序方式、主题与缩略图条开关；无参数启动时恢复上次会话
-- `Delete` 删除到系统回收站，`Ctrl+Shift+C` 复制路径，`⋯` 菜单或右键菜单可在资源管理器中定位
-- 文件日志与崩溃转储落盘（`%LOCALAPPDATA%\image-view\logs`），`⋯ → 打开日志文件夹`可直接定位
+- 底部缩略图条（可一键显示/隐藏）：懒加载 + 虚拟滚动，点击跳转，方向键/点击后自动居中当前项；缩略图使用独立内存 LRU（512 张、最长边 128 px），不写磁盘缓存，进程重启后需重新解码
+- 记住语言、主题与「启动时检查更新」开关（保存在 WebView 本地存储）；窗口位置/大小、上次打开的文件与排序方式不持久化，重启后回到默认状态
+- `Delete` 删除到系统回收站，`Ctrl+Shift+C` 复制路径，「文件 → 在文件管理器中显示」或右键菜单可在资源管理器中定位
+- 文件日志与崩溃转储写到安装目录的 `logs\`（Windows 按用户安装即 `%LOCALAPPDATA%\image-view\logs`；目录不可写时自动回退到用户数据目录），`帮助 → 打开日志文件夹`可直接定位
 - 幻灯片：按 `Space` 每 3 秒自动前进，到最后一张自动停止
 - 相邻图片预加载 + 最近使用（LRU）主图纹理缓存，最多 3 张，回翻立即显示；缩略图预取当前项前后各 3 张
 - 主图与缩略图纹理使用 mipmap + LINEAR：缩小查看更平滑，100% 附近仍保持清晰
-- 26 px 单行状态栏：原图尺寸/显示尺寸与位深、格式、序号、加载与降采样提示；可在 `⋯` 菜单开启色彩转换标记
-- 52 px 自绘工具栏：图标按钮、`⋯` 溢出菜单、可切换的 88 px 缩略图条；空状态与内联错误横幅
+- 26 px 单行状态栏：原图尺寸/显示尺寸与位深、格式、序号、加载与降采样提示；可在「显示 → 显示色彩转换标记」中开启色彩转换标记
+- 52 px 自绘工具栏：图标按钮与可切换的 88 px 缩略图条；空状态与内联错误横幅
 - 后台单线程解码，打开请求优先于预加载；快速翻页时只保留最新请求，旧结果自动丢弃；缩略图使用独立后台线程，避免阻塞主图
 - 大图安全阈值：单边 8192、总像素 40MP 自动等比降采样；超过 250MP 的原图直接拒绝解码；预加载只处理 30MP 以下的图片
-- 界面支持简体中文 / English（可跟随系统），在 `⋯ → 语言` 中切换并立即生效；主题可选跟随系统 / 浅色 / 深色，画布在两套主题下都保持深色，保证图片显示时始终有最大对比度
-- 自动更新：`⋯ → 检查更新…` 读取 GitHub Releases 的 `update.json`，下载后校验 SHA-256 再启动静默安装；启动时检查默认关闭，可手动开启
+- 界面支持简体中文 / English（可跟随系统），在「显示 → 语言」中切换并立即生效；主题可选跟随系统 / 浅色 / 深色，画布在两套主题下都保持深色，保证图片显示时始终有最大对比度
+- 自动更新：「帮助 → 检查更新…」读取 GitHub Releases 的 `update.json`，下载后校验 SHA-256 再启动静默安装；启动时检查默认关闭，可手动开启
 
 ## 版本与路线
 
@@ -45,7 +45,7 @@ pnpm install
 pnpm tauri build
 ```
 
-产物位于 `app\src-tauri\target\release\bundle\nsis\`。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
+产物位于 `target\release\bundle\nsis\`（workspace 共享根目录的 `target`）。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
 
 ```powershell
 git tag v1.2.0
@@ -54,7 +54,7 @@ git push origin v1.2.0
 
 工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.2.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
-- **安装**：按用户安装到 `%LOCALAPPDATA%\image-view-tauri`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
+- **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
 - **卸载**：从「设置 → 应用」或开始菜单卸载。
 
 ### macOS（arm64 / x64）
@@ -96,7 +96,7 @@ pnpm tauri dev          # 开发模式（自动启动 Vite + 热更新）
 pnpm tauri build        # 构建 release + 安装包
 ```
 
-构建产物位于 `app\src-tauri\target\release\`。
+构建产物位于 `target\release\`（workspace 共享根目录的 `target`）。
 
 前端单独构建：
 
@@ -126,11 +126,11 @@ image-view [PATH]
   -V, --version   显示版本
 ```
 
-日志默认写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`（可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含 backtrace，最多 10 份），可用“文件 → 打开日志文件夹”直接定位。
+日志默认写入安装目录的 `logs\image-view.log`（Windows 按用户安装即 `%LOCALAPPDATA%\image-view\logs\image-view.log`；目录不可写时回退到用户数据目录，macOS 固定为 `~/Library/Logs/image-view`；可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含 backtrace，最多 10 份），可用“帮助 → 打开日志文件夹”直接定位。
 
 ## 隐私
 
-应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机 `%LOCALAPPDATA%\image-view\logs`。自动更新默认不在启动时检查；只有点击 `⋯ → 检查更新…` 或勾选“启动时检查更新”后，才会访问 GitHub Releases 读取 `update.json`，且不会发送任何使用数据。
+应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机安装目录的 `logs\`（目录不可写时回退到用户数据目录）。自动更新默认不在启动时检查；只有点击「帮助 → 检查更新…」或勾选“启动时检查更新”后，才会访问 GitHub Releases 读取 `update.json`，且不会发送任何使用数据。
 
 ## 快捷键
 
@@ -175,11 +175,10 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - 动图只显示第一帧。
 - 超大图会被降采样后再显示，此时「100%」是相对降采样后的纹理，状态栏会同时标注原图尺寸。
 - 目录扫描不递归，且在打开文件时一次性完成；运行期间新增的文件需重新打开目录才可见。
-- 设置与窗口状态保存在 `%APPDATA%\image-view\data\app.ron`；文件损坏或版本过旧时自动回退默认值。
+- 目前只持久化语言、主题与「启动时检查更新」三项（WebView 本地存储）；窗口几何、上次打开的文件与排序方式在重启后回到默认状态。
 - 排序按修改时间读取文件元数据；网络盘或权限受限时，无法读取时间的文件排在最后。
 - 删除只支持系统回收站；回收站不可用（如部分网络盘）时会提示错误并保留原文件。
 - 主图纹理缓存最多保留 3 张图片（总像素 ≤ 72M，约 288 MB）；缩略图另有 512 张 LRU，与主图预算分离。
-- 缩略图磁盘缓存位于 `%LOCALAPPDATA%\image-view\thumbs`，按路径、修改时间、文件长度与目标尺寸缓存 QOI；超过 256 MB 时启动阶段删除最旧文件，可安全手动清空。
 - 缩略图最长边为 128 px，适合 2× DPI 与常规缩放；极大目录下缩略图条只绘制视口附近卡片，但目录扫描本身仍是一次性完成。
 - mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。
 - 幻灯片到最后一张停止，不循环；手动翻页会重置 3 秒计时。
@@ -189,7 +188,7 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
 - Windows 10/11 的默认应用由系统 `UserChoice` 保护，安装器无法静默夺取常见扩展名的默认查看器；请在“设置 → 应用 → 默认应用”中确认。
 - 安装向导支持英文 / 简体中文；应用内界面也可在“跟随系统 / 简体中文 / English”之间切换。自动更新只做 SHA-256 校验、没有代码签名；网络受限或需要回滚时，请从发布页手动下载安装包覆盖安装。
-- 日志与崩溃转储会写入 `%LOCALAPPDATA%\image-view\logs`；卸载会一并删除。若需长期保留问题现场，请在卸载前复制该目录。
+- 日志与崩溃转储写入安装目录的 `logs\`（Windows 即 `%LOCALAPPDATA%\image-view\logs`），卸载时随安装目录一并删除。若需长期保留问题现场，请在卸载前复制该目录。
 
 ## 项目结构
 
@@ -208,9 +207,10 @@ app/              Tauri 2 + Vue 3 GUI 应用
     components/       TitleBar、MenuBar、ZoomControl、Canvas、缩略图条、对话框
     types/ipc.ts      DTO 类型定义
   src-tauri/      Rust 适配层：Commands、Events、iviewer:// 协议、更新命令
-    Cargo.toml    package: image-view-tauri
-    tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、updater
+    Cargo.toml    package: image-view
+    tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、updater、identifier（dev.jikun.imageview）
     capabilities/ 权限声明
+    icons/        应用图标（exe、安装包与窗口共用）
     src/
       main.rs     桌面入口
       lib.rs      Builder 装配、单实例、命令注册、macOS 菜单栏
@@ -238,11 +238,6 @@ crates/
   iv-gui-contract/ GUI 动作与工具栏状态
   iv-library/      图库能力占位（尚未实现）
   iv-image-process/ 图片处理能力占位（尚未实现）
-assets/
-  icon.png      窗口图标（64×64）
-  icon-256.png  打包用的 256×256 图标
-  icon-512.png  打包用的 512×512 图标
-  icon.ico      多尺寸应用图标（NSIS / exe）
 .github/
   workflows/
     check.yml       PR 检查（前端 vue-tsc + vite build，Rust fmt/clippy/test）

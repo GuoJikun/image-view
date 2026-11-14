@@ -1,7 +1,10 @@
 //! 日志与崩溃转储。
 //!
-//! - 常规日志写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`
-//!   （可用 `IMAGE_VIEW_LOG_DIR` 覆盖），单文件超过 4 MiB 时轮转为
+//! - 常规日志优先写入可执行文件所在目录的 `logs\`，即安装目录
+//!   （开发模式为 `target\<profile>\logs\`）；该目录不可写时回退到用户数据
+//!   目录（Windows `%LOCALAPPDATA%\image-view\logs`、macOS
+//!   `~/Library/Logs/image-view`、Linux `$XDG_STATE_HOME/image-view/logs`）。
+//!   `IMAGE_VIEW_LOG_DIR` 可完全覆盖。单文件超过 4 MiB 时轮转为
 //!   `.1`、`.2`、`.3`，最多保留 3 份历史。
 //! - panic 时额外写一份 `crash-*.log`，包含版本、系统、位置与 backtrace，
 //!   最多保留 10 份，方便用户反馈问题。
@@ -20,6 +23,9 @@ pub const LOG_DIR_ENV: &str = "IMAGE_VIEW_LOG_DIR";
 /// 当前日志文件名。
 pub const LOG_FILE_NAME: &str = "image-view.log";
 
+/// 安装目录下用于存放日志的子目录名。
+pub const LOG_DIR_NAME: &str = "logs";
+
 /// 单份日志的轮转阈值。
 const MAX_LOG_BYTES: u64 = 4 * 1024 * 1024;
 
@@ -32,12 +38,64 @@ const MAX_CRASH_FILES: usize = 10;
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 static CRASH_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 日志目录；优先使用 `IMAGE_VIEW_LOG_DIR`，否则按平台约定。
+/// 日志目录：`IMAGE_VIEW_LOG_DIR` > 安装目录（可执行文件同级的 `logs`）> 平台用户数据目录。
 pub fn log_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os(LOG_DIR_ENV).filter(|value| !value.is_empty()) {
         return PathBuf::from(dir);
     }
-    platform_log_dir()
+    install_log_dir().unwrap_or_else(platform_log_dir)
+}
+
+/// 安装目录下的日志目录；目录不可写时为 `None`。
+///
+/// 只探测一次：启动后目录权限不会变化，而 `log_dir()` 会被日志初始化、
+/// 「打开日志文件夹」命令与崩溃转储多次调用。
+fn install_log_dir() -> Option<PathBuf> {
+    static CACHE: OnceLock<Option<PathBuf>> = OnceLock::new();
+    CACHE.get_or_init(resolve_install_log_dir).clone()
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_install_log_dir() -> Option<PathBuf> {
+    // macOS 的安装目录是 `.app` 包内部，写入会破坏代码签名与公证，
+    // 系统升级安装时也会被整体替换；因此固定回退到 ~/Library/Logs。
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resolve_install_log_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    install_log_dir_from(&exe)
+}
+
+/// 由可执行文件路径推导安装目录下的日志目录；不可写时为 `None`。
+#[cfg(not(target_os = "macos"))]
+fn install_log_dir_from(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?.join(LOG_DIR_NAME);
+    is_writable(&dir).then_some(dir)
+}
+
+/// 创建目录并写入探针文件，确认当前用户确实可写。
+///
+/// 系统级安装（`/usr/bin`、`Program Files`）与 AppImage 的挂载目录都不可写，
+/// 需要据此回退，避免启动时报错或静默丢日志。
+fn is_writable(dir: &Path) -> bool {
+    if fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".write-probe");
+    match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// 当前日志文件路径；日志文件创建失败时为 `None`。
@@ -330,6 +388,36 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn install_log_dir_prefers_executable_parent() {
+        let base = temp_dir("install");
+        let exe = base.join("image-view.exe");
+        fs::write(&exe, b"MZ").expect("write fake exe");
+
+        let dir = install_log_dir_from(&exe).expect("安装目录可写时应返回 logs 目录");
+        assert_eq!(dir, base.join(LOG_DIR_NAME), "日志目录应与可执行文件同级");
+        assert!(dir.is_dir(), "应创建 logs 目录");
+        assert!(!dir.join(".write-probe").exists(), "可写性探针文件应被清理");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn install_log_dir_rejects_unwritable_location() {
+        let base = temp_dir("install-blocked");
+        let blocker = base.join("blocker");
+        fs::write(&blocker, b"not a directory").expect("write blocking file");
+
+        assert!(
+            install_log_dir_from(&blocker.join("image-view.exe")).is_none(),
+            "父路径不可创建目录时应判定为不可写"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

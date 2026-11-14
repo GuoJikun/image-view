@@ -2,6 +2,13 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
+## [Unreleased]
+
+### 变更
+
+- 安装与运行标识统一为 `image-view`：Cargo 包名、`productName` 与 bundle identifier（`dev.jikun.imageview`）同步调整。Windows 安装目录变为 `%LOCALAPPDATA%\image-view`，安装包文件名同步变化；从 1.2.0 升级前请先卸载旧版本，否则会并存两条卸载记录。
+- 日志与崩溃转储改为写入安装目录的 `logs\`，随安装目录一并卸载清理；安装位置不可写时（系统级安装、AppImage、macOS `.app`）自动回退到用户数据目录。
+
 ## [1.2.0] - 2026-11-14
 
 GUI 全面迁移至 Tauri 2 + Vue 3，界面按「macOS 优先、三端和谐」规范重做；新增 macOS 支持与 Windows arm64 安装包，Linux 提供 DEB / RPM / AppImage。
