@@ -73,7 +73,7 @@ function close(): void {
         :aria-label="t('window.minimize')"
         @click="minimize"
       >
-        <Icon name="minimize" :size="11" />
+        <Icon name="minimize" :size="16" />
       </button>
       <button
         type="button"
@@ -82,7 +82,7 @@ function close(): void {
         :aria-label="maximized ? t('window.restore') : t('window.maximize')"
         @click="toggleMaximize"
       >
-        <Icon :name="maximized ? 'restore' : 'maximize'" :size="11" />
+        <Icon :name="maximized ? 'restore' : 'maximize'" :size="16" />
       </button>
       <button
         type="button"
@@ -91,7 +91,7 @@ function close(): void {
         :aria-label="t('window.close')"
         @click="close"
       >
-        <Icon name="close" :size="11" />
+        <Icon name="close" :size="16" />
       </button>
     </div>
 
@@ -103,7 +103,7 @@ function close(): void {
         :aria-label="t('window.minimize')"
         @click="minimize"
       >
-        <Icon name="minimize" :size="13" />
+        <Icon name="minimize" :size="18" />
       </button>
       <button
         type="button"
@@ -112,7 +112,7 @@ function close(): void {
         :aria-label="maximized ? t('window.restore') : t('window.maximize')"
         @click="toggleMaximize"
       >
-        <Icon :name="maximized ? 'restore' : 'maximize'" :size="13" />
+        <Icon :name="maximized ? 'restore' : 'maximize'" :size="18" />
       </button>
       <button
         type="button"
@@ -121,7 +121,7 @@ function close(): void {
         :aria-label="t('window.close')"
         @click="close"
       >
-        <Icon name="close" :size="13" />
+        <Icon name="close" :size="18" />
       </button>
     </div>
   </header>

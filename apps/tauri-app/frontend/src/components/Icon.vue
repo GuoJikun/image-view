@@ -58,12 +58,12 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 17 });
       <path d="M12 9.5v4.2" />
       <path d="M12 17.2h.01" />
     </g>
-    <path v-else-if="name === 'close'" d="M7.5 7.5l9 9M16.5 7.5l-9 9" />
-    <path v-else-if="name === 'minimize'" d="M6 12h12" />
-    <rect v-else-if="name === 'maximize'" x="7" y="7" width="10" height="10" rx="1" />
+    <path v-else-if="name === 'close'" d="M6 6l12 12M18 6L6 18" />
+    <path v-else-if="name === 'minimize'" d="M5 12h14" />
+    <rect v-else-if="name === 'maximize'" x="5" y="5" width="14" height="14" rx="1" />
     <g v-else-if="name === 'restore'">
-      <rect x="6" y="9" width="9" height="9" rx="1" />
-      <path d="M9 6h9v9" />
+      <rect x="5" y="8.5" width="10.5" height="10.5" rx="1" />
+      <path d="M8.5 5h10.5v10.5" />
     </g>
   </svg>
 </template>
