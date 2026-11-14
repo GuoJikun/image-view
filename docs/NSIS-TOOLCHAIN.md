@@ -72,13 +72,13 @@ Copy-Item "$src\appid.zip" "$root\NSIS-ApplicationID.zip" -Force
 
 ```powershell
 & "$env:LOCALAPPDATA\.cargo-packager\NSIS\Bin\makensis.exe" /VERSION   # 期望输出 v3.09
-cargo packager --release -p image-view -c apps/eframe-app/Packager.toml   # 不应出现下载请求
+cargo packager --release -p image-view -c app/Packager.toml   # 不应出现下载请求
 ```
 
 打包成功的日志形如：
 
 ```text
-INFO Running makensis.exe to produce apps\eframe-app\dist\image-view_1.0.0_x64-setup.exe
+INFO Running makensis.exe to produce app\dist\image-view_1.0.0_x64-setup.exe
 INFO Finished packaging 1 package
 ```
 
@@ -87,21 +87,21 @@ INFO Finished packaging 1 package
 若确实需要让 cargo-packager 自行下载，可通过环境变量指定代理（`reqwest` 读取 `HTTPS_PROXY`）：
 
 ```bash
-HTTPS_PROXY=http://127.0.0.1:10808 cargo packager --release -p image-view -c apps/eframe-app/Packager.toml
+HTTPS_PROXY=http://127.0.0.1:10808 cargo packager --release -p image-view -c app/Packager.toml
 ```
 
 代理需支持 HTTP CONNECT；纯 SOCKS5 端口不一定被 `reqwest` 接受。
 
 ## 6. GitHub Actions
 
-`.github/workflows/release.yml` 在 Windows runner 上使用 `apps\eframe-app\scripts\build-release.ps1 -AllowNsisDownload`：
+`.github/workflows/release.yml` 在 Windows runner 上使用 `app\scripts\build-release.ps1 -AllowNsisDownload`：
 
 - 首次运行由 cargo-packager 自行下载 NSIS 3.09 及插件到 `%LOCALAPPDATA%\.cargo-packager`，后续通过 `actions/cache` 复用该目录。
-- 工作流仅在推送 `v*` 标签时触发，并校验标签与 `Cargo.toml` / `apps/eframe-app/Packager.toml` 的版本一致。
-- 产物为安装包、`update.json` 与 `SHA256SUMS.txt`（位于 `apps/eframe-app/dist/`），同时上传为工作流 artifact 并附加到 GitHub Release。
+- 工作流仅在推送 `v*` 标签时触发，并校验标签与 `Cargo.toml` / `app/Packager.toml` 的版本一致。
+- 产物为安装包、`update.json` 与 `SHA256SUMS.txt`（位于 `app/dist/`），同时上传为工作流 artifact 并附加到 GitHub Release。
 
 ## 7. 维护约定
 
 - 不要单独删除或替换 `NSIS` 目录内的文件；升级 NSIS 版本时应整目录替换，并同步更新本文件的清单。
-- `apps/eframe-app/installer/nsis/image-view.nsi` 由项目维护，升级 cargo-packager 后需对照其默认模板检查占位符是否新增（例如 `{{...}}` 变量、`{{#each}}` 段落）。
+- `app/installer/nsis/image-view.nsi` 由项目维护，升级 cargo-packager 后需对照其默认模板检查占位符是否新增（例如 `{{...}}` 变量、`{{#each}}` 段落）。
 - 工具链目录不进仓库；新环境按本文件第 3 节重建。

@@ -15,12 +15,12 @@ heic = ["iv-image-decode/heic"]
 svg = ["iv-image-decode/svg"]
 
 [dependencies]
-iv-application = { path = "../../../crates/iv-application" }
-iv-cache = { path = "../../../crates/iv-cache" }
-iv-domain = { path = "../../../crates/iv-domain" }
-iv-image-decode = { path = "../../../crates/iv-image-decode" }
-iv-infra = { path = "../../../crates/iv-infra" }
-iv-platform = { path = "../../../crates/iv-platform" }
+iv-application = { path = "../../crates/iv-application" }
+iv-cache = { path = "../../crates/iv-cache" }
+iv-domain = { path = "../../crates/iv-domain" }
+iv-image-decode = { path = "../../crates/iv-image-decode" }
+iv-infra = { path = "../../crates/iv-infra" }
+iv-platform = { path = "../../crates/iv-platform" }
 
 tauri = { version = "2.12.5", features = [] }
 tauri-plugin-single-instance = "2.5.5"

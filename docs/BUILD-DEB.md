@@ -4,8 +4,8 @@
 | --- | --- |
 | 构建主机 | Linux（推荐 WSL2）；Windows 版 cargo-packager 不包含 deb 后端 |
 | 打包工具 | cargo-packager 0.11.8 |
-| 配置 | `apps/eframe-app/Packager.toml` 的 `[deb]`、`[[fileAssociations]]` 与 `icons` |
-| 产物 | `apps/eframe-app/dist/image-view_<version>_<arch>.deb` |
+| 配置 | `app/Packager.toml` 的 `[deb]`、`[[fileAssociations]]` 与 `icons` |
+| 产物 | `app/dist/image-view_<version>_<arch>.deb` |
 
 ## 为什么不能直接在 Windows 构建
 
@@ -45,33 +45,33 @@ Windows/Linux 共用 `target/`：
 mkdir -p ~/src
 rsync -a --exclude target /mnt/e/private/Rust/image-view/ ~/src/image-view/
 cd ~/src/image-view
-bash apps/eframe-app/scripts/build-deb.sh
+bash app/scripts/build-deb.sh
 ```
 
 脚本会执行：
 
 ```bash
-cargo packager --release -p image-view -c apps/eframe-app/Packager.toml --formats deb
+cargo packager --release -p image-view -c app/Packager.toml --formats deb
 ```
 
 产物：
 
 ```text
-apps/eframe-app/dist/image-view_1.3.0_amd64.deb
+app/dist/image-view_1.3.0_amd64.deb
 ```
 
 复制回 Windows：
 
 ```bash
-cp apps/eframe-app/dist/image-view_*.deb /mnt/e/private/Rust/image-view/apps/eframe-app/dist/
+cp app/dist/image-view_*.deb /mnt/e/private/Rust/image-view/app/dist/
 ```
 
 ## 检查与安装
 
 ```bash
-dpkg-deb --info apps/eframe-app/dist/image-view_1.3.0_amd64.deb
-dpkg-deb --contents apps/eframe-app/dist/image-view_1.3.0_amd64.deb
-sudo apt install ./apps/eframe-app/dist/image-view_1.3.0_amd64.deb
+dpkg-deb --info app/dist/image-view_1.3.0_amd64.deb
+dpkg-deb --contents app/dist/image-view_1.3.0_amd64.deb
+sudo apt install ./app/dist/image-view_1.3.0_amd64.deb
 image-view
 ```
 
@@ -94,7 +94,7 @@ image-view
 ```bash
 sudo apt update
 sudo apt --fix-broken install
-sudo apt install ./apps/eframe-app/dist/image-view_1.3.0_amd64.deb
+sudo apt install ./app/dist/image-view_1.3.0_amd64.deb
 ```
 
 `libxkbcommon-x11-0` 会连带安装 `libxcb-xkb1`，两者都在 Ubuntu 22.04 / 24.04 / 26.04
@@ -114,7 +114,7 @@ sudo apt update
 
 ## 配置说明
 
-`apps/eframe-app/Packager.toml` 中与 deb 有关的字段：
+`app/Packager.toml` 中与 deb 有关的字段：
 
 - `authors`：生成 Debian control 的 `Maintainer` 字段，必须是非空真实联系人。
 - `homepage`：生成 `Homepage` 字段。
@@ -125,7 +125,7 @@ sudo apt update
   `$auto` 依赖模式，依赖需要手动维护。
 - `[[fileAssociations]]`：在 Linux 上生成 `.desktop` 的 `MimeType=...`，在 macOS 上生成
   `CFBundleDocumentTypes`；Windows 安装器继续使用
-  `apps/eframe-app/installer/nsis/image-view.nsi` 里的硬编码注册。
+  `app/installer/nsis/image-view.nsi` 里的硬编码注册。
 
 ## 兼容性
 

@@ -1,6 +1,6 @@
 # 图片查看器（image-view）
 
-一个轻量的 Rust 桌面图片查看器，基于 **eframe/egui 0.37**。目标是把「打开图片、看清细节」这件事做快、做稳。
+一个轻量的 Rust 桌面图片查看器，基于 **Tauri 2 + Vue 3**。目标是把「打开图片、看清细节」这件事做快、做稳。
 
 ## 功能
 
@@ -26,7 +26,7 @@
 
 ## 版本与路线
 
-当前版本为 **v1.3.0（开发中）**。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。`1.2.0` 增加 Debian/Ubuntu 打包，`1.3.0` 增加 macOS（Apple Silicon）打包；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
+当前版本为 **v1.3.0（开发中）**。GUI 采用 Tauri 2 + Vue 3 架构，业务逻辑由 workspace crates 共享。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器。`1.2.0` 增加 Debian/Ubuntu 打包，`1.3.0` 增加 macOS 打包与 Tauri 迁移；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -35,68 +35,75 @@
 
 ## 安装与卸载
 
-### Windows（10/11 x64）
+### Windows（10/11 x64 / arm64）
 
-Windows 10/11 x64 用 cargo-packager 与 NSIS 生成安装包：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1
-```
-
-产物位于 `apps\eframe-app\dist\`：`image-view_<version>_x64-setup.exe`、`update.json` 与 `SHA256SUMS.txt`。把安装包和 `update.json` 一起上传到 GitHub Release，应用即可通过 `releases/latest/download/update.json` 发现新版本。
-
-推送版本标签会触发 GitHub Actions 发布（`.github/workflows/release.yml`）：
+用 Tauri 与 NSIS 生成安装包：
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+cd app
+npm install
+npm run tauri build
 ```
 
-工作流只接受以 `v` 开头且与 `Cargo.toml` / `apps/eframe-app/Packager.toml` 版本一致的标签（例如 `v1.0.0`），随后构建安装包、`update.json` 与校验文件，并自动创建 GitHub Release。
+产物位于 `app\src-tauri\target\release\bundle\nsis\`。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
 
-- **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
-- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
-- **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册。程序目录同时存放用户数据（`logs\` 日志、`thumbs\` 缩略图缓存），卸载默认保留；勾选卸载页的“删除应用数据”会一并清除，设置文件 `%APPDATA%\image-view` 同理由该选项控制。
-- **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
+```powershell
+git tag v1.3.0
+git push origin v1.3.0
+```
 
-### Linux（Debian/Ubuntu）
+工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.3.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
-`.deb` 必须在 Linux 环境中构建（Windows 版 cargo-packager 不包含 deb 后端）。WSL2 下进入仓库后运行：
+- **安装**：按用户安装到 `%LOCALAPPDATA%\image-view-tauri`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
+- **卸载**：从「设置 → 应用」或开始菜单卸载。
+
+### macOS（arm64 / x64）
+
+在 Apple Silicon Mac 上构建：
 
 ```bash
-bash apps/eframe-app/scripts/build-deb.sh
+cd app
+npm install
+npm run tauri build -- --target aarch64-apple-darwin
 ```
 
-产物为 `apps/eframe-app/dist/image-view_<version>_amd64.deb`。依赖、桌面入口与文件关联位于 `apps/eframe-app/Packager.toml` 的 `[deb]` / `[[fileAssociations]]`，完整步骤见 [docs/BUILD-DEB.md](docs/BUILD-DEB.md)。
+产物为 `.dmg` 安装包。Intel Mac 用 `--target x86_64-apple-darwin`。
 
-### macOS（Apple Silicon）
-
-仅支持 arm64，需在 Apple Silicon Mac 上构建（不提供 Intel / Universal 版本）。在仓库根目录运行：
+### Linux（Debian/Ubuntu/RPM/AppImage）
 
 ```bash
-bash apps/eframe-app/scripts/build-macos.sh
+cd app
+npm install
+npm run tauri build
 ```
 
-产物为 `apps/eframe-app/dist/image-view_<version>_aarch64.dmg`，内含 `image-view.app`。最低系统版本、DMG 窗口布局与文件关联位于 `apps/eframe-app/Packager.toml` 的 `[macos]` / `[dmg]` / `[[fileAssociations]]`；签名、公证与验证步骤见 [docs/BUILD-MACOS.md](docs/BUILD-MACOS.md)。未签名时首次打开需在 Finder 中右键应用选择“打开”；文件关联已注册，但 Finder 双击传入文件的 macOS 事件尚未处理，需从命令行传入路径。
+自动产出 `.deb`、`.rpm` 与 `.AppImage` 三种格式。
 
 ## 自动更新
 
-- 入口在 `⋯ → 检查更新…`；同一菜单的“启动时检查更新”默认关闭，勾选后才会在启动时联网检查。
-- 默认清单地址为 `https://github.com/GuoJikun/image-view/releases/latest/download/update.json`，格式为 `{"version","url","sha256","notes"}`。可用环境变量 `IMAGE_VIEW_UPDATE_MANIFEST` 指向本地文件或测试地址，用 `IMAGE_VIEW_UPDATE_DIR` 覆盖下载目录。
-- 安装包分块下载到 `%LOCALAPPDATA%\image-view\updates`，先写 `.part`；SHA-256 与清单一致后才会重命名并允许安装。安装器以 `/S` 静默运行，应用随即退出，不会自动重新启动。
-- 无网络、清单损坏或哈希不匹配时只影响更新窗口，不影响正常看图。
+- 入口在「帮助 → 检查更新…」；同一菜单的"启动时检查更新"默认关闭，勾选后才会在启动时联网检查。
+- 基于 Tauri 官方 `tauri-plugin-updater`，更新清单地址为 `https://github.com/GuoJikun/image-view/releases/latest/download/latest.json`。
+- 更新包使用 minisign 签名校验，下载后自动安装；支持下载进度显示与取消。
 
 ## 运行
 
-需要 Rust 1.95+（edition 2024）。
+需要 Rust 1.95+（edition 2024）与 Node.js 22+。
 
 ```powershell
-cargo run --release
-cargo run --release -- "D:\photos\a.jpg"
-cargo run --release -- "D:\photos"      # 打开目录中第一张图片
+cd app
+npm install
+npm run tauri dev          # 开发模式（自动启动 Vite + 热更新）
+npm run tauri build        # 构建 release + 安装包
 ```
 
-构建产物位于 `target\release\image-view.exe`，可自行复制到任意位置使用。
+构建产物位于 `app\src-tauri\target\release\`。
+
+前端单独构建：
+
+```powershell
+cd app\frontend
+npm run build              # vue-tsc --noEmit && vite build
+```
 
 HEIC/AVIF 与 SVG 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
 
@@ -174,7 +181,7 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 - 主图纹理缓存最多保留 3 张图片（总像素 ≤ 72M，约 288 MB）；缩略图另有 512 张 LRU，与主图预算分离。
 - 缩略图磁盘缓存位于 `%LOCALAPPDATA%\image-view\thumbs`，按路径、修改时间、文件长度与目标尺寸缓存 QOI；超过 256 MB 时启动阶段删除最旧文件，可安全手动清空。
 - 缩略图最长边为 128 px，适合 2× DPI 与常规缩放；极大目录下缩略图条只绘制视口附近卡片，但目录扫描本身仍是一次性完成。
-- mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。glow（OpenGL）为主要渲染后端，老显卡驱动异常时需回退到旧版本或自行切换后端。
+- mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。
 - 幻灯片到最后一张停止，不循环；手动翻页会重置 3 秒计时。
 - 预加载会跳过超过 30 MP 的图片（仅影响速度，不影响正常打开）。
 - 16-bit 图片以 8-bit 纹理显示（色彩转换阶段仍保留 16-bit 精度）；10-bit/HDR 输出不在当前版本范围内。
@@ -191,46 +198,38 @@ Cargo.toml        虚拟 workspace：成员、共享依赖与 release profile
 rust-toolchain.toml  Rust stable 工具链与 rustfmt/clippy 组件
 deny.toml            cargo-deny 依赖审计、许可证与来源配置
 THIRD-PARTY-LICENSES.md  自动生成的第三方依赖许可证与版权声明
-apps/
-  eframe-app/     唯一的 GUI 可执行包（package 名 `image-view`）
+app/              Tauri 2 + Vue 3 GUI 应用
+  package.json    Tauri CLI 入口（dev/build）
+  src-tauri/      Rust 适配层：Commands、Events、iviewer:// 协议、更新命令
+    Cargo.toml    package: image-view-tauri
+    tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、updater
+    capabilities/ 权限声明
     src/
-      main.rs     入口：CLI、窗口参数、图标、日志初始化
-      app.rs      应用状态与每帧编排（eframe::App 的 logic / ui）
-      ui.rs       顶部工具栏、分段缩放、溢出菜单、状态栏、错误横幅、帮助窗口
-      theme.rs    浅/深色调色板、主题设置与 egui 样式安装
-      icons.rs    工具栏与空状态使用的矢量图标绘制
-      viewer.rs   缩放/平移视图状态与画布绘制
-      document.rs 当前图片与 GPU 纹理
-      cache.rs    `iv-cache` 的纹理缓存适配
-      thumbs.rs   缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
-      i18n.rs     中/英资源表、语言检测与切换
-      errors.rs   核心错误到本地化文案的映射
-      update.rs   更新清单检查、后台下载、SHA-256 校验与安装器启动
-      titlebar.rs Linux 无边框标题栏
-    build.rs      在 Windows MSVC 下把 assets/app.res 链接进 exe
-    examples/
-      gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
-      color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
-      thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
-      gen_third_party_licenses.rs  从 Cargo.lock 重新生成 THIRD-PARTY-LICENSES.md
-    installer/
-      nsis/
-        image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
-    Packager.toml       cargo-packager 打包配置（NSIS / deb / dmg、依赖与文件关联）
-    scripts/
-      build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
-      build-deb.sh       在 Linux/WSL2 中构建 .deb
-      build-macos.sh     在 Apple Silicon Mac 上构建 arm64 .dmg
-  tauri-app/      Tauri 2 + Vue 3 前端 POC（仅 gui-tauri 分支）
-    src-tauri/    Rust 适配层：Commands、Events、iviewer:// 协议
-    frontend/     Vue 3 + TypeScript + Vite + Pinia
+      main.rs     桌面入口
+      lib.rs      Builder 装配、单实例、命令注册、macOS 菜单栏
+      dto.rs      Command/Event DTO 与稳定错误码
+      state.rs    目录导航、ImageId 授权表、用例编排
+      preview.rs  预览解码线程、latest-wins、PNG 缓存
+      thumbnails.rs  缩略图解码与内存 LRU
+      protocol.rs iviewer:// 资源协议
+      commands/
+        image.rs  图片操作命令
+        file.rs   文件管理命令
+        task.rs   任务取消命令
+        update.rs 更新命令（check/download/cancel/install）
+  frontend/       Vue 3 + TypeScript + Vite + Pinia
+    src/
+      services/ipc.ts   前端唯一的 Tauri 边界
+      stores/           Pinia 状态管理
+      components/       TitleBar、MenuBar、ZoomControl、Canvas、缩略图条、对话框
+      types/ipc.ts      DTO 类型定义
 crates/
   iv-domain/       排序、语言、主题与支持的扩展名
   iv-files/        目录扫描与自然/时间排序
   iv-application/  目录导航状态（上一张/下一张/选中）
   iv-metadata/     ICC profile 解析、sRGB 转换与 16-bit 精度保持
   iv-image-decode/ 后台解码线程、优先级队列、预加载、降采样、格式分派与缩略图解码
-  iv-image-render/ 缩放/平移视图数学（不依赖 egui）
+  iv-image-render/ 缩放/平移视图数学（不依赖 GUI）
   iv-cache/        通用 LRU 与像素预算缓存
   iv-task/         后台请求代号（generation）
   iv-platform/     回收站删除、资源管理器定位与打开目录
@@ -240,27 +239,22 @@ crates/
   iv-image-process/ 图片处理能力占位（尚未实现）
 assets/
   icon.png      窗口图标（64×64）
-  icon-256.png  deb / macOS 打包用的 256×256 图标
-  icon-512.png  deb / macOS 打包用的 512×512 图标
-  icon-512@2x.png macOS Retina 图标（1024×1024，按 512 pt @2x 命名）
-  icon.ico      多尺寸应用图标（安装包 / exe）
-  app.rc        图标资源定义
-  app.res       编译后的 Windows 资源
+  icon-256.png  打包用的 256×256 图标
+  icon-512.png  打包用的 512×512 图标
+  icon.ico      多尺寸应用图标（NSIS / exe）
 .github/
   workflows/
-    release.yml      推送 v* 标签时自动构建并发布
+    check.yml       PR 检查（前端 vue-tsc + vite build，Rust fmt/clippy/test）
+    release.yml     推送 v* 标签时三平台自动构建并发布
 design/
-  gen_ico.py    从 icon-1024.png 生成多尺寸 assets/icon.ico
+  macos-first/  macOS 优先三端和谐 UI 设计规范
 docs/
   ROADMAP.md    阶段进度总览与里程碑
   PLAN-P0.md    1.0.0 开发基线（P0）设计与验收记录
   PLAN-P1.md    v1.0 计划（M1~M9，只查看）
   PLAN-P2.md    v2.x 专业能力、编辑与架构
   PLAN-P3.md    v3+ 长期方向
-  NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
-  BUILD-DEB.md       WSL2/Linux 构建 .deb 的依赖、步骤与配置说明
-  BUILD-MACOS.md     Apple Silicon 构建 arm64 .dmg 的步骤与签名说明
-  TAURI-POC.md      Tauri 2 + Vue 3 POC 的 IPC、验收状态与已知缺口
+  TAURI-POC.md  Tauri 2 + Vue 3 架构的 IPC、验收状态与已知缺口
 CHANGELOG.md    各发布版本的用户可见变更
 ```
 
@@ -270,24 +264,17 @@ CHANGELOG.md    各发布版本的用户可见变更
 cargo fmt --all
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
-cargo build --release -p image-view
-powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1   # exe + 安装包 + SHA256
+
+# 前端
+cd app\frontend
+npm run build
+
+# Tauri 开发与构建
+cd app
+npm run tauri dev
+npm run tauri build
 ```
-
-`build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --all --check` 与 `cargo test --workspace --no-default-features`。
-
-Tauri 2 + Vue 3 POC 位于 `apps/tauri-app/`，只存在于 `gui-tauri` 分支，不参与默认 workspace 构建产物发布：
-
-```powershell
-cd apps\tauri-app
-npm install
-npm run dev                 # tauri dev（自动启动 frontend 的 Vite）
-npm run build               # tauri build（release + 安装包）
-```
-
-IPC 边界、验收状态与已知缺口见 [docs/TAURI-POC.md](docs/TAURI-POC.md)。
 
 手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
 
 - 设计细节与取舍见 `docs/PLAN-P0.md`。
-- 渲染后端使用 eframe 的 glow（OpenGL）；从 wgpu 切换是为了支持纹理 `mipmap_mode`，同时减小 release 体积。

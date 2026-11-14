@@ -36,7 +36,7 @@ jobs:
           fi
 
           WS_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
-          TAURI_VERSION=$(python3 -c "import json; print(json.load(open('apps/tauri-app/src-tauri/tauri.conf.json'))['version'])")
+          TAURI_VERSION=$(python3 -c "import json; print(json.load(open('app/src-tauri/tauri.conf.json'))['version'])")
 
           if [[ "$TAG" != "v$WS_VERSION" ]]; then
             echo "::error::Tag '$TAG' does not match workspace version '$WS_VERSION' (expected 'v$WS_VERSION')."
@@ -81,7 +81,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/tauri-app/frontend/package-lock.json
+          cache-dependency-path: app/frontend/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -103,7 +103,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install frontend dependencies
-        working-directory: apps/tauri-app/frontend
+        working-directory: app/frontend
         run: npm ci
 
       - name: Build and upload bundles
@@ -112,7 +112,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
-          projectPath: apps/tauri-app
+          projectPath: app
           tagName: ${{ github.ref_name }}
           releaseName: 'image-view ${{ github.ref_name }}'
           releaseBody: 'See the assets to download and install this version.'

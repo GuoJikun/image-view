@@ -2,12 +2,12 @@
 
 本文件记录 `docs/03-tauri-vue-rust-architecture.md` 方案 C 的实现状态、IPC 边界、验收结果与已知缺口。
 
-代码位于 `apps/tauri-app/`，全部 Tauri 相关工作保留在 `gui-tauri` 分支，`main` 上的 eframe 应用不受影响。
+代码位于 `app/`，全部 Tauri 相关工作保留在 `gui-tauri` 分支，`main` 上的 eframe 应用不受影响。
 
 ## 1. 目录结构
 
 ```text
-apps/tauri-app/
+app/
 ├── package.json              # Tauri CLI 入口（dev/build）
 ├── src-tauri/
 │   ├── Cargo.toml            # package: image-view-tauri
@@ -65,7 +65,7 @@ npm run build
 前端单独构建：
 
 ```powershell
-cd apps\tauri-app\frontend
+cd app\frontend
 npm run build               # vue-tsc --noEmit && vite build
 ```
 
