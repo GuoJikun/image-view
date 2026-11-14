@@ -246,7 +246,7 @@ pub fn run() {
             }
 
             log::info!(
-                target: "image_view_tauri",
+                target: "image_view",
                 "Tauri GUI 已启动；启动参数：{}",
                 startup_path.as_deref().unwrap_or("<无>")
             );

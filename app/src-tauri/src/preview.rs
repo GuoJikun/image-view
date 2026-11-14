@@ -52,7 +52,7 @@ impl PreviewEntry {
                     Ok(()) => Arc::from(bytes),
                     Err(error) => {
                         log::error!(
-                            target: "image_view_tauri::preview",
+                            target: "image_view::preview",
                             "预览 PNG 编码失败（{}×{}）：{error}",
                             self.width,
                             self.height
@@ -237,7 +237,7 @@ fn worker(app: AppHandle, rx: mpsc::Receiver<Job>, shared: Arc<Shared>) {
                 };
                 if let Err(error) = app.emit(PREVIEW_READY_EVENT, payload) {
                     log::warn!(
-                        target: "image_view_tauri::preview",
+                        target: "image_view::preview",
                         "无法发送预览事件：{error}"
                     );
                 }
@@ -246,7 +246,7 @@ fn worker(app: AppHandle, rx: mpsc::Receiver<Job>, shared: Arc<Shared>) {
                 let payload = failed_payload(job.request_id, &job.image_id, &error);
                 if let Err(error) = app.emit(PREVIEW_FAILED_EVENT, payload) {
                     log::warn!(
-                        target: "image_view_tauri::preview",
+                        target: "image_view::preview",
                         "无法发送预览失败事件：{error}"
                     );
                 }
