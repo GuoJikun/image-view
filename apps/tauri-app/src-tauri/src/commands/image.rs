@@ -72,3 +72,12 @@ pub fn startup_path(state: State<'_, AppState>) -> Option<String> {
 pub fn close_image(state: State<'_, AppState>) {
     state.close();
 }
+
+/// 把当前图片移到系统回收站，并返回删除后的目录快照。
+#[tauri::command]
+pub fn delete_image(
+    state: State<'_, AppState>,
+    image_id: String,
+) -> Result<DirectorySnapshot, CommandError> {
+    state.delete_current(&image_id)
+}

@@ -40,8 +40,11 @@ export const useViewerStore = defineStore("viewer", () => {
     flipY: false,
   });
 
-  const showMetadata = ref(true);
+  const showMetadata = ref(false);
   const showThumbnails = ref(true);
+  const slideshow = ref(false);
+
+  let slideshowTimer: number | undefined;
 
   const fitZoom = computed(() => {
     const image = preview.value;
@@ -156,6 +159,7 @@ export const useViewerStore = defineStore("viewer", () => {
   }
 
   async function openPath(path: string): Promise<void> {
+    stopSlideshow();
     loading.value = true;
     error.value = null;
     activeRequestId.value = 0;
@@ -295,7 +299,55 @@ export const useViewerStore = defineStore("viewer", () => {
     }
   }
 
+  /** 把当前图片移到系统回收站；返回是否成功。 */
+  async function deleteCurrent(): Promise<boolean> {
+    const entry = snapshot.value?.current;
+    if (!entry) return false;
+    try {
+      const next = await ipc.deleteImage(entry.id);
+      preview.value = null;
+      imageUrl.value = null;
+      applySnapshot(next);
+      if (next.current) {
+        await requestCurrent();
+      } else {
+        loading.value = false;
+        resetView();
+      }
+      return true;
+    } catch (caught) {
+      error.value = ipc.normalizeError(caught);
+      return false;
+    }
+  }
+
+  function stopSlideshow(): void {
+    slideshow.value = false;
+    if (slideshowTimer !== undefined) {
+      window.clearInterval(slideshowTimer);
+      slideshowTimer = undefined;
+    }
+  }
+
+  /** 幻灯片：每 3 s 前进一张，到末尾自动停止。 */
+  function toggleSlideshow(): void {
+    if (slideshow.value) {
+      stopSlideshow();
+      return;
+    }
+    if (!hasImage.value) return;
+    slideshow.value = true;
+    slideshowTimer = window.setInterval(() => {
+      if (!canNext.value) {
+        stopSlideshow();
+        return;
+      }
+      void step(1);
+    }, 3000);
+  }
+
   async function close(): Promise<void> {
+    stopSlideshow();
     try {
       await ipc.closeImage();
     } catch {
@@ -341,6 +393,7 @@ export const useViewerStore = defineStore("viewer", () => {
     view,
     showMetadata,
     showThumbnails,
+    slideshow,
     fitZoom,
     effectiveZoom,
     zoomPercent,
@@ -369,6 +422,9 @@ export const useViewerStore = defineStore("viewer", () => {
     clampPan,
     clearError,
     revealCurrent,
+    deleteCurrent,
+    stopSlideshow,
+    toggleSlideshow,
     close,
   };
 });

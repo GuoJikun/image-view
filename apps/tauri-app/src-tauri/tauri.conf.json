@@ -16,10 +16,10 @@
         "title": "image-view",
         "width": 1180,
         "height": 800,
-        "minWidth": 640,
-        "minHeight": 420,
+        "minWidth": 720,
+        "minHeight": 520,
         "dragDropEnabled": true,
-        "backgroundColor": "#12161c"
+        "backgroundColor": "#1C1C1E"
       }
     ],
     "security": {

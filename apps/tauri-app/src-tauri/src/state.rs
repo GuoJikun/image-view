@@ -195,6 +195,32 @@ impl AppState {
         iv_platform::reveal_in_file_manager(&path)
             .map_err(|error| CommandError::io(error.to_string()))
     }
+
+    /// 把当前图片移到系统回收站；随后选中下一张（若已是最后一张则退回新的末尾）。
+    pub fn delete_current(&self, image_id: &str) -> Result<DirectorySnapshot, CommandError> {
+        let path = self
+            .path_for(image_id)
+            .ok_or_else(|| CommandError::invalid_path("图片句柄已失效"))?;
+
+        let mut directory = lock(&self.directory);
+        let mut registry = lock(&self.registry);
+        let is_current = directory
+            .snapshot()
+            .current
+            .is_some_and(|entry| entry.id == image_id);
+        if !is_current {
+            return Err(CommandError::invalid_path("只能删除当前正在查看的图片"));
+        }
+
+        iv_platform::delete_to_trash(&path).map_err(|error| {
+            CommandError::io(format!("无法移到回收站（{}）：{error}", path.display()))
+        })?;
+
+        directory.nav.remove_current();
+        directory.sync_entries(&mut registry);
+        self.previews.cancel();
+        Ok(directory.snapshot())
+    }
 }
 
 pub fn sort_label(order: SortOrder) -> &'static str {

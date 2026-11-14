@@ -1,39 +1,58 @@
 <script setup lang="ts">
+/**
+ * 状态栏 26 px：左侧尺寸 / 位深 / 格式 / 色彩标记，右侧短提示 → 幻灯片 → 序号 → spinner。
+ * 缩略图条隐藏时，上缘补 1 px 发丝线与画布分隔（有条时由条自身提供）。
+ */
 import { computed } from "vue";
 import { useViewerStore } from "../stores/viewer";
+import { useUiStore } from "../stores/ui";
+import { t } from "../i18n";
 
 const store = useViewerStore();
+const ui = useUiStore();
+
+const stripVisible = computed(
+  () => store.showThumbnails && (store.snapshot?.entries.length ?? 0) > 0,
+);
+
+const info = computed<{ text: string; tone?: "warn" }[]>(() => {
+  const image = store.preview;
+  if (!image) return [];
+  const parts: { text: string; tone?: "warn" }[] = [
+    { text: `${image.sourceWidth} × ${image.sourceHeight}` },
+    { text: `${image.sourceDepth} bit` },
+    { text: image.format },
+  ];
+  if (ui.showColorBadge && image.colorConverted) {
+    parts.push({ text: image.colorSource ? `${image.colorSource} → sRGB` : "sRGB" });
+  }
+  if (image.downscaled) parts.push({ text: t("status.downscaled"), tone: "warn" });
+  return parts;
+});
 
 const positionText = computed(() => {
   const position = store.snapshot?.position;
-  return position ? `${position[0]} / ${position[1]}` : "—";
-});
-
-const sizeText = computed(() => {
-  const image = store.preview;
-  if (!image) return "—";
-  const source = `${image.sourceWidth} × ${image.sourceHeight}`;
-  if (!image.downscaled) return source;
-  return `${image.width} × ${image.height}（原图 ${source}）`;
+  return position ? `${position[0]} / ${position[1]}` : "";
 });
 </script>
 
 <template>
-  <footer class="status-bar">
-    <span class="status-name" :title="store.preview?.path">{{ store.preview?.fileName ?? "没有打开图片" }}</span>
-    <span class="status-sep">·</span>
-    <span>{{ sizeText }}</span>
-    <span class="status-sep">·</span>
-    <span>{{ store.zoomPercent }}%</span>
-    <span class="status-sep">·</span>
-    <span>{{ positionText }}</span>
+  <footer class="status-bar" :class="{ solo: !stripVisible }">
+    <div class="status-left">
+      <template v-if="info.length">
+        <template v-for="(part, index) in info" :key="part.text">
+          <span v-if="index > 0" class="status-dot">·</span>
+          <span :class="{ 'status-warn': part.tone === 'warn' }">{{ part.text }}</span>
+        </template>
+      </template>
+      <span v-else class="status-empty">{{ t("status.noImage") }}</span>
+    </div>
 
-    <span v-if="store.preview?.downscaled" class="status-badge">已降采样</span>
-    <span v-if="store.preview?.colorConverted" class="status-badge">已色彩转换</span>
-    <span v-if="store.preview && store.preview.sourceDepth === 16" class="status-badge">16-bit</span>
-
-    <span class="status-spacer" />
-    <span v-if="store.loading" class="status-loading"><span class="spinner spinner-small" />加载中…</span>
-    <span v-else class="status-mode">{{ store.view.mode === "fit" ? "适配窗口" : store.view.mode === "actual" ? "实际大小" : "自由缩放" }}</span>
+    <div class="status-right">
+      <span v-if="ui.notice" class="status-notice">{{ ui.notice }}</span>
+      <span v-if="store.slideshow" class="status-flag">{{ t("status.slideshow") }}</span>
+      <span v-if="positionText" class="status-position">{{ positionText }}</span>
+      <span v-if="store.loading" class="spinner spinner-small" aria-hidden="true" />
+    </div>
   </footer>
 </template>

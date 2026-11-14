@@ -78,6 +78,19 @@ export async function revealImage(imageId: string): Promise<void> {
   return invoke<void>("reveal_image", { imageId });
 }
 
+export async function deleteImage(imageId: string): Promise<DirectorySnapshot> {
+  return invoke<DirectorySnapshot>("delete_image", { imageId });
+}
+
+export async function openLogDir(): Promise<void> {
+  return invoke<void>("open_log_dir");
+}
+
+/** macOS：让系统菜单栏跟随界面语言。其它平台为空实现。 */
+export async function syncNativeMenu(locale: string): Promise<void> {
+  return invoke<void>("sync_native_menu", { locale });
+}
+
 export function onPreviewReady(
   handler: (payload: PreviewReady) => void,
 ): Promise<UnlistenFn> {
@@ -93,6 +106,11 @@ export function onPreviewFailed(
 /** 单实例/文件关联把新文件转交给已运行窗口。 */
 export function onOpenFile(handler: (path: string) => void): Promise<UnlistenFn> {
   return listen<string>("app:open-file", (event) => handler(event.payload));
+}
+
+/** macOS 原生菜单 → 与自绘菜单共用的动作 id。 */
+export function onMenuAction(handler: (id: string) => void): Promise<UnlistenFn> {
+  return listen<string>("menu:action", (event) => handler(event.payload));
 }
 
 export function normalizeError(error: unknown): CommandError {

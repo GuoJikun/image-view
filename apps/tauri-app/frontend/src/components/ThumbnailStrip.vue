@@ -7,7 +7,9 @@ const store = useViewerStore();
 const scroller = ref<HTMLDivElement | null>(null);
 const scrollLeft = ref(0);
 const viewportWidth = ref(0);
-const ITEM_WIDTH = 92;
+/** 卡片 76 × 56 + 间距 9；左右内边距 16（设计 4.3）。 */
+const ITEM_WIDTH = 85;
+const PAD = 16;
 const OVERSCAN = 4;
 
 let observer: ResizeObserver | null = null;
@@ -24,7 +26,7 @@ const visible = computed(() =>
     .slice(startIndex.value, startIndex.value + visibleCount.value)
     .map((entry, offset) => ({ entry, index: startIndex.value + offset })),
 );
-const trackWidth = computed(() => `${entries.value.length * ITEM_WIDTH}px`);
+const trackWidth = computed(() => `${PAD * 2 + entries.value.length * ITEM_WIDTH}px`);
 
 function onScroll(): void {
   scrollLeft.value = scroller.value?.scrollLeft ?? 0;
@@ -38,7 +40,7 @@ function centerCurrent(behavior: ScrollBehavior = "smooth"): void {
   const index = store.currentIndex;
   const element = scroller.value;
   if (index < 0 || !element) return;
-  const target = index * ITEM_WIDTH - element.clientWidth / 2 + ITEM_WIDTH / 2;
+  const target = PAD + index * ITEM_WIDTH - element.clientWidth / 2 + 38;
   element.scrollTo({ left: Math.max(0, target), behavior });
 }
 
@@ -79,7 +81,7 @@ onBeforeUnmount(() => observer?.disconnect());
         type="button"
         class="thumb-item"
         :class="{ current: index === store.currentIndex }"
-        :style="{ left: `${index * ITEM_WIDTH}px` }"
+        :style="{ left: `${PAD + index * ITEM_WIDTH}px` }"
         :title="entry.name"
         @click="store.select(index)"
       >
@@ -90,7 +92,6 @@ onBeforeUnmount(() => observer?.disconnect());
           decoding="async"
           draggable="false"
         />
-        <span class="thumb-index">{{ index + 1 }}</span>
       </button>
     </div>
   </section>

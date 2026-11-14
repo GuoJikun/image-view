@@ -9,3 +9,10 @@ use crate::state::AppState;
 pub fn reveal_image(state: State<'_, AppState>, image_id: String) -> Result<(), CommandError> {
     state.reveal(&image_id)
 }
+
+/// 在系统文件管理器中打开日志目录（帮助菜单 → 打开日志文件夹）。
+#[tauri::command]
+pub fn open_log_dir() -> Result<(), CommandError> {
+    iv_platform::open_folder(&iv_infra::logging::log_dir())
+        .map_err(|error| CommandError::io(error.to_string()))
+}

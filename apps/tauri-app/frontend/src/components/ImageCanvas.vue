@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useViewerStore } from "../stores/viewer";
+import { useUiStore } from "../stores/ui";
+import { modSymbol } from "../platform";
+import { t } from "../i18n";
+import Icon from "./Icon.vue";
 
 const store = useViewerStore();
+const ui = useUiStore();
 const host = ref<HTMLDivElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
 const dragging = ref(false);
@@ -30,9 +35,9 @@ function ensureChecker(context: CanvasRenderingContext2D): CanvasPattern | null 
   tile.height = 16;
   const tileContext = tile.getContext("2d");
   if (!tileContext) return null;
-  tileContext.fillStyle = "#252b33";
+  tileContext.fillStyle = "#232326";
   tileContext.fillRect(0, 0, 16, 16);
-  tileContext.fillStyle = "#2f3640";
+  tileContext.fillStyle = "#2A2A2D";
   tileContext.fillRect(0, 0, 8, 8);
   tileContext.fillRect(8, 8, 8, 8);
   checker = context.createPattern(tile, "repeat");
@@ -189,16 +194,22 @@ onBeforeUnmount(() => {
 
     <div v-if="store.loading" class="canvas-overlay">
       <span class="spinner" aria-hidden="true" />
-      <span>正在解码…</span>
+      <span>{{ t("status.decoding") }}</span>
     </div>
     <div v-else-if="!store.hasImage" class="canvas-overlay canvas-empty">
-      <svg viewBox="0 0 64 64" aria-hidden="true" class="empty-icon">
-        <rect x="8" y="12" width="48" height="40" rx="6" fill="none" stroke="currentColor" stroke-width="2" />
-        <circle cx="23" cy="26" r="4" fill="currentColor" opacity="0.7" />
-        <path d="m12 46 14-14 9 9 7-6 10 11" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
-      </svg>
-      <p class="empty-title">拖入图片，或按 <kbd>Ctrl</kbd> + <kbd>O</kbd> 打开</p>
-      <p class="empty-hint">也可以把图片或目录作为启动参数传给 image-view</p>
+      <Icon name="photo" :size="60" class="empty-icon" />
+      <h2 class="empty-title">{{ t("empty.title") }}</h2>
+      <p class="empty-hint">
+        {{ t("empty.hintPrefix") }}<kbd>{{ modSymbol }}</kbd><kbd>O</kbd>{{ t("empty.hintSuffix") }}
+      </p>
+      <button type="button" class="btn btn-primary empty-action" @click="store.openDialog()">
+        {{ t("empty.open") }}
+      </button>
+    </div>
+
+    <div v-if="ui.dragActive" class="drop-overlay" aria-hidden="true">
+      <Icon name="folder" :size="28" />
+      <span>{{ t("empty.drag") }}</span>
     </div>
   </div>
 </template>
