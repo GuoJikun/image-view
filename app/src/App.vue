@@ -62,6 +62,12 @@ function isButton(target: EventTarget | null): boolean {
   return target instanceof HTMLElement && Boolean(target.closest("button, [role='menuitem']"));
 }
 
+// WebView 自带的右键菜单（重新加载、另存为图片、检查元素）对看图没有意义，整窗禁用。
+// 以后若加入输入框且需要系统粘贴菜单，在这里按 event.target 放行。
+function onContextMenu(event: MouseEvent): void {
+  event.preventDefault();
+}
+
 async function onKeyDown(event: KeyboardEvent): Promise<void> {
   if (isTextInput(event.target)) return;
 
@@ -193,6 +199,7 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
 
 onMounted(async () => {
   window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("contextmenu", onContextMenu);
   await store.initialize();
   // 偏好来自 settings.ron，读取后覆盖默认值；随后的菜单同步才能拿到真实勾选状态。
   await loadPreferences();
@@ -248,6 +255,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", onKeyDown);
+  window.removeEventListener("contextmenu", onContextMenu);
   unlistenDragDrop?.();
   unlistenMenu?.();
   unlistenResize?.();
