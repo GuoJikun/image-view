@@ -5,6 +5,7 @@
 
 mod commands;
 mod dto;
+mod menu_text;
 mod preview;
 mod protocol;
 mod settings_store;
@@ -15,6 +16,7 @@ use std::path::PathBuf;
 
 use tauri::{Emitter, Manager};
 
+use crate::menu_text::MenuText;
 use crate::state::AppState;
 
 /// 命令行中第一个存在的路径参数（文件或目录）。
@@ -35,31 +37,20 @@ fn forwarded_path(argv: Vec<String>) -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
-/// 原生菜单文案：`t(中文, English)`；英文文案与前端 `i18n.ts` 保持一致。
-#[derive(Clone, Copy)]
-struct MenuText {
-    en: bool,
-}
-
-impl MenuText {
-    fn t(self, zh: &'static str, english: &'static str) -> &'static str {
-        if self.en { english } else { zh }
-    }
-}
-
 /// macOS 系统菜单栏。Windows / Linux 使用前端自绘菜单，不调用本函数。
 ///
 /// 只在 macOS 上安装；仍然在其它平台编译，以便 CI 校验 API 用法。
+/// 文案来自前端文案表（见 [`menu_text`]），这里只写键名。
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn build_app_menu(
     app: &tauri::AppHandle,
-    en: bool,
+    locale: &str,
 ) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 
-    let t = MenuText { en };
+    let t = MenuText::new(locale);
 
-    let about = SubmenuBuilder::new(app, t.t("图片查看器", "Image Viewer"))
+    let about = SubmenuBuilder::new(app, t.t("app.name"))
         .about(None)
         .separator()
         .services()
@@ -71,58 +62,52 @@ fn build_app_menu(
         .quit()
         .build()?;
 
-    let file = SubmenuBuilder::new(app, t.t("文件", "File"))
+    let file = SubmenuBuilder::new(app, t.t("menu.file"))
         .item(
-            &MenuItemBuilder::with_id("open", t.t("打开图片…", "Open Image…"))
+            &MenuItemBuilder::with_id("open", t.t("menu.open"))
                 .accelerator("CmdOrCtrl+O")
                 .build(app)?,
         )
         .separator()
+        .item(&MenuItemBuilder::with_id("reveal", t.t("menu.reveal")).build(app)?)
         .item(
-            &MenuItemBuilder::with_id(
-                "reveal",
-                t.t("在文件管理器中显示", "Reveal in File Manager"),
-            )
-            .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("copy-path", t.t("复制路径", "Copy Path"))
+            &MenuItemBuilder::with_id("copy-path", t.t("menu.copyPath"))
                 .accelerator("CmdOrCtrl+Shift+C")
                 .build(app)?,
         )
         .separator()
         .item(
-            &MenuItemBuilder::with_id("trash", t.t("移到废纸篓", "Move to Trash"))
+            &MenuItemBuilder::with_id("trash", t.t("menu.trash"))
                 .accelerator("Backspace")
                 .build(app)?,
         )
         .build()?;
 
-    let sort = SubmenuBuilder::new(app, t.t("排序", "Sort"))
-        .text("sort-name", t.t("按名称", "By Name"))
-        .text("sort-modified", t.t("按修改时间", "By Date Modified"))
+    let sort = SubmenuBuilder::new(app, t.t("menu.sort"))
+        .text("sort-name", t.t("menu.sortName"))
+        .text("sort-modified", t.t("menu.sortModified"))
         .build()?;
 
-    let theme = SubmenuBuilder::new(app, t.t("主题", "Theme"))
-        .text("theme-system", t.t("跟随系统", "System"))
-        .text("theme-light", t.t("浅色", "Light"))
-        .text("theme-dark", t.t("深色", "Dark"))
+    let theme = SubmenuBuilder::new(app, t.t("menu.theme"))
+        .text("theme-system", t.t("menu.themeSystem"))
+        .text("theme-light", t.t("menu.themeLight"))
+        .text("theme-dark", t.t("menu.themeDark"))
         .build()?;
 
-    let language = SubmenuBuilder::new(app, t.t("语言", "Language"))
-        .text("lang-system", t.t("跟随系统", "System"))
-        .text("lang-zh", "简体中文")
-        .text("lang-en", "English")
+    let language = SubmenuBuilder::new(app, t.t("menu.language"))
+        .text("lang-system", t.t("menu.langSystem"))
+        .text("lang-zh", t.t("menu.langZh"))
+        .text("lang-en", t.t("menu.langEn"))
         .build()?;
 
-    let display = SubmenuBuilder::new(app, t.t("显示", "View"))
+    let display = SubmenuBuilder::new(app, t.t("menu.view"))
         .item(
-            &MenuItemBuilder::with_id("toggle-thumbnails", t.t("缩略图条", "Thumbnails"))
+            &MenuItemBuilder::with_id("toggle-thumbnails", t.t("menu.thumbnails"))
                 .accelerator("CmdOrCtrl+T")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id("slideshow", t.t("幻灯片", "Slideshow"))
+            &MenuItemBuilder::with_id("slideshow", t.t("menu.slideshow"))
                 .accelerator("Space")
                 .build(app)?,
         )
@@ -130,22 +115,22 @@ fn build_app_menu(
         .item(&sort)
         .separator()
         .item(
-            &MenuItemBuilder::with_id("zoom-in", t.t("放大", "Zoom In"))
+            &MenuItemBuilder::with_id("zoom-in", t.t("menu.zoomIn"))
                 .accelerator("CmdOrCtrl+=")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id("zoom-out", t.t("缩小", "Zoom Out"))
+            &MenuItemBuilder::with_id("zoom-out", t.t("menu.zoomOut"))
                 .accelerator("CmdOrCtrl+-")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id("fit", t.t("适配窗口", "Fit to Window"))
+            &MenuItemBuilder::with_id("fit", t.t("menu.fit"))
                 .accelerator("CmdOrCtrl+0")
                 .build(app)?,
         )
         .item(
-            &MenuItemBuilder::with_id("actual", t.t("实际大小", "Actual Size"))
+            &MenuItemBuilder::with_id("actual", t.t("menu.actual"))
                 .accelerator("CmdOrCtrl+1")
                 .build(app)?,
         )
@@ -153,41 +138,20 @@ fn build_app_menu(
         .item(&theme)
         .item(&language)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id(
-                "color-badge",
-                t.t("显示色彩转换标记", "Show Color Conversion Badge"),
-            )
-            .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("metadata", t.t("元数据面板", "Metadata Panel"))
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("color-badge", t.t("menu.colorBadge")).build(app)?)
+        .item(&MenuItemBuilder::with_id("metadata", t.t("menu.metadata")).build(app)?)
         .build()?;
 
-    let help = SubmenuBuilder::new(app, t.t("帮助", "Help"))
+    let help = SubmenuBuilder::new(app, t.t("menu.help"))
         .item(
-            &MenuItemBuilder::with_id("shortcuts", t.t("快捷键…", "Keyboard Shortcuts…"))
+            &MenuItemBuilder::with_id("shortcuts", t.t("menu.shortcuts"))
                 .accelerator("CmdOrCtrl+/")
                 .build(app)?,
         )
-        .item(
-            &MenuItemBuilder::with_id("update", t.t("检查更新…", "Check for Updates…"))
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id(
-                "auto-update",
-                t.t("启动时检查更新", "Check for Updates at Launch"),
-            )
-            .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("update", t.t("menu.update")).build(app)?)
+        .item(&MenuItemBuilder::with_id("auto-update", t.t("menu.autoUpdate")).build(app)?)
         .separator()
-        .item(
-            &MenuItemBuilder::with_id("logs", t.t("打开日志文件夹", "Open Logs Folder"))
-                .build(app)?,
-        )
+        .item(&MenuItemBuilder::with_id("logs", t.t("menu.logs")).build(app)?)
         .build()?;
 
     MenuBuilder::new(app)
@@ -200,8 +164,7 @@ fn build_app_menu(
 fn sync_native_menu(app: tauri::AppHandle, locale: String) {
     #[cfg(target_os = "macos")]
     {
-        let en = locale.starts_with("en");
-        if let Ok(menu) = build_app_menu(&app, en) {
+        if let Ok(menu) = build_app_menu(&app, &locale) {
             let _ = app.set_menu(menu);
         }
     }
@@ -248,7 +211,7 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 {
                     let _ = window;
-                    if let Ok(menu) = build_app_menu(app.handle(), false) {
+                    if let Ok(menu) = build_app_menu(app.handle(), "zh") {
                         let _ = app.handle().set_menu(menu);
                     }
                 }

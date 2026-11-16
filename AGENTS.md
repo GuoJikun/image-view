@@ -33,6 +33,9 @@ pnpm --dir app build
 - 新增命令或事件要成对改：`app/src-tauri/src/dto.rs`（camelCase 序列化）+
   `app/src/types/ipc.ts`（类型）；前端注册监听走 `ipc.ts` 的封装。
 - 状态放 `app/src/stores/`（Pinia），组件保持无状态展示。
+- macOS 原生菜单文案不在 Rust 里另写一份：`app/src-tauri/src/menu_text.rs` 用 `include_str!`
+  内嵌 `app/src/locales/*.json`，按点号路径取词。新增菜单项只需在 JSON 加键并补进 `KEYS`，
+  单测会校验两种语言都能取到、且中英文不雷同。
 
 ## 资源协议
 
