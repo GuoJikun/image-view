@@ -202,67 +202,22 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 ## 项目结构
 
 ```
-Cargo.toml        虚拟 workspace：成员、共享依赖与 release profile
-rust-toolchain.toml  Rust stable 工具链与 rustfmt/clippy 组件
-deny.toml            cargo-deny 依赖审计、许可证与来源配置
-THIRD-PARTY-LICENSES.md  自动生成的第三方依赖许可证与版权声明
-app/              Tauri 2 + Vue 3 GUI 应用
-  package.json    依赖与脚本（pnpm：dev / build / tauri）
-  index.html      前端入口
-  vite.config.ts  Vite 配置（固定端口 1420）
-  src/            Vue 3 + TypeScript + Vite + Pinia 前端
-    services/ipc.ts   前端唯一的 Tauri 边界
-    stores/           Pinia 状态管理
-    components/       TitleBar、MenuBar、ZoomControl、Canvas、缩略图条、对话框
-    types/ipc.ts      DTO 类型定义
-  src-tauri/      Rust 适配层：Commands、Events、iviewer:// 协议、更新命令
-    Cargo.toml    package: image-view
-    tauri.conf.json  窗口、CSP、bundle（NSIS/DMG/DEB/RPM/AppImage）、文件关联、updater、identifier（dev.jikun.imageview）
-    installer/hooks.nsh  NSIS 钩子：OpenWithProgids、Applications、默认应用能力项（安装写入、卸载清理）
-    capabilities/ 权限声明
-    icons/        应用图标（exe、安装包与窗口共用）
-    src/
-      main.rs     桌面入口
-      lib.rs      Builder 装配、单实例、命令注册、macOS 菜单栏
-      dto.rs      Command/Event DTO 与稳定错误码
-      state.rs    目录导航、ImageId 授权表、用例编排
-      preview.rs  预览解码线程、latest-wins、PNG 缓存
-      thumbnails.rs  缩略图解码与内存 LRU
-      protocol.rs iviewer:// 资源协议
-      commands/
-        image.rs  图片操作命令
-        file.rs   文件管理命令
-        task.rs   任务取消命令
-        update.rs 更新命令（check/download/cancel/install）
-crates/
-  iv-domain/       排序、语言、主题与支持的扩展名
-  iv-files/        目录扫描与自然/时间排序
-  iv-application/  目录导航状态（上一张/下一张/选中）
-  iv-metadata/     ICC profile 解析、sRGB 转换与 16-bit 精度保持
-  iv-image-decode/ 后台解码线程、优先级队列、预加载、降采样、格式分派与缩略图解码
-  iv-image-render/ 缩放/平移视图数学（不依赖 GUI）
-  iv-cache/        通用 LRU 与像素预算缓存
-  iv-task/         后台请求代号（generation）
-  iv-platform/     回收站删除、资源管理器定位与打开目录
-  iv-infra/        文件日志轮转、设置持久化与存储端口
-  iv-gui-contract/ GUI 动作与工具栏状态
-  iv-library/      图库能力占位（尚未实现）
-  iv-image-process/ 图片处理能力占位（尚未实现）
-.github/
-  workflows/
-    check.yml       PR 检查（前端 vue-tsc + vite build，Rust fmt/clippy/test）
-    release.yml     推送 v* 标签时三平台自动构建并发布
-design/
-  macos-first/  macOS 优先三端和谐 UI 设计规范
-docs/
-  ROADMAP.md    阶段进度总览与里程碑
-  PLAN-P0.md    1.0.0 开发基线（P0）设计与验收记录
-  PLAN-P1.md    v1.0 计划（M1~M9，只查看）
-  PLAN-P2.md    v2.x 专业能力、编辑与架构
-  PLAN-P3.md    v3+ 长期方向
-  TAURI-POC.md  Tauri 2 + Vue 3 架构的 IPC、验收状态与已知缺口
-CHANGELOG.md    各发布版本的用户可见变更
+Cargo.toml        cargo workspace：成员、共享依赖、release profile 与版本号
+app/
+  src/            Vue 3 + TypeScript + Pinia 前端
+  src-tauri/      Rust 适配层：命令、事件、iviewer:// 资源协议、原生菜单、自动更新
+crates/           与 GUI 无关的业务逻辑，按依赖方向分层：
+                  iv-domain / iv-files / iv-application / iv-metadata（领域与文件）
+                  iv-image-decode / iv-image-render / iv-cache / iv-task（解码与渲染）
+                  iv-platform / iv-infra / iv-gui-contract（平台与基础设施）
+                  iv-library / iv-image-process（图库与图片处理占位）
+.github/workflows/  check.yml 日常检查、release.yml 推标签时三平台构建发布
+docs/              路线图、分阶段计划与架构说明
+design/            三端 UI 设计规范
+CHANGELOG.md       各版本的用户可见变更
 ```
+
+只列到目录一级。根目录另有 `rust-toolchain.toml`（工具链钉版）、`deny.toml`（cargo-deny 依赖审计）与自动生成的 `THIRD-PARTY-LICENSES.md`。各模块职责与依赖方向见 [`docs/03-tauri-vue-rust-architecture.md`](docs/03-tauri-vue-rust-architecture.md)，壳层与前端的约定见 [`AGENTS.md`](AGENTS.md)。
 
 ## 开发
 
