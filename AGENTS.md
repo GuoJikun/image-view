@@ -63,6 +63,8 @@ pnpm --dir app build
   横向滚动用自绘 `AppScrollbar.vue`，不要回退到 `scrollbar-width` / `::-webkit-scrollbar` 美化
   —— 原生滚动条会吃掉 88px 条带高度。
 - 视觉与尺寸依据 `design/macos-first/README.md`。
+- 新增持久化开关时，前端 localStorage 的兜底默认值必须与 `iv-infra::Settings::default()`
+  以及 README 的说明三者一致；曾出现「代码默认开、文档写默认关」，导致默认联网检查更新。
 
 ## 发布（版本号 X.Y.Z）
 

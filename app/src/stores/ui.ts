@@ -46,7 +46,9 @@ export const useUiStore = defineStore("ui", () => {
     readSetting<ThemeSetting>(THEME_KEY, ["system", "light", "dark"], "system"),
   );
   const showColorBadge = ref(true);
-  const checkUpdatesOnLaunch = ref(readFlag(AUTO_UPDATE_KEY, true));
+  // 默认关闭：与 README「本地优先、默认不联网」及 `Settings::default()` 保持一致。
+  // 只有用户手动勾选「启动时检查更新」才会在启动时访问 GitHub Releases。
+  const checkUpdatesOnLaunch = ref(readFlag(AUTO_UPDATE_KEY, false));
 
   const fullscreen = ref(false);
   const showFullscreenTitle = ref(false);
