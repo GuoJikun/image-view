@@ -201,20 +201,29 @@ JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profi
 
 ## 项目结构
 
-```
-Cargo.toml        cargo workspace：成员、共享依赖、release profile 与版本号
+```plain
+Cargo.toml          cargo workspace：成员、共享依赖、release profile 与版本号
 app/
-  src/            Vue 3 + TypeScript + Pinia 前端
-  src-tauri/      Rust 适配层：命令、事件、iviewer:// 资源协议、原生菜单、自动更新
-crates/           与 GUI 无关的业务逻辑，按依赖方向分层：
-                  iv-domain / iv-files / iv-application / iv-metadata（领域与文件）
-                  iv-image-decode / iv-image-render / iv-cache / iv-task（解码与渲染）
-                  iv-platform / iv-infra / iv-gui-contract（平台与基础设施）
-                  iv-library / iv-image-process（图库与图片处理占位）
+  src/              Vue 3 + TypeScript + Pinia 前端
+  src-tauri/        Rust 适配层：命令、事件、iviewer:// 资源协议、原生菜单、自动更新
+crates/             与 GUI 无关的业务逻辑，按依赖方向分层
+  iv-domain/        排序、语言、主题与支持的扩展名
+  iv-files/         目录扫描与自然/时间排序
+  iv-application/   目录导航状态（上一张/下一张/选中）
+  iv-metadata/      ICC profile 解析、sRGB 转换与 16-bit 精度
+  iv-image-decode/  后台解码、优先级队列、预加载、降采样与缩略图
+  iv-image-render/  缩放/平移视图数学（不依赖 GUI）
+  iv-cache/         通用 LRU 与像素预算缓存
+  iv-task/          后台请求代号（generation）
+  iv-platform/      回收站删除、资源管理器定位与打开目录
+  iv-infra/         日志轮转、设置持久化与存储端口
+  iv-gui-contract/  GUI 动作与工具栏状态
+  iv-library/       图库能力占位（尚未实现）
+  iv-image-process/ 图片处理能力占位（尚未实现）
 .github/workflows/  check.yml 日常检查、release.yml 推标签时三平台构建发布
-docs/              路线图、分阶段计划与架构说明
-design/            三端 UI 设计规范
-CHANGELOG.md       各版本的用户可见变更
+docs/               路线图、分阶段计划与架构说明
+design/             三端 UI 设计规范
+CHANGELOG.md        各版本的用户可见变更
 ```
 
 只列到目录一级。根目录另有 `rust-toolchain.toml`（工具链钉版）、`deny.toml`（cargo-deny 依赖审计）与自动生成的 `THIRD-PARTY-LICENSES.md`。各模块职责与依赖方向见 [`docs/03-tauri-vue-rust-architecture.md`](docs/03-tauri-vue-rust-architecture.md)，壳层与前端的约定见 [`AGENTS.md`](AGENTS.md)。
