@@ -281,6 +281,6 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
+动画验收夹具用 `cargo run -p iv-image-decode --example animation_fixtures -- target/animation-fixtures` 生成：640×360 / 12 帧 / 80 ms 的常规 GIF、1500 ms 帧间隔且循环 2 次的 GIF、0 ms 帧间隔的 GIF，以及 4 帧无限循环 WebP，覆盖延迟钳制与循环次数两个边界。1.2.0 重写前的大图、色彩与缩略图夹具生成器（`gen_fixtures` / `color_fixtures` / `thumb_fixtures`）已随 eframe 版移除，需要时自行准备素材。
 
 - 设计细节与取舍见 `docs/PLAN-P0.md`。
