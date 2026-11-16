@@ -26,7 +26,7 @@
 
 ## 版本与路线
 
-当前版本为 **v1.4.0**。GUI 采用 Tauri 2 + Vue 3 架构，业务逻辑由 workspace crates 共享。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器。`1.2.0` 增加 Linux（deb / rpm / appimage）与 macOS 打包、Tauri 迁移；`1.3.0` 统一安装与运行标识（Windows 安装目录改为 `%LOCALAPPDATA%\image-view`，从 1.2.0 升级需先卸载旧版），日志改为随安装目录存放；`1.4.0` 补齐 Tauri 迁移期间丢失的桌面集成能力（窗口与会话记忆、缩略图磁盘缓存、相邻图片预加载、图片格式「打开方式」注册），缩略图条改用自绘悬浮滚动条；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
+当前版本为 **v1.4.1**。GUI 采用 Tauri 2 + Vue 3 架构，业务逻辑由 workspace crates 共享。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器。`1.2.0` 增加 Linux（deb / rpm / appimage）与 macOS 打包、Tauri 迁移；`1.3.0` 统一安装与运行标识（Windows 安装目录改为 `%LOCALAPPDATA%\image-view`，从 1.2.0 升级需先卸载旧版），日志改为随安装目录存放；`1.4.0` 补齐 Tauri 迁移期间丢失的桌面集成能力（窗口与会话记忆、缩略图磁盘缓存、相邻图片预加载、图片格式「打开方式」注册），缩略图条改用自绘悬浮滚动条；`1.4.1` 修复更新说明显示为纯文本的问题；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -48,11 +48,11 @@ pnpm tauri build
 产物位于 `target\release\bundle\nsis\`（workspace 共享根目录的 `target`）。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
 
 ```powershell
-git tag v1.4.0
-git push origin v1.4.0
+git tag v1.4.1
+git push origin v1.4.1
 ```
 
-工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.4.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
+工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.4.1`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
 Release 正文取自 `CHANGELOG.md` 中 `## [版本号]` 段落（到下一个 `## [` 为止），并追加三端安装包的选择说明。该段落缺失时工作流会在校验阶段直接失败，因此打标签前需先把这个版本的变更记录补进 `CHANGELOG.md`。
 

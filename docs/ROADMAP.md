@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 最后更新 | 2026-11-16 |
-| 当前版本 | v1.4.0（2026-11-16 发布） |
+| 当前版本 | v1.4.1（2026-11-16 发布） |
 | 当前阶段 | P1（v1.0）✅ 已完成；M1~M5、M8、M9 全部落地，M6/M7 已后移 |
 | 下一个里程碑 | P1-M6 图库/搜索/对比（v1.5.0） |
 | 明细计划 | [PLAN-P0.md](PLAN-P0.md) · [PLAN-P1.md](PLAN-P1.md) · [PLAN-P2.md](PLAN-P2.md) · [PLAN-P3.md](PLAN-P3.md) |
@@ -48,7 +48,7 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 ## 当前焦点
 
-- **下一步**：v1.4.0 已于 2026-11-16 发布（推送 `v1.4.0` 标签，由 GitHub Actions 构建三端安装包并生成 `latest.json`）；之后进入 v1.5.0 的 P1-M6 图库/搜索/对比，动画（M7）仍排在后续版本。
+- **下一步**：v1.4.1 已于 2026-11-16 发布（修复更新说明显示为纯文本的问题）；之后进入 v1.5.0 的 P1-M6 图库/搜索/对比，动画（M7）仍排在后续版本。
 - **理由**：查看体验（M1~M4）、发布工程（M5）、自动更新（M8）与中/英多语言（M9）均已完成，v1.0 范围收敛；Tauri 版复刻的持久化/缓存/预加载也已补齐。
 - **发布前检查**：推送 `v*` 标签由 GitHub Actions（`tauri-apps/tauri-action`，`includeUpdaterJson` + `updaterJsonPreferNsis`）构建三端安装包并生成 `latest.json`；核对 `latest.json` 中的签名与各安装包哈希一致；确认首版发布说明注明未签名与 SmartScreen 提示。
 - **完成定义**：`cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 全部通过，[PLAN-P1.md](PLAN-P1.md) §6 已补 M8 / M9 与 Tauri 复刻验收记录。
@@ -86,6 +86,7 @@ P2 不阻塞 v1.0；P3 为探索性方向，进入开发前需拆成 P1/P2 级�
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
+| 2026-11-16 | v1.4.1 发布：更新说明改为按 Markdown 渲染（标题 / 列表 / 行内代码 / 粗体），弹窗内独立滚动，不再撑高对话框；当前版本改为运行时读取，删除前端 `APP_VERSION` 常量 | `1610603` · `adbd56b` |
 | 2026-11-16 | v1.4.0 发布：Tauri 复刻 P1-M1 / P1-M4 / P0-M7（`settings.ron` + `tauri-plugin-window-state` 恢复会话与窗口几何、缩略图磁盘缓存 256 MB、相邻图片预加载）；缩略图条改用自绘悬浮滚动条；更新弹窗仅允许通过关闭按钮退出 | `b908d92` · `2220e46` · `75bb618` · `c190901` · `5f782b4` |
 | 2026-11-14 | v1.3.0 标识统一：Cargo 包名 / `productName` / bundle identifier 统一为 `image-view`，安装目录改为 `%LOCALAPPDATA%\image-view`；日志改为随安装目录存放并带可写性回退；清理根 `assets/` 遗留资源 | `70f0856` |
 | 2026-11-12 | P1-M8 自动更新 + P1-M9 中/英多语言：`update.json` 清单、SHA-256 校验、NSIS 静默安装、`.part` 清理；`i18n` 资源表与即时切换；98 个单测，release 20,313,088 字节，安装包 7,699,260 字节 | 本次提交 |
