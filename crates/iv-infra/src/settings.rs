@@ -1,7 +1,8 @@
-//! 持久化设置：上次浏览位置、排序方式与将来的偏好项。
+//! 持久化设置：上次浏览位置、排序方式与界面偏好。
 //!
-//! 窗口大小/位置/最大化交给 eframe 的 `persist_window`；这里只保存应用级状态。
-//! 两者共用 eframe 的存储文件（Windows：`%APPDATA%\image-view\data\app.ron`）。
+//! GUI 适配器决定存储位置与文件格式；这里只负责数据结构和兼容性检查。
+//! Tauri 版把整份 [`Settings`] 以 RON 写入 `settings.ron`，
+//! 窗口几何由 `tauri-plugin-window-state` 单独管理。
 
 use std::path::PathBuf;
 
@@ -54,27 +55,53 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// 读取设置；存储缺失、内容损坏或版本不兼容时回退默认值，且不阻塞启动。
-    pub fn load(storage: Option<&dyn Storage>) -> Self {
-        let Some(storage) = storage else {
-            return Self::default();
+    /// 从 RON 文本解析；损坏或版本不兼容时返回 `None`。
+    pub fn from_ron(text: &str) -> Option<Self> {
+        let settings: Self = match ron::from_str(text) {
+            Ok(settings) => settings,
+            Err(error) => {
+                log::debug!(
+                    target: "image_view::settings",
+                    "设置内容损坏，回退默认值：{error}"
+                );
+                return None;
+            }
         };
-        // 记录缺失或反序列化失败时 `get_value` 返回 `None`。
-        let Some(settings) = storage::get_value::<Self>(storage, STORAGE_KEY) else {
-            log::debug!(target: "image_view::settings", "没有可用的设置记录，使用默认值");
-            return Self::default();
-        };
-
         if settings.version != CURRENT_VERSION {
             log::warn!(
                 target: "image_view::settings",
                 "设置版本 {} 与当前版本 {CURRENT_VERSION} 不兼容，回退默认值",
                 settings.version
             );
-            return Self::default();
+            return None;
         }
+        Some(settings)
+    }
 
-        settings
+    /// 序列化为 RON；失败时记录日志并返回 `None`。
+    pub fn to_ron(&self) -> Option<String> {
+        match ron::ser::to_string(self) {
+            Ok(text) => Some(text),
+            Err(error) => {
+                log::error!(
+                    target: "image_view::settings",
+                    "无法序列化设置：{error}"
+                );
+                None
+            }
+        }
+    }
+
+    /// 读取设置；存储缺失、内容损坏或版本不兼容时回退默认值，且不阻塞启动。
+    pub fn load(storage: Option<&dyn Storage>) -> Self {
+        let Some(storage) = storage else {
+            return Self::default();
+        };
+        let Some(text) = storage.get_string(STORAGE_KEY) else {
+            log::debug!(target: "image_view::settings", "没有可用的设置记录，使用默认值");
+            return Self::default();
+        };
+        Self::from_ron(&text).unwrap_or_default()
     }
 
     pub fn save(&self, storage: &mut dyn StorageMut) {
@@ -125,11 +152,30 @@ mod tests {
     }
 
     #[test]
-    fn settings_round_trip() {
+    fn memory_storage_round_trip() {
         let mut storage = MemoryStorage::default();
         sample().save(&mut storage);
 
         assert_eq!(Settings::load(Some(&storage)), sample());
+    }
+
+    #[test]
+    fn ron_round_trip_preserves_session_and_preferences() {
+        let text = sample().to_ron().expect("serialize");
+        let parsed = Settings::from_ron(&text).expect("parse");
+        assert_eq!(parsed, sample());
+        assert_eq!(parsed.last_file, Some(PathBuf::from(r"D:\photos\a.jpg")));
+        assert_eq!(parsed.sort, SortOrder::ModifiedNewest);
+        assert!(!parsed.show_thumbnails);
+    }
+
+    #[test]
+    fn ron_with_only_version_uses_defaults() {
+        let text = format!("(version:{CURRENT_VERSION})");
+        let parsed = Settings::from_ron(&text).expect("parse");
+        assert_eq!(parsed.last_dir, None);
+        assert_eq!(parsed.sort, SortOrder::default());
+        assert!(parsed.show_thumbnails);
     }
 
     #[test]

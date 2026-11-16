@@ -119,6 +119,13 @@ pub struct PreviewFailedDto {
     pub message: String,
 }
 
+/// 启动时读取的界面偏好；变更通过独立 Command 写回。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiPreferencesDto {
+    pub show_thumbnails: bool,
+}
+
 /// 文件扩展名 → 展示用格式名。
 pub fn format_label(path: &std::path::Path) -> String {
     path.extension()

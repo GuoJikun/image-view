@@ -11,6 +11,7 @@ import type {
   PreviewReady,
   PreviewRequest,
   SortOrder,
+  UiPreferences,
   UpdateInfo,
   UpdateProgress,
 } from "../types/ipc";
@@ -66,6 +67,15 @@ export async function setSort(order: SortOrder): Promise<DirectorySnapshot> {
 
 export async function startupPath(): Promise<string | null> {
   return invoke<string | null>("startup_path");
+}
+
+/** 启动时读取的界面偏好；主题/语言仍由 localStorage 保存。 */
+export async function uiPreferences(): Promise<UiPreferences> {
+  return invoke<UiPreferences>("ui_preferences");
+}
+
+export async function setShowThumbnails(show: boolean): Promise<void> {
+  return invoke<void>("set_show_thumbnails", { show });
 }
 
 export async function closeImage(): Promise<void> {

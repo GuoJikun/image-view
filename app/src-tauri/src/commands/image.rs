@@ -4,7 +4,7 @@ use std::path::Path;
 
 use tauri::State;
 
-use crate::dto::{CommandError, DirectorySnapshot, PreviewRequestDto};
+use crate::dto::{CommandError, DirectorySnapshot, PreviewRequestDto, UiPreferencesDto};
 use crate::state::AppState;
 
 #[tauri::command]
@@ -66,6 +66,19 @@ pub fn set_sort(
 #[tauri::command]
 pub fn startup_path(state: State<'_, AppState>) -> Option<String> {
     state.startup_path()
+}
+
+/// 启动时读取界面偏好（缩略图条开关等）。
+#[tauri::command]
+pub fn ui_preferences(state: State<'_, AppState>) -> UiPreferencesDto {
+    UiPreferencesDto {
+        show_thumbnails: state.show_thumbnails(),
+    }
+}
+
+#[tauri::command]
+pub fn set_show_thumbnails(state: State<'_, AppState>, show: bool) {
+    state.set_show_thumbnails(show);
 }
 
 #[tauri::command]

@@ -7,6 +7,7 @@ mod commands;
 mod dto;
 mod preview;
 mod protocol;
+mod settings_store;
 mod state;
 mod thumbnails;
 
@@ -226,7 +227,15 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // 窗口大小/位置/最大化由插件保管；主窗口 `visible: false` 等插件恢复后再显示。
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .register_asynchronous_uri_scheme_protocol("iviewer", protocol::handle)
+        .on_window_event(|window, event| {
+            // 退出前同步落盘会话/偏好；防抖线程可能来不及写最后一次修改。
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                window.app_handle().state::<AppState>().flush_settings();
+            }
+        })
         .setup(move |app| {
             app.manage(AppState::new(app.handle(), startup_path.clone()));
             app.manage(commands::update::UpdateState::new());
@@ -265,6 +274,8 @@ pub fn run() {
             commands::image::request_preview,
             commands::image::set_sort,
             commands::image::startup_path,
+            commands::image::ui_preferences,
+            commands::image::set_show_thumbnails,
             commands::image::close_image,
             commands::image::delete_image,
             commands::file::reveal_image,

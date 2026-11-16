@@ -5,16 +5,17 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use iv_application::FolderNav;
 use iv_domain::SortOrder;
 use iv_image_decode::Caps;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::dto::{CommandError, DirectoryEntryDto, DirectorySnapshot, PreviewRequestDto};
 use crate::preview::PreviewService;
+use crate::settings_store::SettingsStore;
 use crate::thumbnails::ThumbnailService;
 
 struct DirectoryState {
@@ -23,9 +24,12 @@ struct DirectoryState {
 }
 
 impl DirectoryState {
-    fn new() -> Self {
+    fn new(sort: SortOrder) -> Self {
         Self {
-            nav: FolderNav::default(),
+            nav: FolderNav {
+                sort,
+                ..FolderNav::default()
+            },
             entries: Vec::new(),
         }
     }
@@ -88,17 +92,34 @@ pub struct AppState {
     pub thumbnails: ThumbnailService,
     caps: Caps,
     startup_path: Option<String>,
+    settings: Arc<SettingsStore>,
 }
 
 impl AppState {
     pub fn new(app: &AppHandle, startup_path: Option<String>) -> Self {
+        let settings = SettingsStore::open(settings_path(app));
+        let restored = settings.snapshot();
+
+        // 命令行参数优先于上次会话；会话记录的文件不存在时退回上次目录。
+        let startup_path = startup_path.or_else(|| {
+            if let Some(file) = restored.last_file.as_ref().filter(|file| file.is_file()) {
+                return Some(file.to_string_lossy().into_owned());
+            }
+            restored
+                .last_dir
+                .as_ref()
+                .filter(|dir| dir.is_dir())
+                .map(|dir| dir.to_string_lossy().into_owned())
+        });
+
         Self {
-            directory: Mutex::new(DirectoryState::new()),
+            directory: Mutex::new(DirectoryState::new(restored.sort)),
             registry: Mutex::new(HashMap::new()),
             previews: PreviewService::new(app.clone()),
             thumbnails: ThumbnailService::default(),
             caps: Caps::default(),
             startup_path,
+            settings,
         }
     }
 
@@ -122,6 +143,7 @@ impl AppState {
             directory.nav.set_file(&canonical);
         }
         directory.sync_entries(&mut registry);
+        self.persist_session(&directory);
         Ok(directory.snapshot())
     }
 
@@ -131,6 +153,7 @@ impl AppState {
         let mut registry = lock(&self.registry);
         directory.nav.step(delta)?;
         directory.sync_entries(&mut registry);
+        self.persist_session(&directory);
         Some(directory.snapshot())
     }
 
@@ -140,6 +163,7 @@ impl AppState {
         let mut registry = lock(&self.registry);
         directory.nav.select(index)?;
         directory.sync_entries(&mut registry);
+        self.persist_session(&directory);
         Some(directory.snapshot())
     }
 
@@ -148,6 +172,7 @@ impl AppState {
         let mut registry = lock(&self.registry);
         directory.nav.set_sort(order);
         directory.sync_entries(&mut registry);
+        self.persist_session(&directory);
         directory.snapshot()
     }
 
@@ -219,7 +244,47 @@ impl AppState {
         directory.nav.remove_current();
         directory.sync_entries(&mut registry);
         self.previews.cancel();
+        self.persist_session(&directory);
         Ok(directory.snapshot())
+    }
+
+    /// 当前界面偏好：目前只有缩略图条开关由后端持久化。
+    pub fn show_thumbnails(&self) -> bool {
+        self.settings.snapshot().show_thumbnails
+    }
+
+    pub fn set_show_thumbnails(&self, show: bool) {
+        self.settings
+            .update(|settings| settings.show_thumbnails = show);
+    }
+
+    /// 退出前把防抖队列里的最后一次修改同步写盘。
+    pub fn flush_settings(&self) {
+        self.settings.flush();
+    }
+
+    /// 会话变化后记录目录、当前图片与排序；写盘由 `SettingsStore` 防抖。
+    fn persist_session(&self, directory: &DirectoryState) {
+        self.settings.update(|settings| {
+            settings.last_dir =
+                (!directory.nav.dir.as_os_str().is_empty()).then(|| directory.nav.dir.clone());
+            settings.last_file = directory.nav.current().map(Path::to_path_buf);
+            settings.sort = directory.nav.sort;
+        });
+    }
+}
+
+/// 设置文件放在应用配置目录（Windows：`%APPDATA%\dev.jikun.imageview`）。
+fn settings_path(app: &AppHandle) -> PathBuf {
+    match app.path().app_config_dir() {
+        Ok(dir) => dir.join("settings.ron"),
+        Err(error) => {
+            log::warn!(
+                target: "image_view::settings",
+                "无法确定设置目录，改用临时目录：{error}"
+            );
+            std::env::temp_dir().join("image-view").join("settings.ron")
+        }
     }
 }
 
