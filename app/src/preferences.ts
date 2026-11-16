@@ -109,7 +109,11 @@ export function usePreferences() {
     if (ipc.isTauri()) {
       try {
         const backend = await ipc.uiPreferences();
-        const preferences = migrationDone() ? backend : { ...backend, ...readLegacy() };
+        // 迁移：1.4.x 的界面里色彩标记是写死显示的（设置项没接上），
+        // 文件里的 `show_color_status: false` 只是没被读过的默认值，按当时的实际表现取 true。
+        const preferences = migrationDone()
+          ? backend
+          : { ...backend, showColorStatus: true, ...readLegacy() };
         apply(preferences);
         // 回写一次：迁移结果落进 settings.ron，之后两边同源。
         await save(preferences);
