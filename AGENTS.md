@@ -88,6 +88,13 @@ pnpm --dir app build
    `git tag -a vX.Y.Z -m "image-view X.Y.Z"`，再推 main 与 tag。
 5. Release 正文由 workflow 从 CHANGELOG 对应版本段抽取，段落缺失会让 validate 阶段失败。
    `tauri-action` 只在创建 Release 时写正文，重跑同一 tag 不会刷新。
+6. macOS 的更新包是 `*.app.tar.gz`，**只在构建 `app` 包时才生成**，dmg 不带。因此 workflow 的
+   两个 macOS matrix 都写了 `--bundles app,dmg`；不要把这个 `app` 写进 `tauri.conf.json` 的
+   `bundle.targets`——那是全局配置，Windows / Linux 会因未知包类型直接失败。
+7. 发版后核对：Release 资产含 `image-view_X.Y.Z_aarch64.app.tar.gz(.sig)` 与 `_x64` 两份
+   （`tauri-action` 按目标三元组补架构后缀，不会互相覆盖），`latest.json` 的 `platforms` 里有
+   `darwin-aarch64` 与 `darwin-x86_64`。缺 `.sig` 时该平台会被整段跳过且只留一行 warning，
+   不会让 job 失败。
 
 ## 文档措辞
 

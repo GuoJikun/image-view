@@ -100,10 +100,12 @@ jobs:
             args: ''
           - platform: windows-11-arm
             args: '--target aarch64-pc-windows-msvc'
+          # macOS 的更新产物是 *.app.tar.gz，只在构建 app 包时才生成（dmg 不算）；
+          # 少了它 latest.json 里就没有 darwin-* 条目，应用内更新失效。
           - platform: macos-latest
-            args: '--target aarch64-apple-darwin'
+            args: '--target aarch64-apple-darwin --bundles app,dmg'
           - platform: macos-latest
-            args: '--target x86_64-apple-darwin'
+            args: '--target x86_64-apple-darwin --bundles app,dmg'
           - platform: ubuntu-22.04
             args: ''
 
