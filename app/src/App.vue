@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useViewerStore } from "./stores/viewer";
 import { useUiStore } from "./stores/ui";
 import { useActions } from "./actions";
+import { usePreferences } from "./preferences";
 import { inTauri, platform } from "./platform";
 import { t } from "./i18n";
 import * as ipc from "./services/ipc";
@@ -21,10 +22,14 @@ import UpdateDialog from "./components/UpdateDialog.vue";
 const store = useViewerStore();
 const ui = useUiStore();
 const { run, syncNativeMenu, menuState } = useActions();
+const { load: loadPreferences, ready: preferencesReady } = usePreferences();
 
 // macOS 原生菜单的勾选状态跟随界面：任何开关变化都推给后端，
 // 语言变化顺带重建菜单（后端按语言是否变化决定重建还是只改勾选）。
-watch(menuState, () => void syncNativeMenu());
+// 偏好读取完成前不推，否则会先用默认值重建一次菜单（启动瞬间菜单栏语言来回变）。
+watch([menuState, preferencesReady], () => {
+  if (preferencesReady.value) void syncNativeMenu();
+});
 
 const stripVisible = computed(
   () => store.showThumbnails && (store.snapshot?.entries.length ?? 0) > 0,
@@ -189,11 +194,10 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
 onMounted(async () => {
   window.addEventListener("keydown", onKeyDown);
   await store.initialize();
+  // 偏好来自 settings.ron，读取后覆盖默认值；随后的菜单同步才能拿到真实勾选状态。
+  await loadPreferences();
 
   if (!inTauri) return;
-
-  // macOS 原生菜单按当前语言重建（启动时同步一次，切换语言时再同步）。
-  void syncNativeMenu();
 
   try {
     unlistenDragDrop = await getCurrentWebview().onDragDropEvent((event) => {

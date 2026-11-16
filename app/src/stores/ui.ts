@@ -1,6 +1,9 @@
 /**
  * 窗口 chrome 的状态：主题、语言之外的界面开关、全屏闪现标题、短提示。
  * 图片相关的状态仍在 `stores/viewer.ts`。
+ *
+ * 主题与「启动时检查更新」的持久化在 `settings.ron`（见 `preferences.ts`）；
+ * 这里的 localStorage 只是首帧缓存：在 IPC 返回前先铺上用户上次的选择，避免闪默认配色。
  */
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
@@ -46,6 +49,7 @@ export const useUiStore = defineStore("ui", () => {
   const theme = ref<ThemeSetting>(
     readSetting<ThemeSetting>(THEME_KEY, ["system", "light", "dark"], "system"),
   );
+  /** 默认显示：与 `Settings::default().show_color_status` 保持一致。 */
   const showColorBadge = ref(true);
   // 默认关闭：与 README「本地优先、默认不联网」及 `Settings::default()` 保持一致。
   // 只有用户手动勾选「启动时检查更新」才会在启动时访问 GitHub Releases。

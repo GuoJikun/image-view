@@ -68,17 +68,28 @@ pub fn startup_path(state: State<'_, AppState>) -> Option<String> {
     state.startup_path()
 }
 
-/// 启动时读取界面偏好（缩略图条开关等）。
+/// 启动时读取界面偏好；变更通过 `set_ui_preferences` 整体写回。
 #[tauri::command]
 pub fn ui_preferences(state: State<'_, AppState>) -> UiPreferencesDto {
-    UiPreferencesDto {
-        show_thumbnails: state.show_thumbnails(),
-    }
+    state.ui_preferences()
 }
 
 #[tauri::command]
-pub fn set_show_thumbnails(state: State<'_, AppState>, show: bool) {
-    state.set_show_thumbnails(show);
+pub fn set_ui_preferences(
+    state: State<'_, AppState>,
+    preferences: UiPreferencesDto,
+) -> Result<(), CommandError> {
+    state.set_ui_preferences(&preferences)?;
+    log::debug!(
+        target: "image_view::settings",
+        "界面偏好已更新：主题={} 语言={} 缩略图条={} 色彩标记={} 启动检查更新={}",
+        preferences.theme,
+        preferences.language,
+        preferences.show_thumbnails,
+        preferences.show_color_status,
+        preferences.check_updates_on_startup
+    );
+    Ok(())
 }
 
 #[tauri::command]

@@ -76,13 +76,14 @@ export async function startupPath(): Promise<string | null> {
   return invoke<string | null>("startup_path");
 }
 
-/** 启动时读取的界面偏好；主题/语言仍由 localStorage 保存。 */
+/** 读取界面偏好（唯一持久化位置是后端 `settings.ron`）。 */
 export async function uiPreferences(): Promise<UiPreferences> {
   return invoke<UiPreferences>("ui_preferences");
 }
 
-export async function setShowThumbnails(show: boolean): Promise<void> {
-  return invoke<void>("set_show_thumbnails", { show });
+/** 整体写回界面偏好；后端 `SettingsStore` 自带防抖落盘。 */
+export async function saveUiPreferences(preferences: UiPreferences): Promise<void> {
+  return invoke<void>("set_ui_preferences", { preferences });
 }
 
 export async function closeImage(): Promise<void> {

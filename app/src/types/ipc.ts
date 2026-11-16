@@ -95,9 +95,13 @@ export interface MenuState {
   language: LocaleName;
 }
 
-/** 启动时读取的界面偏好（后端 `ui_preferences`）。 */
+/** 界面偏好（后端 `ui_preferences` / `set_ui_preferences`），持久化在 `settings.ron`。 */
 export interface UiPreferences {
   showThumbnails: boolean;
+  showColorStatus: boolean;
+  theme: ThemeName;
+  language: LocaleName;
+  checkUpdatesOnStartup: boolean;
 }
 
 /** 更新信息（后端 `check_update` 返回）。 */

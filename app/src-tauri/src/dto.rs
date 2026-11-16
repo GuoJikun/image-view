@@ -135,11 +135,19 @@ pub struct AnimationReadyDto {
     pub delays: Vec<u32>,
 }
 
-/// 启动时读取的界面偏好；变更通过独立 Command 写回。
-#[derive(Clone, Debug, Serialize)]
+/// 界面偏好：启动时读取，变化时整体写回（对应 `settings.ron` 里的偏好字段）。
+///
+/// 唯一持久化位置是 `settings.ron`；前端 localStorage 只作首帧缓存与旧版本迁移来源。
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UiPreferencesDto {
     pub show_thumbnails: bool,
+    pub show_color_status: bool,
+    /// `system` / `light` / `dark`。
+    pub theme: String,
+    /// `system` / `zh` / `en`。
+    pub language: String,
+    pub check_updates_on_startup: bool,
 }
 
 /// 菜单可勾选项的当前状态（`sync_native_menu` 入参）。

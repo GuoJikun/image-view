@@ -111,7 +111,7 @@ pub fn run() {
             commands::image::set_sort,
             commands::image::startup_path,
             commands::image::ui_preferences,
-            commands::image::set_show_thumbnails,
+            commands::image::set_ui_preferences,
             commands::image::close_image,
             commands::image::delete_image,
             commands::file::reveal_image,

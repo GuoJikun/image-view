@@ -67,8 +67,13 @@ pnpm --dir app build
   横向滚动用自绘 `AppScrollbar.vue`，不要回退到 `scrollbar-width` / `::-webkit-scrollbar` 美化
   —— 原生滚动条会吃掉 88px 条带高度。
 - 视觉与尺寸依据 `design/macos-first/README.md`。
-- 新增持久化开关时，前端 localStorage 的兜底默认值必须与 `iv-infra::Settings::default()`
-  以及 README 的说明三者一致；曾出现「代码默认开、文档写默认关」，导致默认联网检查更新。
+- 界面偏好（主题、语言、缩略图条、色彩转换标记、启动时检查更新）只有一个持久化位置：`settings.ron`。
+  读写都走 `app/src/preferences.ts` 的 `usePreferences()`（启动 `load()` 一次 + 状态变化整体回写），
+  组件与 store 不要直接调 `ui_preferences` / `set_ui_preferences`。WebView `localStorage` 仅作首帧缓存，
+  **不要**为新的偏好再加 localStorage 键。
+- 新增偏好项或改默认值时，三处必须一致：`iv-infra::Settings::default()`、各 store 的兜底默认值
+  （`stores/ui.ts` / `stores/viewer.ts`）、README 的说明；曾出现「代码默认开、文档写默认关」，
+  导致默认联网检查更新，也出现过「界面一直显示、设置里写默认关」。
 
 ## 发布（版本号 X.Y.Z）
 

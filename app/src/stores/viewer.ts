@@ -2,7 +2,7 @@
  * 查看器状态：只保存 ID、DTO、视图参数和任务状态。
  * 像素缓冲区由 Rust 持有，前端只拿 `iviewer://` 资源 URL。
  */
-import { computed, reactive, ref, watch } from "vue";
+import { computed, reactive, ref } from "vue";
 import { defineStore } from "pinia";
 import type {
   AnimationInfo,
@@ -43,6 +43,7 @@ export const useViewerStore = defineStore("viewer", () => {
   });
 
   const showMetadata = ref(false);
+  /** 兜底默认值；启动后由 `preferences.ts` 从 `settings.ron` 覆盖。 */
   const showThumbnails = ref(true);
   const slideshow = ref(false);
 
@@ -51,13 +52,6 @@ export const useViewerStore = defineStore("viewer", () => {
   /** 当前动画帧下标。 */
   const frameIndex = ref(0);
   const animationPlaying = ref(false);
-
-  /** 启动读取完成前不回写，避免把默认值覆盖掉已保存的偏好。 */
-  let persistPreferences = false;
-  watch(showThumbnails, (value) => {
-    if (!persistPreferences || !ipc.isTauri()) return;
-    void ipc.setShowThumbnails(value).catch(() => undefined);
-  });
 
   let slideshowTimer: number | undefined;
   let frameTimer: number | undefined;
@@ -515,14 +509,6 @@ export const useViewerStore = defineStore("viewer", () => {
     await ipc.onOpenFile((path) => {
       void openPath(path);
     });
-
-    try {
-      const preferences = await ipc.uiPreferences();
-      showThumbnails.value = preferences.showThumbnails;
-    } catch {
-      // 读取失败时保持默认显示，不影响打开图片。
-    }
-    persistPreferences = true;
 
     const startup = await ipc.startupPath();
     if (startup) await openPath(startup);

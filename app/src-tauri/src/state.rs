@@ -16,6 +16,7 @@ use uuid::Uuid;
 
 use crate::dto::{
     CommandError, DirectoryEntryDto, DirectorySnapshot, MenuStateDto, PreviewRequestDto,
+    UiPreferencesDto,
 };
 use crate::preview::PreviewService;
 use crate::settings_store::SettingsStore;
@@ -282,14 +283,30 @@ impl AppState {
         Ok(directory.snapshot())
     }
 
-    /// 当前界面偏好：目前只有缩略图条开关由后端持久化。
-    pub fn show_thumbnails(&self) -> bool {
-        self.settings.snapshot().show_thumbnails
+    /// 当前界面偏好（主题、语言、色彩标记、缩略图条、启动检查更新）。
+    pub fn ui_preferences(&self) -> UiPreferencesDto {
+        let settings = self.settings.snapshot();
+        UiPreferencesDto {
+            show_thumbnails: settings.show_thumbnails,
+            show_color_status: settings.show_color_status,
+            theme: theme_label(settings.theme).to_owned(),
+            language: language_label(settings.language).to_owned(),
+            check_updates_on_startup: settings.check_updates_on_startup,
+        }
     }
 
-    pub fn set_show_thumbnails(&self, show: bool) {
-        self.settings
-            .update(|settings| settings.show_thumbnails = show);
+    /// 整体写回界面偏好；取值非法时拒绝整次写入，避免半套设置落盘。
+    pub fn set_ui_preferences(&self, prefs: &UiPreferencesDto) -> Result<(), CommandError> {
+        let theme = parse_theme(&prefs.theme)?;
+        let language = parse_language(&prefs.language)?;
+        self.settings.update(|settings| {
+            settings.show_thumbnails = prefs.show_thumbnails;
+            settings.show_color_status = prefs.show_color_status;
+            settings.theme = theme;
+            settings.language = language;
+            settings.check_updates_on_startup = prefs.check_updates_on_startup;
+        });
+        Ok(())
     }
 
     /// 当前应使用的界面语言标签（`"zh"` / `"en"`）。
@@ -391,12 +408,36 @@ pub fn theme_label(theme: ThemeSetting) -> &'static str {
     }
 }
 
+pub fn parse_theme(value: &str) -> Result<ThemeSetting, CommandError> {
+    match value {
+        "system" => Ok(ThemeSetting::System),
+        "light" => Ok(ThemeSetting::Light),
+        "dark" => Ok(ThemeSetting::Dark),
+        other => Err(CommandError::new(
+            "invalid_argument",
+            format!("未知主题：{other}"),
+        )),
+    }
+}
+
 /// 语言设置的界面取值，与前端 `LocaleSetting` 一致（`system` 表示跟随系统）。
 pub fn language_label(language: Language) -> &'static str {
     match language {
         Language::System => "system",
         Language::Zh => "zh",
         Language::En => "en",
+    }
+}
+
+pub fn parse_language(value: &str) -> Result<Language, CommandError> {
+    match value {
+        "system" => Ok(Language::System),
+        "zh" => Ok(Language::Zh),
+        "en" => Ok(Language::En),
+        other => Err(CommandError::new(
+            "invalid_argument",
+            format!("未知语言：{other}"),
+        )),
     }
 }
 
@@ -443,5 +484,35 @@ mod tests {
         assert_eq!(language_label(Language::System), "system");
         assert_eq!(language_label(Language::Zh), "zh");
         assert_eq!(language_label(Language::En), "en");
+    }
+
+    #[test]
+    fn preference_values_round_trip() {
+        for theme in [
+            ThemeSetting::System,
+            ThemeSetting::Light,
+            ThemeSetting::Dark,
+        ] {
+            assert_eq!(parse_theme(theme_label(theme)).expect("theme"), theme);
+        }
+        for language in [Language::System, Language::Zh, Language::En] {
+            assert_eq!(
+                parse_language(language_label(language)).expect("language"),
+                language
+            );
+        }
+    }
+
+    /// 前端传错取值时整次写入被拒绝，而不是悄悄写进默认值。
+    #[test]
+    fn unknown_preference_values_are_rejected() {
+        assert_eq!(
+            parse_theme("auto").expect_err("theme").code,
+            "invalid_argument"
+        );
+        assert_eq!(
+            parse_language("fr").expect_err("language").code,
+            "invalid_argument"
+        );
     }
 }

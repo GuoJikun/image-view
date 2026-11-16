@@ -26,7 +26,7 @@ pub struct Settings {
     /// 上次浏览的图片，位于 `last_dir` 内。
     pub last_file: Option<PathBuf>,
     pub sort: SortOrder,
-    /// 状态栏是否显示“已色彩转换”标记（默认关闭）。
+    /// 状态栏是否显示“已色彩转换”标记（默认显示，与界面原有表现一致）。
     pub show_color_status: bool,
     /// 主题偏好：跟随系统 / 浅色 / 深色。
     pub theme: ThemeSetting,
@@ -45,7 +45,7 @@ impl Default for Settings {
             last_dir: None,
             last_file: None,
             sort: SortOrder::default(),
-            show_color_status: false,
+            show_color_status: true,
             theme: ThemeSetting::default(),
             show_thumbnails: true,
             language: Language::default(),

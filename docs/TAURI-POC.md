@@ -206,8 +206,8 @@ target/release/bundle/nsis/image-view_1.3.0_x64-setup.exe     (4.43 MiB)
 
 1.2.0 迁移时遗漏的窗口/会话持久化、缩略图磁盘缓存与相邻图片预加载已于 2026-11-16 补齐（见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8）。当前仍存在：
 
-- 动图只显示第一帧；EXIF 方向与 ICC 转换由 `iv-image-decode` 现有路径处理，与 eframe 版一致。
-- 主题与界面语言仍存 WebView `localStorage`（`image-view.theme` / `image-view.locale`），尚未并入 `settings.ron`；清理 WebView 数据后会回退默认。
+- GIF / WebP 动画已支持逐帧播放（P1-M7）；静态图的 EXIF 方向与 ICC 转换由 `iv-image-decode` 现有路径处理，与 eframe 版一致。
+- 界面偏好（主题、语言、缩略图条、色彩转换标记、启动时检查更新）读写 `settings.ron`；WebView `localStorage` 仅作首帧缓存，清理后不会再丢设置。
 - 预览调度（`Open` 优先、`request_id` latest-wins、PNG 缓存、相邻预加载）仍位于 Tauri adapter 的 `preview.rs`，尚未上移到 `iv-application` 的用例层；目录导航与解码已复用共享 crate。
 - 未实现重命名；删除仅支持移入回收站。
 - macOS/Linux WebView 行为未在本机验证。

@@ -74,8 +74,8 @@ export function useActions() {
   }
 
   function setLanguage(value: LocaleSetting): void {
+    // 菜单重建由 `App.vue` 监听 `menuState` 触发，这里不重复推送。
     setLocale(value);
-    void syncNativeMenu();
   }
 
   /** 统一的动作入口；未知 id 静默忽略。 */
