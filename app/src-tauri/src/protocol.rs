@@ -1,6 +1,7 @@
 //! `iviewer://` 自定义协议。
 //!
 //! - `iviewer://preview/{image_id}/{revision}`
+//! - `iviewer://frame/{image_id}/{index}/{revision}`（GIF / WebP 动画帧）
 //! - `iviewer://thumbnail/{image_id}/{size}/{revision}`
 //!
 //! URL 只包含授权句柄，不包含文件路径；handler 在 Rust 缓存/授权表中查找，
@@ -40,9 +41,34 @@ pub fn handle(
 fn route(app: &AppHandle, uri: &Uri) -> Response<Vec<u8>> {
     match parse_path(uri.path()) {
         Some(Resource::Preview { image_id, revision }) => preview_response(app, image_id, revision),
+        Some(Resource::Frame {
+            image_id,
+            index,
+            revision,
+        }) => frame_response(app, image_id, index, revision),
         Some(Resource::Thumbnail { image_id, size }) => thumbnail_response(app, image_id, size),
         None => text_response(StatusCode::NOT_FOUND, "unknown resource"),
     }
+}
+
+/// 动画帧：只在动画解码完成后可用；未完成或越界时返回 404，前端保留上一帧。
+fn frame_response(
+    app: &AppHandle,
+    image_id: &str,
+    index: usize,
+    revision: u64,
+) -> Response<Vec<u8>> {
+    if !is_valid_image_id(image_id) {
+        return text_response(StatusCode::BAD_REQUEST, "invalid image id");
+    }
+    let Some(entry) = app.state::<AppState>().previews.get(image_id, revision) else {
+        return text_response(StatusCode::NOT_FOUND, "preview is not available");
+    };
+    let Some(bytes) = entry.frame_png(index) else {
+        return text_response(StatusCode::NOT_FOUND, "animation frame is not available");
+    };
+    // 帧内容在 revision 内不变，可长期缓存：循环播放不会重复请求 Rust 侧。
+    png_response(bytes)
 }
 
 fn preview_response(app: &AppHandle, image_id: &str, revision: u64) -> Response<Vec<u8>> {
@@ -100,8 +126,19 @@ fn text_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Resource<'a> {
-    Preview { image_id: &'a str, revision: u64 },
-    Thumbnail { image_id: &'a str, size: u32 },
+    Preview {
+        image_id: &'a str,
+        revision: u64,
+    },
+    Frame {
+        image_id: &'a str,
+        index: usize,
+        revision: u64,
+    },
+    Thumbnail {
+        image_id: &'a str,
+        size: u32,
+    },
 }
 
 /// 同时兼容 Windows 的 `http://iviewer.localhost/preview/...` 与
@@ -111,6 +148,11 @@ fn parse_path(path: &str) -> Option<Resource<'_>> {
     match segments.as_slice() {
         ["preview", image_id, revision] if !image_id.is_empty() => Some(Resource::Preview {
             image_id,
+            revision: revision.parse().ok()?,
+        }),
+        ["frame", image_id, index, revision] if !image_id.is_empty() => Some(Resource::Frame {
+            image_id,
+            index: index.parse().ok()?,
             revision: revision.parse().ok()?,
         }),
         ["thumbnail", image_id, size, _revision] if !image_id.is_empty() => {
@@ -151,5 +193,21 @@ mod tests {
         );
         assert_eq!(parse_path("/thumbnail/id/128"), None);
         assert_eq!(parse_path("/file/C:/Windows/System32/config"), None);
+    }
+
+    #[test]
+    fn parses_animation_frame_paths() {
+        assert_eq!(
+            parse_path("/frame/6f1c2c4e-0000-4000-8000-000000000000/12/4"),
+            Some(Resource::Frame {
+                image_id: "6f1c2c4e-0000-4000-8000-000000000000",
+                index: 12,
+                revision: 4
+            })
+        );
+        // 帧号必须是数字，且不能缺少 revision。
+        assert_eq!(parse_path("/frame/id/-1/4"), None);
+        assert_eq!(parse_path("/frame/id/first/4"), None);
+        assert_eq!(parse_path("/frame/id/4"), None);
     }
 }

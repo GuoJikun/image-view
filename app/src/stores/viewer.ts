@@ -5,6 +5,8 @@
 import { computed, reactive, ref, watch } from "vue";
 import { defineStore } from "pinia";
 import type {
+  AnimationInfo,
+  AnimationReady,
   CommandError,
   DirectorySnapshot,
   FitMode,
@@ -44,6 +46,12 @@ export const useViewerStore = defineStore("viewer", () => {
   const showThumbnails = ref(true);
   const slideshow = ref(false);
 
+  /** 当前图片的动画元信息；静态图为 `null`。 */
+  const animation = ref<AnimationInfo | null>(null);
+  /** 当前动画帧下标。 */
+  const frameIndex = ref(0);
+  const animationPlaying = ref(false);
+
   /** 启动读取完成前不回写，避免把默认值覆盖掉已保存的偏好。 */
   let persistPreferences = false;
   watch(showThumbnails, (value) => {
@@ -52,6 +60,11 @@ export const useViewerStore = defineStore("viewer", () => {
   });
 
   let slideshowTimer: number | undefined;
+  let frameTimer: number | undefined;
+  /** 已完整播放的轮数，用于按容器元数据停止有限循环。 */
+  let loopsPlayed = 0;
+  /** 动画事件可能先于预览就绪到达，先暂存，等预览匹配后再播放。 */
+  let pendingAnimation: AnimationReady | null = null;
 
   const fitZoom = computed(() => {
     const image = preview.value;
@@ -91,6 +104,10 @@ export const useViewerStore = defineStore("viewer", () => {
   const canPrev = computed(() => snapshot.value?.canPrev ?? false);
   const canNext = computed(() => snapshot.value?.canNext ?? false);
   const hasImage = computed(() => preview.value !== null);
+  /** 播放中：动画优先，其次幻灯片（与 `Space` 的绑定一致）。 */
+  const playbackActive = computed(
+    () => slideshow.value || (animation.value !== null && animationPlaying.value),
+  );
 
   function clampPan(): void {
     const limitX = Math.max(0, (displayedSize.value.width - viewport.width) / 2);
@@ -129,6 +146,116 @@ export const useViewerStore = defineStore("viewer", () => {
     loading.value = false;
     error.value = null;
     resetView();
+
+    // 切图后动画回到首帧；先前暂存的动画事件若与当前图片匹配则立即应用。
+    const queued = pendingAnimation;
+    resetAnimation();
+    if (queued && queued.imageId === payload.imageId && queued.revision === payload.revision) {
+      acceptAnimation(queued);
+    }
+  }
+
+  /** 动画帧解码完成：首帧已经在显示，这里开始逐帧播放。 */
+  function acceptAnimation(payload: AnimationReady): void {
+    if (payload.frameCount < 2) return;
+    const image = preview.value;
+    if (!image || image.imageId !== payload.imageId || image.revision !== payload.revision) {
+      // 事件先于预览就绪到达：暂存到 `acceptPreview` 再应用。
+      pendingAnimation = payload;
+      return;
+    }
+    animation.value = {
+      frameCount: payload.frameCount,
+      loops: payload.loops,
+      delays: payload.delays,
+    };
+    frameIndex.value = 0;
+    loopsPlayed = 0;
+    animationPlaying.value = true;
+    scheduleFrame();
+  }
+
+  function clearFrameTimer(): void {
+    if (frameTimer !== undefined) {
+      window.clearTimeout(frameTimer);
+      frameTimer = undefined;
+    }
+  }
+
+  function resetAnimation(): void {
+    clearFrameTimer();
+    animation.value = null;
+    frameIndex.value = 0;
+    animationPlaying.value = false;
+    loopsPlayed = 0;
+    pendingAnimation = null;
+  }
+
+  /** 按当前帧的 delay 安排下一帧；delay 已由后端钳制到 50~1000 ms。 */
+  function scheduleFrame(): void {
+    clearFrameTimer();
+    const info = animation.value;
+    if (!info || !animationPlaying.value) return;
+    const delay = info.delays[frameIndex.value] ?? 100;
+    frameTimer = window.setTimeout(advanceFrame, delay);
+  }
+
+  function advanceFrame(): void {
+    frameTimer = undefined;
+    const info = animation.value;
+    if (!info || !animationPlaying.value) return;
+
+    const next = frameIndex.value + 1;
+    if (next < info.frameCount) {
+      frameIndex.value = next;
+      scheduleFrame();
+      return;
+    }
+
+    loopsPlayed += 1;
+    if (info.loops !== null && loopsPlayed >= info.loops) {
+      // 有限循环播放完停在最后一帧，与系统看图工具一致。
+      animationPlaying.value = false;
+      return;
+    }
+    frameIndex.value = 0;
+    scheduleFrame();
+  }
+
+  function startAnimation(): void {
+    const info = animation.value;
+    if (!info || animationPlaying.value) return;
+    // 有限循环播完后再按播放：从首帧重新开始。
+    if (info.loops !== null && loopsPlayed >= info.loops) {
+      loopsPlayed = 0;
+      frameIndex.value = 0;
+    }
+    animationPlaying.value = true;
+    scheduleFrame();
+  }
+
+  function pauseAnimation(): void {
+    animationPlaying.value = false;
+    clearFrameTimer();
+  }
+
+  function toggleAnimation(): void {
+    if (!animation.value) return;
+    if (animationPlaying.value) pauseAnimation();
+    else startAnimation();
+  }
+
+  /** `Space` 与工具栏播放键：有动画时控制动画，否则控制幻灯片。 */
+  function togglePlayback(): void {
+    if (animation.value) toggleAnimation();
+    else toggleSlideshow();
+  }
+
+  /** 第 `index` 帧的资源 URL；未打开图片时返回 null。 */
+  function frameUrl(index: number): string | null {
+    const image = preview.value;
+    if (!image) return null;
+    return ipc.frameUrl(image.imageId, image.revision, index);
   }
 
   function failPreview(payload: {
@@ -172,6 +299,7 @@ export const useViewerStore = defineStore("viewer", () => {
     activeRequestId.value = 0;
     preview.value = null;
     imageUrl.value = null;
+    resetAnimation();
     try {
       applySnapshot(await ipc.openPath(path));
       await requestCurrent();
@@ -314,6 +442,7 @@ export const useViewerStore = defineStore("viewer", () => {
       const next = await ipc.deleteImage(entry.id);
       preview.value = null;
       imageUrl.value = null;
+      resetAnimation();
       applySnapshot(next);
       if (next.current) {
         await requestCurrent();
@@ -364,6 +493,7 @@ export const useViewerStore = defineStore("viewer", () => {
     imageUrl.value = null;
     snapshot.value = null;
     loading.value = false;
+    resetAnimation();
     resetView();
   }
 
@@ -381,6 +511,7 @@ export const useViewerStore = defineStore("viewer", () => {
 
     await ipc.onPreviewReady(acceptPreview);
     await ipc.onPreviewFailed(failPreview);
+    await ipc.onAnimationReady(acceptAnimation);
     await ipc.onOpenFile((path) => {
       void openPath(path);
     });
@@ -409,6 +540,9 @@ export const useViewerStore = defineStore("viewer", () => {
     showMetadata,
     showThumbnails,
     slideshow,
+    animation,
+    frameIndex,
+    animationPlaying,
     fitZoom,
     effectiveZoom,
     zoomPercent,
@@ -417,6 +551,7 @@ export const useViewerStore = defineStore("viewer", () => {
     canPrev,
     canNext,
     hasImage,
+    playbackActive,
     initialize,
     openPath,
     openDialog,
@@ -440,6 +575,9 @@ export const useViewerStore = defineStore("viewer", () => {
     deleteCurrent,
     stopSlideshow,
     toggleSlideshow,
+    toggleAnimation,
+    togglePlayback,
+    frameUrl,
     close,
   };
 });

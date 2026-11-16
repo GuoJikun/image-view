@@ -12,13 +12,28 @@ const host = ref<HTMLDivElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
 const dragging = ref(false);
 
-let image: HTMLImageElement | null = null;
+/** 实际绘制的图像：静态图为预览图，动画为当前帧。 */
+let drawn: HTMLImageElement | null = null;
+/** 首帧预览图；动画帧尚未解码完时先用它顶住，避免闪空。 */
+let firstFrame: HTMLImageElement | null = null;
+/** 动画帧缓存：只保留当前帧附近，避免长动画持续增长内存。 */
+const frames = new Map<number, HTMLImageElement>();
+const pendingFrames = new Set<number>();
+const PREFETCH_AHEAD = 3;
+const KEEP_BEHIND = 2;
+
 let resizeObserver: ResizeObserver | null = null;
 let frame = 0;
 let checker: CanvasPattern | null = null;
 let lastPointer = { x: 0, y: 0 };
 
 const cursor = computed(() => (dragging.value ? "grabbing" : "grab"));
+
+const currentFrame = computed(() => {
+  const info = store.animation;
+  if (!info) return 0;
+  return Math.min(store.frameIndex, info.frameCount - 1);
+});
 
 function scheduleDraw(): void {
   if (frame !== 0) return;
@@ -55,7 +70,7 @@ function draw(): void {
   context.clearRect(0, 0, store.viewport.width, store.viewport.height);
 
   const current = store.preview;
-  if (!image || !current) return;
+  if (!drawn || !current) return;
 
   const scale = store.effectiveZoom / dpr;
   const width = current.width * scale;
@@ -76,7 +91,7 @@ function draw(): void {
 
   context.imageSmoothingEnabled = store.effectiveZoom < 1;
   context.imageSmoothingQuality = "high";
-  context.drawImage(image, -width / 2, -height / 2, width, height);
+  context.drawImage(drawn, -width / 2, -height / 2, width, height);
   context.restore();
 }
 
@@ -95,26 +110,100 @@ function resize(): void {
   scheduleDraw();
 }
 
-function load(url: string | null): void {
-  image = null;
+/** 打开新图片：清空帧缓存，只保留首帧预览图作为占位。 */
+function loadPreview(url: string | null): void {
+  firstFrame = null;
+  drawn = null;
+  frames.clear();
+  pendingFrames.clear();
   if (!url) {
     scheduleDraw();
     return;
   }
 
-  const next = new Image();
-  next.decoding = "async";
-  next.onload = () => {
+  const element = new Image();
+  element.decoding = "async";
+  element.onload = () => {
     if (store.imageUrl !== url) return;
-    image = next;
-    scheduleDraw();
+    firstFrame = element;
+    // 动画帧已经开始绘制时，不要用首帧覆盖。
+    if (!drawn) {
+      drawn = element;
+      scheduleDraw();
+    }
   };
-  next.onerror = () => {
+  element.onerror = () => {
     if (store.imageUrl !== url) return;
     store.error = { code: "protocol", message: "预览资源加载失败，请重试。" };
   };
-  next.src = url;
+  element.src = url;
   scheduleDraw();
+}
+
+/** 请求单帧；同一帧不会重复请求，未就绪时保留上一帧画面。 */
+function requestFrame(index: number): void {
+  const info = store.animation;
+  const image = store.preview;
+  if (!info || !image) return;
+  if (index < 0 || index >= info.frameCount) return;
+  if (frames.has(index) || pendingFrames.has(index)) return;
+
+  const url = store.frameUrl(index);
+  if (!url) return;
+  const revision = image.revision;
+
+  pendingFrames.add(index);
+  const element = new Image();
+  element.decoding = "async";
+  element.onload = () => {
+    pendingFrames.delete(index);
+    if (store.preview?.revision !== revision) return;
+    frames.set(index, element);
+    if (currentFrame.value === index) {
+      drawn = element;
+      scheduleDraw();
+    }
+  };
+  element.onerror = () => {
+    // 帧尚未解码完成（404）或文件已变：丢弃本次请求，下次切换会重试。
+    pendingFrames.delete(index);
+  };
+  element.src = url;
+}
+
+/** 绘制当前帧、预取后续帧，并淘汰离当前帧较远的缓存。 */
+function updateFrame(): void {
+  const info = store.animation;
+  if (!info) {
+    drawn = firstFrame;
+    frames.clear();
+    pendingFrames.clear();
+    scheduleDraw();
+    return;
+  }
+
+  const index = currentFrame.value;
+  const cached = frames.get(index);
+  if (cached) {
+    drawn = cached;
+    scheduleDraw();
+  } else {
+    requestFrame(index);
+    if (!drawn) drawn = firstFrame;
+  }
+
+  if (store.animationPlaying) {
+    for (let offset = 1; offset <= PREFETCH_AHEAD; offset += 1) {
+      requestFrame((index + offset) % info.frameCount);
+    }
+  }
+
+  // 循环动画按环形距离淘汰：保留当前帧前 KEEP_BEHIND 帧到后 PREFETCH_AHEAD 帧。
+  const count = info.frameCount;
+  for (const key of [...frames.keys()]) {
+    const ahead = (key - index + count) % count;
+    if (ahead > PREFETCH_AHEAD && count - ahead > KEEP_BEHIND) frames.delete(key);
+  }
 }
 
 function pointerDown(event: PointerEvent): void {
@@ -151,7 +240,8 @@ function wheel(event: WheelEvent): void {
   store.zoomAt(factor, cursorX, cursorY);
 }
 
-watch(() => store.imageUrl, load, { immediate: true });
+watch(() => store.imageUrl, loadPreview, { immediate: true });
+watch(() => [store.animation, currentFrame.value], updateFrame);
 watch(
   () => [
     store.effectiveZoom,

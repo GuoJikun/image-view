@@ -23,9 +23,16 @@ const sortLabel = computed(() =>
 
 const openTip = computed(() => tip(t("toolbar.open"), accel("mod", "O")));
 const thumbTip = computed(() => t("toolbar.thumbnails"));
-const slideshowTip = computed(() =>
-  store.slideshow ? t("toolbar.pauseSlideshow") : tip(t("toolbar.slideshow"), "Space"),
-);
+/** 有动画时按钮控制动画，否则控制幻灯片——与 `Space` 的绑定保持一致。 */
+const playbackTip = computed(() => {
+  if (store.animation) {
+    return tip(
+      store.animationPlaying ? t("toolbar.pauseAnimation") : t("toolbar.animation"),
+      "Space",
+    );
+  }
+  return store.slideshow ? t("toolbar.pauseSlideshow") : tip(t("toolbar.slideshow"), "Space");
+});
 
 function chooseSort(order: "name" | "modified"): void {
   sortOpen.value = false;
@@ -114,14 +121,14 @@ onBeforeUnmount(() => {
       <button
         type="button"
         class="icon-button"
-        :class="{ active: store.slideshow }"
-        :data-tip="slideshowTip"
-        :aria-label="slideshowTip"
-        :aria-pressed="store.slideshow"
+        :class="{ active: store.playbackActive }"
+        :data-tip="playbackTip"
+        :aria-label="playbackTip"
+        :aria-pressed="store.playbackActive"
         :disabled="!store.hasImage"
-        @click="store.toggleSlideshow()"
+        @click="store.togglePlayback()"
       >
-        <Icon :name="store.slideshow ? 'pause' : 'play'" />
+        <Icon :name="store.playbackActive ? 'pause' : 'play'" />
       </button>
 
       <div ref="sortWrap" class="sort-wrap">

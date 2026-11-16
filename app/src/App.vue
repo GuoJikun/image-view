@@ -165,7 +165,8 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
     case " ":
       if (event.repeat || isButton(event.target)) return;
       event.preventDefault();
-      store.toggleSlideshow();
+      // 有动画时优先控制动画，没有动画时才控制幻灯片。
+      store.togglePlayback();
       break;
     case "Delete":
     case "Backspace":

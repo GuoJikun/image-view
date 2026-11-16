@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AnimationReady,
   CommandError,
   DirectorySnapshot,
   PreviewFailed,
@@ -23,7 +24,7 @@ export function isTauri(): boolean {
 }
 
 /** Windows/Android 使用 http://<scheme>.localhost，macOS/Linux 使用 <scheme>://localhost。 */
-function resourceUrl(kind: "preview" | "thumbnail", path: string): string {
+function resourceUrl(kind: "preview" | "frame" | "thumbnail", path: string): string {
   return isWindows
     ? `http://iviewer.localhost/${kind}/${path}`
     : `iviewer://localhost/${kind}/${path}`;
@@ -31,6 +32,11 @@ function resourceUrl(kind: "preview" | "thumbnail", path: string): string {
 
 export function previewUrl(imageId: string, revision: number): string {
   return resourceUrl("preview", `${imageId}/${revision}`);
+}
+
+/** 动画帧 URL；同一 revision 内帧内容不变，WebView 可长期缓存。 */
+export function frameUrl(imageId: string, revision: number, index: number): string {
+  return resourceUrl("frame", `${imageId}/${index}/${revision}`);
 }
 
 export function thumbnailUrl(imageId: string, size: number, revision: number): string {
@@ -142,6 +148,13 @@ export function onPreviewFailed(
   handler: (payload: PreviewFailed) => void,
 ): Promise<UnlistenFn> {
   return listen<PreviewFailed>("image:preview-failed", (event) => handler(event.payload));
+}
+
+/** 动画帧解码完成；首帧静态预览早已由 `preview-ready` 送出。 */
+export function onAnimationReady(
+  handler: (payload: AnimationReady) => void,
+): Promise<UnlistenFn> {
+  return listen<AnimationReady>("image:animation-ready", (event) => handler(event.payload));
 }
 
 /** 单实例/文件关联把新文件转交给已运行窗口。 */

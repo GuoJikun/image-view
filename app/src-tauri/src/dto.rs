@@ -121,6 +121,20 @@ pub struct PreviewFailedDto {
     pub message: String,
 }
 
+/// 动画帧解码完成。首帧静态预览先由 `preview-ready` 送出，完整帧后到。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnimationReadyDto {
+    pub request_id: u64,
+    pub image_id: String,
+    pub revision: u64,
+    pub frame_count: u32,
+    /// 总播放轮数；`None` 表示无限循环。
+    pub loops: Option<u32>,
+    /// 每帧间隔（毫秒），已在解码层钳制到 50~1000。
+    pub delays: Vec<u32>,
+}
+
 /// 启动时读取的界面偏好；变更通过独立 Command 写回。
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

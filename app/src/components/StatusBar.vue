@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 状态栏 26 px：左侧尺寸 / 位深 / 格式 / 色彩标记，右侧短提示 → 幻灯片 → 序号 → spinner。
+ * 状态栏 26 px：左侧尺寸 / 位深 / 格式 / 色彩标记，右侧短提示 → 播放绑定 → 序号 → spinner。
  * 缩略图条隐藏时，上缘补 1 px 发丝线与画布分隔（有条时由条自身提供）。
  */
 import { computed } from "vue";
@@ -34,6 +34,19 @@ const positionText = computed(() => {
   const position = store.snapshot?.position;
   return position ? `${position[0]} / ${position[1]}` : "";
 });
+
+/** 动画标记与帧序号；`Space` 的绑定由这里体现。 */
+const animationText = computed(() => {
+  if (!store.animation) return "";
+  return store.animationPlaying ? t("status.animation") : t("status.animationPaused");
+});
+
+const frameText = computed(() => {
+  const animation = store.animation;
+  if (!animation) return "";
+  const index = Math.min(store.frameIndex, animation.frameCount - 1) + 1;
+  return `${index} / ${animation.frameCount}`;
+});
 </script>
 
 <template>
@@ -50,7 +63,13 @@ const positionText = computed(() => {
 
     <div class="status-right">
       <span v-if="ui.notice" class="status-notice">{{ ui.notice }}</span>
-      <span v-if="store.slideshow" class="status-flag">{{ t("status.slideshow") }}</span>
+      <span v-if="animationText" class="status-flag" :title="t('status.animationHint')">
+        {{ animationText }}
+      </span>
+      <span v-if="frameText" class="status-position">{{ frameText }}</span>
+      <span v-if="store.slideshow" class="status-flag" :title="t('status.slideshowHint')">
+        {{ t("status.slideshow") }}
+      </span>
       <span v-if="positionText" class="status-position">{{ positionText }}</span>
       <span v-if="store.loading" class="spinner spinner-small" aria-hidden="true" />
     </div>

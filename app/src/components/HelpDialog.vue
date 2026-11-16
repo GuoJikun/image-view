@@ -22,7 +22,7 @@ const rows = computed<ShortcutRow[]>(() => [
   { keys: ["R", isMac ? "⇧R" : "Shift+R"], label: t("shortcut.rotate") },
   { keys: ["H"], label: t("shortcut.flipH") },
   { keys: ["V"], label: t("shortcut.flipV") },
-  { keys: ["Space"], label: t("shortcut.slideshow") },
+  { keys: ["Space"], label: t("shortcut.playback") },
   { keys: isMac ? ["⌃", "⌘", "F"] : ["F11"], label: t("shortcut.fullscreen") },
   { keys: [modSymbol, isMac ? "⇧" : "Shift", "C"], label: t("shortcut.copyPath") },
   { keys: [isMac ? "⌫" : "Delete"], label: t("shortcut.trash") },

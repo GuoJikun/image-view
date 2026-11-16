@@ -50,6 +50,20 @@ export interface PreviewFailed {
   message: string;
 }
 
+/** 动画元信息；`loops` 为 `null` 表示无限循环。 */
+export interface AnimationInfo {
+  frameCount: number;
+  loops: number | null;
+  delays: number[];
+}
+
+/** 动画帧解码完成事件（`image:animation-ready`）。 */
+export interface AnimationReady extends AnimationInfo {
+  requestId: number;
+  imageId: string;
+  revision: number;
+}
+
 export interface CommandError {
   code: string;
   message: string;

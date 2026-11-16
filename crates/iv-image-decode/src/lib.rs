@@ -22,6 +22,10 @@ pub struct Caps {
     pub max_source_pixels: u64,
     /// 预加载允许的原图像素上限；超过则跳过，避免大图拖慢翻页。
     pub preload_max_source_pixels: u64,
+    /// 动画所有帧的总像素上限（帧数 × 单帧像素）；超过时退回静态首帧。
+    pub max_animation_pixels: u64,
+    /// 动画帧数上限；超过时退回静态首帧。
+    pub max_animation_frames: usize,
 }
 
 impl Default for Caps {
@@ -31,6 +35,9 @@ impl Default for Caps {
             max_pixels: 40_000_000,
             max_source_pixels: 250_000_000,
             preload_max_source_pixels: 30_000_000,
+            // 64 MP × 4 字节 ≈ 256 MB：长动画的帧缓冲仍有明确上限。
+            max_animation_pixels: 64_000_000,
+            max_animation_frames: 1_200,
         }
     }
 }
@@ -65,6 +72,30 @@ pub struct Decoded {
     pub source_depth: u8,
     pub color: ColorInfo,
 }
+
+/// 动画的一帧：已转换为 sRGB 的 8-bit RGBA，尺寸与 `DecodedAnimation::size` 一致。
+#[derive(Clone, Debug)]
+pub struct AnimationFrame {
+    pub rgba: Vec<u8>,
+    /// 帧间隔（毫秒），已钳制到 50~1000。
+    pub delay_ms: u32,
+}
+
+/// 一次动画解码的结果；帧像素总量受 `Caps::max_animation_pixels` 约束。
+pub struct DecodedAnimation {
+    pub size: [usize; 2],
+    pub source_size: [usize; 2],
+    pub source_depth: u8,
+    pub color: ColorInfo,
+    /// 总播放轮数；`None` 表示无限循环。
+    pub loops: Option<u32>,
+    pub frames: Vec<AnimationFrame>,
+}
+
+/// 帧间隔下限：GIF 的 0 delay（部分导出工具写成 0）按 20 fps 兜底。
+const MIN_FRAME_DELAY_MS: u32 = 50;
+/// 帧间隔上限：超大 delay（占用型文件）钳制到 1 s，避免看起来像卡死。
+const MAX_FRAME_DELAY_MS: u32 = 1_000;
 
 #[derive(Debug)]
 pub enum LoadError {
@@ -388,6 +419,160 @@ pub fn decode_thumbnail(path: &Path, max_side: u32) -> Result<Decoded, LoadError
         ..Caps::default()
     };
     decode(path, &caps, Purpose::Open)
+}
+
+/// 可能包含多帧的格式。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnimationKind {
+    Gif,
+    Webp,
+}
+
+fn animation_kind(path: &Path) -> Option<AnimationKind> {
+    match path.extension().and_then(OsStr::to_str) {
+        Some(extension) if extension.eq_ignore_ascii_case("gif") => Some(AnimationKind::Gif),
+        Some(extension) if extension.eq_ignore_ascii_case("webp") => Some(AnimationKind::Webp),
+        _ => None,
+    }
+}
+
+/// 解码 GIF / WebP 的全部动画帧。
+///
+/// 返回 `Ok(None)` 的三种情况：不是动画格式、只有一帧、帧总像素或帧数超过
+/// `Caps` 的动画预算。三者都按普通静态图（首帧）显示，不产生错误提示。
+/// 帧间隔按 GIF delay / WebP duration 计时，异常值钳制到 50~1000 ms。
+pub fn decode_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+    match animation_kind(path) {
+        Some(AnimationKind::Gif) => decode_gif_animation(path, caps),
+        Some(AnimationKind::Webp) => decode_webp_animation(path, caps),
+        None => Ok(None),
+    }
+}
+
+fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+    use image::AnimationDecoder as _;
+
+    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    let decoder = image::codecs::gif::GifDecoder::new(reader).map_err(map_decode_error)?;
+    let (width, height) = decoder.dimensions();
+    check_source_limits(width, height, caps, Purpose::Open)?;
+
+    // Netscape 扩展里的循环次数 n 表示「再重复 n 次」，总播放 n+1 轮；0 表示无限。
+    let loops = match decoder.loop_count() {
+        image::metadata::LoopCount::Infinite => None,
+        image::metadata::LoopCount::Finite(times) => Some(times.get().saturating_add(1)),
+    };
+
+    // GIF 没有 ICC profile（image 的 GifDecoder 也不提供读取入口）。
+    build_animation(path, caps, decoder.into_frames(), loops, None)
+}
+
+fn decode_webp_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+    use image::AnimationDecoder as _;
+
+    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    let mut decoder = image::codecs::webp::WebPDecoder::new(reader).map_err(map_decode_error)?;
+    if !decoder.has_animation() {
+        return Ok(None);
+    }
+    let (width, height) = decoder.dimensions();
+    check_source_limits(width, height, caps, Purpose::Open)?;
+
+    let icc_profile = match decoder.icc_profile() {
+        Ok(profile) => profile,
+        Err(error) => {
+            log::debug!(
+                target: "image_view::loader",
+                "无法读取 {} 的 ICC profile：{error}",
+                path.display()
+            );
+            None
+        }
+    };
+    // WebP 的循环次数即总播放轮数；0 表示无限。
+    let loops = match decoder.loop_count() {
+        image::metadata::LoopCount::Infinite => None,
+        image::metadata::LoopCount::Finite(times) => Some(times.get()),
+    };
+
+    build_animation(path, caps, decoder.into_frames(), loops, icc_profile)
+}
+
+/// 逐帧收集动画：每帧按 `Caps` 降采样并转 sRGB，累计像素超预算时整体退回静态图。
+fn build_animation(
+    path: &Path,
+    caps: &Caps,
+    frames: impl Iterator<Item = image::ImageResult<image::Frame>>,
+    loops: Option<u32>,
+    icc_profile: Option<Vec<u8>>,
+) -> Result<Option<DecodedAnimation>, LoadError> {
+    let mut decoded: Vec<AnimationFrame> = Vec::new();
+    let mut size = [1usize; 2];
+    let mut source_size = [1usize; 2];
+    let mut color = ColorInfo::default();
+    let mut total_pixels: u64 = 0;
+
+    for frame in frames {
+        let frame = frame.map_err(map_decode_error)?;
+        let delay_ms = frame_delay_ms(frame.delay());
+        let image = image::DynamicImage::ImageRgba8(frame.into_buffer());
+        source_size = [image.width() as usize, image.height() as usize];
+
+        let (target, rgba, info) = animation_pixels(caps, image, icc_profile.as_deref());
+        total_pixels += target[0] as u64 * target[1] as u64;
+        if total_pixels > caps.max_animation_pixels || decoded.len() >= caps.max_animation_frames {
+            log::debug!(
+                target: "image_view::loader",
+                "动画超出预算，按首帧静态显示：{}（{} 帧，共 {} 像素）",
+                path.display(),
+                decoded.len() + 1,
+                total_pixels
+            );
+            return Ok(None);
+        }
+
+        size = target;
+        color = info;
+        decoded.push(AnimationFrame { rgba, delay_ms });
+    }
+
+    if decoded.len() < 2 {
+        return Ok(None);
+    }
+
+    Ok(Some(DecodedAnimation {
+        size,
+        source_size,
+        // GIF / WebP 的解码器已统一输出 8-bit RGBA，动画不涉及 16-bit 源。
+        source_depth: 8,
+        color,
+        loops,
+        frames: decoded,
+    }))
+}
+
+/// 帧间隔（毫秒）：`Delay` 以毫秒分数表示，按整数除法取整后钳制。
+fn frame_delay_ms(delay: image::Delay) -> u32 {
+    let (numer, denom) = delay.numer_denom_ms();
+    let millis = numer.checked_div(denom).unwrap_or(numer);
+    millis.clamp(MIN_FRAME_DELAY_MS, MAX_FRAME_DELAY_MS)
+}
+
+/// 单帧像素处理：与静态图共用尺寸上限与 ICC 路径，动画另用 Triangle 换取速度。
+fn animation_pixels(
+    caps: &Caps,
+    image: image::DynamicImage,
+    icc_profile: Option<&[u8]>,
+) -> ([usize; 2], Vec<u8>, ColorInfo) {
+    let source_size = [image.width() as usize, image.height() as usize];
+    let target = target_size(source_size, caps.max_side, caps.max_pixels);
+    let image = if target != source_size {
+        image.resize_exact(target[0] as u32, target[1] as u32, FilterType::Triangle)
+    } else {
+        image
+    };
+    let (rgba, info) = color::to_srgb_rgba8(image, icc_profile);
+    (target, rgba, info)
 }
 
 /// 解码前的统一尺寸检查：拒绝解压炸弹，并让预加载只挑小图。
@@ -1300,5 +1485,284 @@ mod tests {
         ));
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    /// 写一个 4×2 的多帧 GIF；`repeat` 为空时写成无限循环。
+    fn write_animated_gif(path: &Path, delays_ms: &[u32], colors: &[[u8; 4]], repeat: Option<u16>) {
+        use image::codecs::gif::{GifEncoder, Repeat};
+
+        let mut bytes = Vec::new();
+        let mut encoder = GifEncoder::new(&mut bytes);
+        encoder
+            .set_repeat(match repeat {
+                Some(times) => Repeat::Finite(times),
+                None => Repeat::Infinite,
+            })
+            .expect("set repeat");
+
+        let frames = delays_ms.iter().zip(colors.iter()).map(|(delay, color)| {
+            let buffer = image::RgbaImage::from_pixel(4, 2, image::Rgba(*color));
+            image::Frame::from_parts(buffer, 0, 0, image::Delay::from_numer_denom_ms(*delay, 1))
+        });
+        encoder.encode_frames(frames).expect("encode gif");
+        drop(encoder);
+        std::fs::write(path, bytes).expect("write gif");
+    }
+
+    fn u24(value: u32) -> [u8; 3] {
+        let bytes = value.to_le_bytes();
+        [bytes[0], bytes[1], bytes[2]]
+    }
+
+    /// 手写最小动画 WebP 容器：VP8X + ANIM + 每帧 ANMF（内含无损 VP8L 子块）。
+    ///
+    /// image crate 只能编码单帧 WebP，因此容器由测试自行拼装；子块的 bitstream
+    /// 仍然来自 `WebPEncoder`，保证是合法的 VP8L 数据。
+    fn write_animated_webp(path: &Path, canvas: (u32, u32), durations: &[u32], loops: u16) {
+        fn vp8l_chunk(canvas: (u32, u32), color: [u8; 4]) -> Vec<u8> {
+            let buffer = image::RgbaImage::from_pixel(canvas.0, canvas.1, image::Rgba(color));
+            let mut encoded = Vec::new();
+            image::codecs::webp::WebPEncoder::new_lossless(&mut encoded)
+                .encode(
+                    buffer.as_raw(),
+                    canvas.0,
+                    canvas.1,
+                    image::ExtendedColorType::Rgba8,
+                )
+                .expect("encode lossless webp");
+            let offset = encoded
+                .windows(4)
+                .position(|window| window == b"VP8L")
+                .expect("VP8L chunk");
+            encoded[offset..].to_vec()
+        }
+
+        let mut chunks: Vec<Vec<u8>> = Vec::new();
+
+        let mut vp8x = Vec::new();
+        vp8x.extend_from_slice(b"VP8X");
+        vp8x.extend_from_slice(&10u32.to_le_bytes());
+        vp8x.push(0x02); // Animation
+        vp8x.extend_from_slice(&[0, 0, 0]);
+        vp8x.extend_from_slice(&u24(canvas.0 - 1));
+        vp8x.extend_from_slice(&u24(canvas.1 - 1));
+        chunks.push(vp8x);
+
+        let mut anim = Vec::new();
+        anim.extend_from_slice(b"ANIM");
+        anim.extend_from_slice(&6u32.to_le_bytes());
+        anim.extend_from_slice(&[0, 0, 0, 0]); // 背景色
+        anim.extend_from_slice(&loops.to_le_bytes());
+        chunks.push(anim);
+
+        for (index, duration) in durations.iter().enumerate() {
+            let color = [u8::try_from(index * 40).unwrap_or(0), 0, 0, 255];
+            let bitstream = vp8l_chunk(canvas, color);
+            let mut payload = Vec::new();
+            payload.extend_from_slice(&u24(0)); // Frame X / 2
+            payload.extend_from_slice(&u24(0)); // Frame Y / 2
+            payload.extend_from_slice(&u24(canvas.0 - 1));
+            payload.extend_from_slice(&u24(canvas.1 - 1));
+            payload.extend_from_slice(&u24(*duration));
+            payload.push(0); // 不处置、参与 alpha 混合
+            payload.extend_from_slice(&bitstream);
+
+            let mut anmf = Vec::new();
+            anmf.extend_from_slice(b"ANMF");
+            anmf.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            anmf.extend_from_slice(&payload);
+            if payload.len() % 2 == 1 {
+                anmf.push(0);
+            }
+            chunks.push(anmf);
+        }
+
+        let body_len = chunks.iter().map(Vec::len).sum::<usize>() + 4;
+        let mut file = Vec::new();
+        file.extend_from_slice(b"RIFF");
+        file.extend_from_slice(&(body_len as u32).to_le_bytes());
+        file.extend_from_slice(b"WEBP");
+        for chunk in &chunks {
+            file.extend_from_slice(chunk);
+        }
+        std::fs::write(path, file).expect("write webp");
+    }
+
+    #[test]
+    fn frame_delays_are_clamped_to_playable_range() {
+        assert_eq!(frame_delay_ms(image::Delay::from_numer_denom_ms(0, 1)), 50);
+        assert_eq!(frame_delay_ms(image::Delay::from_numer_denom_ms(30, 1)), 50);
+        assert_eq!(
+            frame_delay_ms(image::Delay::from_numer_denom_ms(120, 1)),
+            120
+        );
+        assert_eq!(
+            frame_delay_ms(image::Delay::from_numer_denom_ms(10_000, 1)),
+            1_000
+        );
+        // 分数形式的 delay（WebP 的 1/1000 s 基数）按整数除法取整。
+        assert_eq!(
+            frame_delay_ms(image::Delay::from_numer_denom_ms(200, 2)),
+            100
+        );
+    }
+
+    #[test]
+    fn animated_gif_frames_and_loops_are_decoded() {
+        let dir = temp_dir("gif-animation");
+        let path = dir.join("anim.gif");
+        write_animated_gif(
+            &path,
+            &[0, 30, 2_000],
+            &[[255, 0, 0, 255], [0, 255, 0, 255], [0, 0, 255, 255]],
+            Some(2),
+        );
+
+        let animation = decode_animation(&path, &Caps::default())
+            .expect("decode gif")
+            .expect("gif is animated");
+
+        assert_eq!(animation.frames.len(), 3);
+        assert_eq!(animation.size, [4, 2]);
+        assert_eq!(animation.source_size, [4, 2]);
+        assert_eq!(animation.source_depth, 8);
+        assert_eq!(
+            animation
+                .frames
+                .iter()
+                .map(|frame| frame.delay_ms)
+                .collect::<Vec<_>>(),
+            [50, 50, 1_000]
+        );
+        // Netscape 的 n = 2 表示「再重复 2 次」，总播放 3 轮。
+        assert_eq!(animation.loops, Some(3));
+        assert_eq!(animation.frames[0].rgba.len(), 4 * 2 * 4);
+        assert_eq!(&animation.frames[0].rgba[0..4], &[255, 0, 0, 255]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn gif_without_loop_extension_is_infinite() {
+        let dir = temp_dir("gif-infinite");
+        let path = dir.join("loop.gif");
+        write_animated_gif(
+            &path,
+            &[100, 100],
+            &[[10, 20, 30, 255], [40, 50, 60, 255]],
+            None,
+        );
+
+        let animation = decode_animation(&path, &Caps::default())
+            .expect("decode gif")
+            .expect("gif is animated");
+        assert_eq!(animation.loops, None);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn animated_webp_frames_are_decoded() {
+        let dir = temp_dir("webp-animation");
+        let path = dir.join("anim.webp");
+        write_animated_webp(&path, (4, 2), &[80, 500], 0);
+
+        let animation = decode_animation(&path, &Caps::default())
+            .expect("decode webp")
+            .expect("webp is animated");
+
+        assert_eq!(animation.frames.len(), 2);
+        assert_eq!(animation.size, [4, 2]);
+        assert_eq!(
+            animation
+                .frames
+                .iter()
+                .map(|frame| frame.delay_ms)
+                .collect::<Vec<_>>(),
+            [80, 500]
+        );
+        assert_eq!(animation.loops, None, "0 表示无限循环");
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn single_frame_files_are_not_animations() {
+        let dir = temp_dir("still");
+
+        let gif = dir.join("still.gif");
+        write_animated_gif(&gif, &[100], &[[1, 2, 3, 255]], None);
+        assert!(
+            decode_animation(&gif, &Caps::default())
+                .expect("gif")
+                .is_none()
+        );
+
+        let webp = dir.join("still.webp");
+        write_animated_webp(&webp, (4, 2), &[100], 0);
+        assert!(
+            decode_animation(&webp, &Caps::default())
+                .expect("webp")
+                .is_none()
+        );
+
+        let png = dir.join("still.png");
+        image::RgbaImage::from_pixel(4, 2, image::Rgba([9, 9, 9, 255]))
+            .save(&png)
+            .expect("write png");
+        assert!(
+            decode_animation(&png, &Caps::default())
+                .expect("png")
+                .is_none()
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn animation_over_pixel_budget_falls_back_to_static() {
+        let dir = temp_dir("animation-budget");
+        let path = dir.join("anim.gif");
+        write_animated_gif(
+            &path,
+            &[100, 100, 100],
+            &[[1, 2, 3, 255], [4, 5, 6, 255], [7, 8, 9, 255]],
+            None,
+        );
+
+        // 每帧 4×2 = 8 像素；三帧共 24 像素，预算 16 时应退回静态首帧。
+        let caps = Caps {
+            max_animation_pixels: 16,
+            ..Caps::default()
+        };
+        assert!(decode_animation(&path, &caps).expect("decode").is_none());
+
+        // 帧数上限 2 时同样退回静态。
+        let caps = Caps {
+            max_animation_frames: 2,
+            ..Caps::default()
+        };
+        assert!(decode_animation(&path, &caps).expect("decode").is_none());
+
+        // 放开预算后仍是动画，静态解码路径只取首帧。
+        let animated = decode_animation(&path, &Caps::default())
+            .expect("decode")
+            .expect("animated");
+        assert_eq!(animated.frames.len(), 3);
+        let still = decode(&path, &Caps::default(), Purpose::Open).expect("decode still");
+        assert_eq!(still.size, [4, 2]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn animation_kind_is_selected_by_extension() {
+        assert_eq!(animation_kind(Path::new("a.GIF")), Some(AnimationKind::Gif));
+        assert_eq!(
+            animation_kind(Path::new("a.WebP")),
+            Some(AnimationKind::Webp)
+        );
+        assert_eq!(animation_kind(Path::new("a.png")), None);
+        assert_eq!(animation_kind(Path::new("a.webpz")), None);
     }
 }

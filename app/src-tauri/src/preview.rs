@@ -3,6 +3,8 @@
 //! - `Open` 优先：队列里只执行最新的打开请求，预加载会让路。
 //! - `Preload` 只在后台填充缓存，不发送事件；超过 30 MP 的图片直接跳过。
 //! - 缓存键是 `image_id + 路径 + 修改时间 + 文件大小`，预加载结果可被后续打开复用。
+//! - 动画（GIF / WebP）分两段：首帧随预览先显示，完整帧由独立线程解码后
+//!   追加到同一条目并发 `image:animation-ready`；帧随条目一起淘汰。
 //!
 //! 像素只保存在 Rust 侧；事件 payload 只有尺寸/元数据与资源句柄。
 
@@ -11,17 +13,18 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, mpsc};
 use std::thread;
-use std::time::UNIX_EPOCH;
+use std::time::{Instant, UNIX_EPOCH};
 
 use image::ImageEncoder as _;
-use iv_image_decode::{Caps, LoadError, Purpose, decode_image};
+use iv_image_decode::{Caps, DecodedAnimation, LoadError, Purpose, decode_animation, decode_image};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::dto::{PreviewFailedDto, PreviewReadyDto, PreviewRequestDto};
+use crate::dto::{AnimationReadyDto, PreviewFailedDto, PreviewReadyDto, PreviewRequestDto};
 
 pub const PREVIEW_READY_EVENT: &str = "image:preview-ready";
 pub const PREVIEW_FAILED_EVENT: &str = "image:preview-failed";
+pub const ANIMATION_READY_EVENT: &str = "image:animation-ready";
 
 /// 缓存最近三张预览：当前 + 前后各一张。
 const MAX_CACHED_PREVIEWS: usize = 3;
@@ -60,6 +63,8 @@ pub struct PreviewEntry {
     pub height: u32,
     pub rgba: Arc<[u8]>,
     png: OnceLock<Arc<[u8]>>,
+    /// 动画帧；静态图与「尚未解码完/超预算」的动画都是 `None`。
+    animation: Mutex<Option<Arc<Animation>>>,
     stamp: FileStamp,
     source_width: u32,
     source_height: u32,
@@ -70,36 +75,101 @@ pub struct PreviewEntry {
     modified_at: Option<i64>,
 }
 
+/// 动画的一帧：RGBA 在协议首次请求时编码为 PNG 并缓存。
+struct AnimationFrameEntry {
+    rgba: Arc<[u8]>,
+    png: OnceLock<Arc<[u8]>>,
+}
+
+/// 一个动画：帧随所属预览条目一起缓存，切换图片时由 `drop_animations_except` 释放。
+pub struct Animation {
+    loops: Option<u32>,
+    delays: Vec<u32>,
+    frames: Vec<AnimationFrameEntry>,
+    width: u32,
+    height: u32,
+}
+
+impl Animation {
+    fn new(decoded: DecodedAnimation) -> Self {
+        let width = decoded.size[0] as u32;
+        let height = decoded.size[1] as u32;
+        Self {
+            loops: decoded.loops,
+            delays: decoded.frames.iter().map(|frame| frame.delay_ms).collect(),
+            frames: decoded
+                .frames
+                .into_iter()
+                .map(|frame| AnimationFrameEntry {
+                    rgba: Arc::from(frame.rgba),
+                    png: OnceLock::new(),
+                })
+                .collect(),
+            width,
+            height,
+        }
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// 第 `index` 帧的 PNG；越界或编码失败返回 `None`。
+    pub fn frame_png(&self, index: usize) -> Option<Arc<[u8]>> {
+        let frame = self.frames.get(index)?;
+        let bytes = frame
+            .png
+            .get_or_init(|| encode_png(&frame.rgba, self.width, self.height, "动画帧"))
+            .clone();
+        (!bytes.is_empty()).then_some(bytes)
+    }
+}
+
+/// RGBA → PNG；失败时返回空字节，由调用方转成 500 / 404。
+fn encode_png(rgba: &[u8], width: u32, height: u32, context: &str) -> Arc<[u8]> {
+    let mut bytes = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new_with_quality(
+        &mut bytes,
+        image::codecs::png::CompressionType::Fast,
+        image::codecs::png::FilterType::Adaptive,
+    );
+    match encoder.write_image(rgba, width, height, image::ExtendedColorType::Rgba8) {
+        Ok(()) => Arc::from(bytes),
+        Err(error) => {
+            log::error!(
+                target: "image_view::preview",
+                "{context} PNG 编码失败（{width}×{height}）：{error}"
+            );
+            Arc::from(&[][..])
+        }
+    }
+}
+
 impl PreviewEntry {
     /// 编码为 WebView 可直接解码的 PNG。失败时返回空字节，由协议层转成 500。
     pub fn png(&self) -> Arc<[u8]> {
         self.png
-            .get_or_init(|| {
-                let mut bytes = Vec::new();
-                let encoder = image::codecs::png::PngEncoder::new_with_quality(
-                    &mut bytes,
-                    image::codecs::png::CompressionType::Fast,
-                    image::codecs::png::FilterType::Adaptive,
-                );
-                match encoder.write_image(
-                    &self.rgba,
-                    self.width,
-                    self.height,
-                    image::ExtendedColorType::Rgba8,
-                ) {
-                    Ok(()) => Arc::from(bytes),
-                    Err(error) => {
-                        log::error!(
-                            target: "image_view::preview",
-                            "预览 PNG 编码失败（{}×{}）：{error}",
-                            self.width,
-                            self.height
-                        );
-                        Arc::from(&[][..])
-                    }
-                }
-            })
+            .get_or_init(|| encode_png(&self.rgba, self.width, self.height, "预览"))
             .clone()
+    }
+
+    /// 已解码完成的动画；未解码、静态图或超出预算时为 `None`。
+    pub fn animation(&self) -> Option<Arc<Animation>> {
+        lock(&self.animation).clone()
+    }
+
+    fn set_animation(&self, animation: Arc<Animation>) {
+        *lock(&self.animation) = Some(animation);
+    }
+
+    fn clear_animation(&self) {
+        *lock(&self.animation) = None;
+    }
+
+    /// 第 `index` 帧的 PNG；非动画或越界返回 `None`。
+    pub fn frame_png(&self, index: usize) -> Option<Arc<[u8]>> {
+        self.animation()
+            .and_then(|animation| animation.frame_png(index))
     }
 
     fn pixels(&self) -> usize {
@@ -202,6 +272,15 @@ impl PreviewStore {
     fn clear(&mut self) {
         self.entries.clear();
     }
+
+    /// 只保留当前图片的动画帧：切图后旧动画立即释放，不参与主图缓存预算。
+    fn drop_animations_except(&mut self, image_id: &str) {
+        for entry in &self.entries {
+            if entry.image_id != image_id {
+                entry.clear_animation();
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -216,6 +295,15 @@ struct Job {
     request_id: u64,
     /// 导航世代；用户切换图片后旧的预加载直接丢弃。
     epoch: u64,
+    image_id: String,
+    revision: u64,
+    stamp: FileStamp,
+    caps: Caps,
+}
+
+/// 动画解码任务：只对当前打开的图片执行，过期任务直接丢弃。
+struct AnimationJob {
+    request_id: u64,
     image_id: String,
     revision: u64,
     stamp: FileStamp,
@@ -239,12 +327,14 @@ struct Shared {
 #[derive(Clone)]
 pub struct PreviewService {
     tx: mpsc::Sender<Job>,
+    animation_tx: mpsc::Sender<AnimationJob>,
     shared: Arc<Shared>,
 }
 
 impl PreviewService {
     pub fn new(app: AppHandle) -> Self {
         let (tx, rx) = mpsc::channel::<Job>();
+        let (animation_tx, animation_rx) = mpsc::channel::<AnimationJob>();
         let shared = Arc::new(Shared {
             app,
             store: Mutex::new(PreviewStore::new()),
@@ -253,14 +343,24 @@ impl PreviewService {
             current_image: Mutex::new(String::new()),
             pending: Mutex::new(HashSet::new()),
         });
-        let worker_shared = shared.clone();
 
+        let worker_shared = shared.clone();
         thread::Builder::new()
             .name("iv-preview".to_owned())
             .spawn(move || worker(rx, worker_shared))
             .expect("无法启动预览解码线程");
 
-        Self { tx, shared }
+        let animation_shared = shared.clone();
+        thread::Builder::new()
+            .name("iv-animation".to_owned())
+            .spawn(move || animation_worker(animation_rx, animation_shared))
+            .expect("无法启动动画解码线程");
+
+        Self {
+            tx,
+            animation_tx,
+            shared,
+        }
     }
 
     /// 提交打开请求；返回的 requestId 是前端过滤过期事件的依据。
@@ -270,32 +370,54 @@ impl PreviewService {
         let request_id = self.shared.current.fetch_add(1, Ordering::Relaxed) + 1;
         let epoch = self.shared.epoch.fetch_add(1, Ordering::Relaxed) + 1;
         *lock(&self.shared.current_image) = image_id.clone();
+        // 动画帧只在当前图片上占用内存；切图后旧帧（含静态图留下的）立即释放。
+        lock(&self.shared.store).drop_animations_except(&image_id);
 
         let stamp = file_stamp(&path);
-        let revision = {
+        let cached = {
             let mut store = lock(&self.shared.store);
-            if let Some(entry) = store.find(&image_id, &stamp) {
-                let revision = entry.revision;
-                let payload = entry.ready_payload(request_id);
-                drop(store);
-                self.emit_ready(payload);
-                return PreviewRequestDto {
-                    request_id,
-                    image_id,
-                    revision,
-                };
-            }
-            store.reserve_revision()
+            store.find(&image_id, &stamp).map(|entry| {
+                (
+                    entry.revision,
+                    entry.ready_payload(request_id),
+                    entry.animation(),
+                )
+            })
         };
 
+        if let Some((revision, payload, animation)) = cached {
+            self.emit_ready(payload);
+            match animation {
+                Some(animation) => {
+                    let info = AnimationReadyDto {
+                        request_id,
+                        image_id: image_id.clone(),
+                        revision,
+                        frame_count: animation.frame_count() as u32,
+                        loops: animation.loops,
+                        delays: animation.delays.clone(),
+                    };
+                    self.emit_animation_ready(info);
+                }
+                // 动画帧可能在切图后被释放；缓存命中的图片仍需要重新解码动画。
+                None => self.request_animation(&image_id, revision, &stamp, caps, request_id),
+            }
+            return PreviewRequestDto {
+                request_id,
+                image_id,
+                revision,
+            };
+        }
+
+        let revision = lock(&self.shared.store).reserve_revision();
         let job = Job {
             kind: JobKind::Open,
             request_id,
             epoch,
             image_id: image_id.clone(),
             revision,
-            stamp,
-            caps,
+            stamp: stamp.clone(),
+            caps: caps.clone(),
         };
         if self.tx.send(job).is_err() {
             log::warn!(
@@ -303,11 +425,39 @@ impl PreviewService {
                 "预览解码线程已退出，无法打开 {image_id}"
             );
         }
+        self.request_animation(&image_id, revision, &stamp, caps, request_id);
 
         PreviewRequestDto {
             request_id,
             image_id,
             revision,
+        }
+    }
+
+    /// 排队解码动画帧；非动画扩展名直接跳过，避免无谓的文件读取。
+    fn request_animation(
+        &self,
+        image_id: &str,
+        revision: u64,
+        stamp: &FileStamp,
+        caps: Caps,
+        request_id: u64,
+    ) {
+        if !is_animatable(&stamp.path) {
+            return;
+        }
+        let job = AnimationJob {
+            request_id,
+            image_id: image_id.to_owned(),
+            revision,
+            stamp: stamp.clone(),
+            caps,
+        };
+        if self.animation_tx.send(job).is_err() {
+            log::warn!(
+                target: "image_view::preview",
+                "动画解码线程已退出，跳过 {image_id} 的动画"
+            );
         }
     }
 
@@ -355,6 +505,85 @@ impl PreviewService {
 
     fn emit_ready(&self, payload: PreviewReadyDto) {
         emit_ready(&self.shared, payload);
+    }
+
+    fn emit_animation_ready(&self, payload: AnimationReadyDto) {
+        emit_animation_ready(&self.shared, payload);
+    }
+}
+
+/// 只有 GIF / WebP 可能带多帧；扩展名过滤避免为普通图片排队动画任务。
+fn is_animatable(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("gif") || extension.eq_ignore_ascii_case("webp")
+        })
+}
+
+fn animation_worker(rx: mpsc::Receiver<AnimationJob>, shared: Arc<Shared>) {
+    while let Ok(first) = rx.recv() {
+        // 只保留最新的动画任务：快速翻页时旧动画没有必要再解码。
+        let mut job = first;
+        while let Ok(next) = rx.try_recv() {
+            job = next;
+        }
+        run_animation(&shared, job);
+    }
+}
+
+fn run_animation(shared: &Shared, job: AnimationJob) {
+    // 用户已经切换到别的图片：连首帧都不再需要这次结果。
+    if shared.current.load(Ordering::Relaxed) != job.request_id {
+        return;
+    }
+
+    let started = Instant::now();
+    let decoded = decode_animation(&job.stamp.path, &job.caps);
+    if shared.current.load(Ordering::Relaxed) != job.request_id {
+        return;
+    }
+
+    match decoded {
+        Ok(Some(decoded)) => {
+            let animation = Arc::new(Animation::new(decoded));
+            let payload = AnimationReadyDto {
+                request_id: job.request_id,
+                image_id: job.image_id.clone(),
+                revision: job.revision,
+                frame_count: animation.frame_count() as u32,
+                loops: animation.loops,
+                delays: animation.delays.clone(),
+            };
+
+            let entry = lock(&shared.store).get(&job.image_id, job.revision);
+            let Some(entry) = entry else {
+                // 条目已被淘汰（切目录/删除）时直接丢弃。
+                return;
+            };
+            entry.set_animation(animation);
+            // 动画帧只保留给当前图片，旧动画随切图释放。
+            lock(&shared.store).drop_animations_except(&job.image_id);
+
+            log::debug!(
+                target: "image_view::preview",
+                "动画解码完成：{}（{} 帧 / {} ms）",
+                job.stamp.path.display(),
+                payload.frame_count,
+                started.elapsed().as_millis()
+            );
+            emit_animation_ready(shared, payload);
+        }
+        Ok(None) => log::debug!(
+            target: "image_view::preview",
+            "{} 不是多帧动画或超出动画预算，按静态图显示",
+            job.stamp.path.display()
+        ),
+        Err(error) => log::warn!(
+            target: "image_view::preview",
+            "动画解码失败（{}），按静态首帧显示：{error}",
+            job.stamp.path.display()
+        ),
     }
 }
 
@@ -461,6 +690,7 @@ fn decode_entry(job: &Job, purpose: Purpose) -> Result<Arc<PreviewEntry>, LoadEr
         height: decoded.size[1] as u32,
         rgba: Arc::from(decoded.rgba),
         png: OnceLock::new(),
+        animation: Mutex::new(None),
         file_size: stamp.len,
         stamp,
         source_width: decoded.source_size[0] as u32,
@@ -477,6 +707,15 @@ fn emit_ready(shared: &Shared, payload: PreviewReadyDto) {
         log::warn!(
             target: "image_view::preview",
             "无法发送预览事件：{error}"
+        );
+    }
+}
+
+fn emit_animation_ready(shared: &Shared, payload: AnimationReadyDto) {
+    if let Err(error) = shared.app.emit(ANIMATION_READY_EVENT, payload) {
+        log::warn!(
+            target: "image_view::preview",
+            "无法发送动画事件：{error}"
         );
     }
 }
@@ -547,6 +786,7 @@ mod tests {
             height: 1,
             rgba: Arc::from(&[0u8, 0, 0, 255][..]),
             png: OnceLock::new(),
+            animation: Mutex::new(None),
             stamp,
             source_width: 1,
             source_height: 1,
@@ -555,6 +795,24 @@ mod tests {
             color_source: None,
             file_size: 4,
             modified_at: None,
+        })
+    }
+
+    /// 两帧动画：`delays` 与帧数对应，帧内容为纯色。
+    fn animation(delays: &[u32]) -> Arc<Animation> {
+        Arc::new(Animation {
+            loops: Some(2),
+            delays: delays.to_vec(),
+            frames: delays
+                .iter()
+                .enumerate()
+                .map(|(index, _)| AnimationFrameEntry {
+                    rgba: Arc::from(&[index as u8, 0, 0, 255][..]),
+                    png: OnceLock::new(),
+                })
+                .collect(),
+            width: 1,
+            height: 1,
         })
     }
 
@@ -636,5 +894,43 @@ mod tests {
         assert!(is_valid_image_id(&Uuid::new_v4().to_string()));
         assert!(!is_valid_image_id("../secret"));
         assert!(!is_valid_image_id("C:\\photo.jpg"));
+    }
+
+    #[test]
+    fn animation_frames_are_encoded_lazily_and_bounded() {
+        let entry = entry("id-a", 1, stamp("a.gif", 1));
+        assert!(entry.frame_png(0).is_none(), "未附加动画时没有帧");
+
+        entry.set_animation(animation(&[80, 120]));
+        assert_eq!(entry.animation().map(|value| value.frame_count()), Some(2));
+
+        let first = entry.frame_png(0).expect("first frame");
+        assert_eq!(&first[..4], &[0x89, b'P', b'N', b'G']);
+        // 第二次访问命中缓存：不会重复编码。
+        assert!(Arc::ptr_eq(
+            &first,
+            &entry.frame_png(0).expect("cached frame")
+        ));
+        assert!(entry.frame_png(2).is_none(), "越界帧返回 None");
+    }
+
+    #[test]
+    fn switching_images_releases_old_animation_frames() {
+        let mut store = PreviewStore::new();
+        let previous = entry("id-old", 1, stamp("old.gif", 1));
+        previous.set_animation(animation(&[100, 100]));
+        store.insert(previous.clone(), None);
+        store.insert(entry("id-new", 1, stamp("new.jpg", 1)), None);
+
+        store.drop_animations_except("id-new");
+        assert!(previous.animation().is_none(), "旧动画应随切图释放");
+    }
+
+    #[test]
+    fn only_gif_and_webp_queue_animation_jobs() {
+        assert!(is_animatable(Path::new("a.gif")));
+        assert!(is_animatable(Path::new("a.WEBP")));
+        assert!(!is_animatable(Path::new("a.png")));
+        assert!(!is_animatable(Path::new("no-extension")));
     }
 }
