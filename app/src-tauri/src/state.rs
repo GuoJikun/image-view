@@ -205,9 +205,34 @@ impl AppState {
                 path.display()
             )));
         }
-        Ok(self
+        let request = self
             .previews
-            .request(image_id.to_owned(), path, self.caps.clone()))
+            .request(image_id.to_owned(), path, self.caps.clone());
+        self.preload_neighbors();
+        Ok(request)
+    }
+
+    /// 当前图片的前后各一张交给后台预加载；缓存命中/在途请求会自行跳过。
+    fn preload_neighbors(&self) {
+        let directory = lock(&self.directory);
+        let Some(index) = directory.nav.index else {
+            return;
+        };
+
+        let mut neighbors = Vec::with_capacity(2);
+        if index > 0
+            && let Some(entry) = directory.entries.get(index - 1)
+        {
+            neighbors.push((entry.id.clone(), PathBuf::from(&entry.path)));
+        }
+        if let Some(entry) = directory.entries.get(index + 1) {
+            neighbors.push((entry.id.clone(), PathBuf::from(&entry.path)));
+        }
+        drop(directory);
+
+        for (image_id, path) in neighbors {
+            self.previews.preload(image_id, path, self.caps.clone());
+        }
     }
 
     pub fn cancel_preview(&self) -> u64 {
