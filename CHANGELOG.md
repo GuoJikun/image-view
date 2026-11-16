@@ -6,6 +6,9 @@
 
 ### 新增
 
+- 恢复窗口与会话记忆：窗口大小/位置/最大化由 `tauri-plugin-window-state` 恢复；上次目录、上次图片、排序方式与缩略图条开关写入 `settings.ron`（`%APPDATA%\dev.jikun.imageview`），退出前同步落盘。
+- 恢复缩略图磁盘缓存：PNG 写入应用缓存目录（上限 256 MB），缓存键 = 文件路径 + 修改时间 + 目标尺寸；文件被替换或删除后自动失效，重启后无需重新解码。
+- 相邻图片预加载：打开图片后后台预取前后各一张，实际打开请求优先于预加载；超过 30 MP 的邻居跳过，缓存最多 3 张 / 7200 万像素。
 - 恢复 1.2.0 移除的图片格式「打开方式」注册（改为打包声明式）：19 个扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `avif` / `heic` / `heif` / `svg`）注册 ProgID `ImageView.<ext>`、资源管理器「类型」列名称与打开命令；安装前的默认处理器自动备份，卸载时还原。
 - Windows 安装包补齐协助程序声明：`OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` + `Capabilities` 能力项，本程序始终出现在右键「打开方式」与「设置 → 默认应用」中，不再依赖是否持有默认处理器；卸载时清理上述键值。
 - macOS 与 Linux 同步声明文档类型（`CFBundleDocumentTypes` / `.desktop` 的 `MimeType`），三端「打开方式」菜单均可列出本程序。

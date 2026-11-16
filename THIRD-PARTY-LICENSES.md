@@ -396,6 +396,7 @@ Where a crate offers a choice of licenses, this notice relies on the permissive 
 | `serialize-to-javascript` | 0.1.2 | MIT OR Apache-2.0 | included below | https://github.com/chippers/serialize-to-javascript |
 | `serialize-to-javascript-impl` | 0.1.2 | MIT OR Apache-2.0 | included below | https://github.com/chippers/serialize-to-javascript |
 | `servo_arc` | 0.4.3 | MIT OR Apache-2.0 | included below | https://github.com/servo/stylo |
+| `sha1_smol` | 1.0.1 | BSD-3-Clause | included below | https://github.com/mitsuhiko/sha1-smol |
 | `sha2` | 0.10.9 | MIT OR Apache-2.0 | included below | https://github.com/RustCrypto/hashes |
 | `shlex` | 2.0.1 | MIT OR Apache-2.0 | included below | https://github.com/comex/rust-shlex |
 | `signal-hook-registry` | 1.4.8 | MIT OR Apache-2.0 | included below | https://github.com/vorner/signal-hook |
@@ -443,6 +444,7 @@ Where a crate offers a choice of licenses, this notice relies on the permissive 
 | `tauri-plugin-process` | 2.4.0 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-single-instance` | 2.5.5 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-updater` | 2.14.1 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
+| `tauri-plugin-window-state` | 2.5.0 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-runtime` | 2.12.2 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/tauri |
 | `tauri-runtime-wry` | 2.12.3 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/tauri |
 | `tauri-utils` | 2.10.2 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/tauri |
@@ -3962,6 +3964,7 @@ Applies to:
 - `tauri-plugin-process 2.4.0`
 - `tauri-plugin-single-instance 2.5.5`
 - `tauri-plugin-updater 2.14.1`
+- `tauri-plugin-window-state 2.5.0`
 - `tauri-runtime 2.12.2`
 - `tauri-runtime-wry 2.12.3`
 - `tauri-utils 2.10.2`
@@ -6945,7 +6948,7 @@ Applies to:
 // OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ~~~~
 
-### MIT (1/29)
+### MIT (1/30)
 
 Applies to:
 - `adler2 2.0.1`
@@ -7197,7 +7200,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (2/29)
+### MIT (2/30)
 
 Applies to:
 - `aho-corasick 1.1.5`
@@ -7239,7 +7242,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-### MIT (3/29)
+### MIT (3/30)
 
 Applies to:
 - `aligned-vec 0.6.4`
@@ -7295,6 +7298,7 @@ Applies to:
 - `tauri-plugin-process 2.4.0`
 - `tauri-plugin-single-instance 2.5.5`
 - `tauri-plugin-updater 2.14.1`
+- `tauri-plugin-window-state 2.5.0`
 - `tauri-runtime 2.12.2`
 - `tauri-runtime-wry 2.12.3`
 - `tauri-utils 2.10.2`
@@ -7332,7 +7336,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-### MIT (4/29)
+### MIT (4/30)
 
 Applies to:
 - `anstream 1.0.0`
@@ -7421,7 +7425,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-### MIT (5/29)
+### MIT (5/30)
 
 Applies to:
 - `async-broadcast 0.7.2`
@@ -7473,7 +7477,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-### MIT (6/29)
+### MIT (6/30)
 
 Applies to:
 - `brotli 9.1.1`
@@ -7498,7 +7502,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-### MIT (7/29)
+### MIT (7/30)
 
 Applies to:
 - `bs58 0.5.1`
@@ -7525,7 +7529,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-### MIT (8/29)
+### MIT (8/30)
 
 Applies to:
 - `bytemuck 1.25.2`
@@ -7542,7 +7546,7 @@ The above copyright notice and this permission notice (including the next paragr
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (9/29)
+### MIT (9/30)
 
 Applies to:
 - `cfg_aliases 0.2.2`
@@ -7576,7 +7580,7 @@ The `cfg_aliases!` macro uses a lot of the code from [`tectonic_cfg_support::tar
 ---
 ~~~~
 
-### MIT (10/29)
+### MIT (10/30)
 
 Applies to:
 - `cfg_aliases 0.2.2`
@@ -7591,7 +7595,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (11/29)
+### MIT (11/30)
 
 Applies to:
 - `constant_time_eq 0.6.1`
@@ -7613,7 +7617,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (12/29)
+### MIT (12/30)
 
 Applies to:
 - `crossbeam-channel 0.5.17`
@@ -7650,7 +7654,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (13/29)
+### MIT (13/30)
 
 Applies to:
 - `ctor 1.0.13`
@@ -7670,7 +7674,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (14/29)
+### MIT (14/30)
 
 Applies to:
 - `dlib 0.5.3`
@@ -7714,7 +7718,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-### MIT (15/29)
+### MIT (15/30)
 
 Applies to:
 - `dom_query 0.28.0`
@@ -7747,7 +7751,7 @@ derived from the "nipper" project (https://github.com/importcjj/nipper),
 developed by Chen Jiaju, licensed under the MIT License and the Apache License 2.0 (dual licensed).
 ~~~~
 
-### MIT (16/29)
+### MIT (16/30)
 
 Applies to:
 - `dpi 0.1.2`
@@ -7796,7 +7800,7 @@ have been licensed under extremely permissive terms.
 ------------------------------------------------------------------------------
 ~~~~
 
-### MIT (17/29)
+### MIT (17/30)
 
 Applies to:
 - `fax 0.2.7`
@@ -7810,7 +7814,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (18/29)
+### MIT (18/30)
 
 Applies to:
 - `fdeflate 0.3.7`
@@ -7846,7 +7850,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (19/29)
+### MIT (19/30)
 
 Applies to:
 - `float-cmp 0.9.0`
@@ -7871,7 +7875,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ~~~~
 
-### MIT (20/29)
+### MIT (20/30)
 
 Applies to:
 - `lcms2-sys 4.0.7`
@@ -7899,7 +7903,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (21/29)
+### MIT (21/30)
 
 Applies to:
 - `minisign-verify 0.3.0`
@@ -7961,7 +7965,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (22/29)
+### MIT (22/30)
 
 Applies to:
 - `nom 8.0.0`
@@ -7989,7 +7993,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (23/29)
+### MIT (23/30)
 
 Applies to:
 - `phf 0.13.1`
@@ -8022,7 +8026,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (24/29)
+### MIT (24/30)
 
 Applies to:
 - `quick-xml 0.41.0`
@@ -8050,7 +8054,71 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~~
 
-### MIT (25/29)
+### MIT (25/30)
+
+Applies to:
+- `sha1_smol 1.0.1`
+
+~~~~text
+BSD 3-Clause License
+
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-----
+
+src/simd.rs is licensed under the MIT license:
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+~~~~
+
+### MIT (26/30)
 
 Applies to:
 - `softbuffer 0.4.8`
@@ -8075,7 +8143,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~~
 
-### MIT (26/29)
+### MIT (27/30)
 
 Applies to:
 - `trash 5.3.0`
@@ -8097,7 +8165,7 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (27/29)
+### MIT (28/30)
 
 Applies to:
 - `uds_windows 1.2.1`
@@ -8138,7 +8206,7 @@ MIT License
     SOFTWARE
 ~~~~
 
-### MIT (28/29)
+### MIT (29/30)
 
 Applies to:
 - `utf8_iter 1.1.0`
@@ -8172,7 +8240,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ~~~~
 
-### MIT (29/29)
+### MIT (30/30)
 
 Applies to:
 - `webkit2gtk 2.0.2`
@@ -9096,6 +9164,7 @@ Applies to:
 - `tauri-plugin-process 2.4.0`
 - `tauri-plugin-single-instance 2.5.5`
 - `tauri-plugin-updater 2.14.1`
+- `tauri-plugin-window-state 2.5.0`
 
 ~~~~text
 SPDXVersion: SPDX-2.1
@@ -11059,6 +11128,12 @@ These notices were extracted from the bundled license files listed above.
 
 - (c) You must retain, in the Source form of any Derivative Works
 
+### `sha1_smol 1.0.1`
+
+- Copyright (c) 2006-2009 Graydon Hoare
+- Copyright (c) 2009-2013 Mozilla Foundation
+- Copyright (c) 2018, the respective contributors, as shown by the AUTHORS file.
+
 ### `sha2 0.10.9`
 
 - (c) You must retain, in the Source form of any Derivative Works
@@ -11269,6 +11344,11 @@ These notices were extracted from the bundled license files listed above.
 - Copyright (c) 2017 - Present The Tauri Programme in the Commons Conservancy
 
 ### `tauri-plugin-updater 2.14.1`
+
+- (c) You must retain, in the Source form of any Derivative Works
+- Copyright (c) 2017 - Present Tauri Apps Contributors
+
+### `tauri-plugin-window-state 2.5.0`
 
 - (c) You must retain, in the Source form of any Derivative Works
 - Copyright (c) 2017 - Present Tauri Apps Contributors

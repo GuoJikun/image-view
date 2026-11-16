@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 最后更新 | 2026-11-14 |
+| 最后更新 | 2026-11-16 |
 | 当前版本 | v1.3.0（待发布） |
 | 当前阶段 | P1（v1.0）✅ 已完成；M1~M5、M8、M9 全部落地，M6/M7 已后移 |
 | 下一个里程碑 | P1-M6 图库/搜索/对比（v1.4.0） |
@@ -42,14 +42,16 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 - [x] 幻灯片：3s 间隔，`Space` 开始/停止，手动翻页重置计时，末张自动停止。
 - [x] 相邻图片预加载（`Open` 优先，>30 MP 跳过）+ 3 张 LRU 纹理缓存（≤72M 像素）。
 
+> Tauri 版（1.2.0 起）的 P0-M7 复刻实现与验收见 [PLAN-P0.md](PLAN-P0.md) §9.8。
+
 **质量基线**：37 个单元测试；`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo build --release` 全部通过；release exe 约 16.8 MB。
 
 ## 当前焦点
 
-- **下一步**：发布 v1.0.0（构建安装包、生成 `update.json`、打 `v1.0.0` 标签）；之后进入 v1.1 的 P1-M6 图库/搜索/对比，动画（M7）排入 v1.2。
-- **理由**：查看体验（M1~M4）、发布工程（M5）、自动更新（M8）与中/英多语言（M9）均已完成，v1.0 范围收敛。
-- **发布前检查**：把 `apps\eframe-app\dist\update.json` 与安装包一起上传为 GitHub Release 资产；核对 `update.json` 的 `sha256` 与 `SHA256SUMS.txt` 一致；确认首版发布说明注明未签名与 SmartScreen 提示。
-- **完成定义**：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo build --release` 全部通过，[PLAN-P1.md](PLAN-P1.md) §6 已补 M8 / M9 验收记录。
+- **下一步**：发布 v1.3.0（推送 `v1.3.0` 标签，由 GitHub Actions 构建三端安装包并生成 `latest.json`）；之后进入 v1.4.0 的 P1-M6 图库/搜索/对比，动画（M7）仍排在后续版本。
+- **理由**：查看体验（M1~M4）、发布工程（M5）、自动更新（M8）与中/英多语言（M9）均已完成，v1.0 范围收敛；Tauri 版复刻的持久化/缓存/预加载也已补齐。
+- **发布前检查**：推送 `v*` 标签由 GitHub Actions（`tauri-apps/tauri-action`，`includeUpdaterJson` + `updaterJsonPreferNsis`）构建三端安装包并生成 `latest.json`；核对 `latest.json` 中的签名与各安装包哈希一致；确认首版发布说明注明未签名与 SmartScreen 提示。
+- **完成定义**：`cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 全部通过，[PLAN-P1.md](PLAN-P1.md) §6 已补 M8 / M9 与 Tauri 复刻验收记录。
 
 ## P1 里程碑看板（v1.0）
 
@@ -69,6 +71,8 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 P1-M5 已完成安装器、文件关联、崩溃日志与版本规范；原属 M5 的自动更新与中/英 UI 于 2026-11-12 提升为独立的 M8 / M9 并纳入 v1.0。界面改版（版式 A）已随 M5 之后的 `f852060` 落地。
 
+Tauri 版（1.2.0 起）对 M1 / M4 的复刻（`settings.ron`、`tauri-plugin-window-state`、缩略图磁盘缓存）与 P0-M7 的相邻预加载已在 2026-11-16 完成，验收记录见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8。
+
 ## P2 / P3 摘要
 
 | 阶段 | 方向 | 状态 | 明细 |
@@ -82,6 +86,7 @@ P2 不阻塞 v1.0；P3 为探索性方向，进入开发前需拆成 P1/P2 级�
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
+| 2026-11-16 | Tauri 复刻 P1-M1 / P1-M4 / P0-M7：`settings.ron` + `tauri-plugin-window-state` 恢复会话与窗口几何、缩略图磁盘缓存（256 MB，键 = 路径 + 修改时间 + 尺寸）、相邻图片预加载（`Open` 优先、3 张 / 72 MP） | `b908d92` · `2220e46` · `75bb618` |
 | 2026-11-14 | v1.3.0 标识统一：Cargo 包名 / `productName` / bundle identifier 统一为 `image-view`，安装目录改为 `%LOCALAPPDATA%\image-view`；日志改为随安装目录存放并带可写性回退；清理根 `assets/` 遗留资源 | `70f0856` |
 | 2026-11-12 | P1-M8 自动更新 + P1-M9 中/英多语言：`update.json` 清单、SHA-256 校验、NSIS 静默安装、`.part` 清理；`i18n` 资源表与即时切换；98 个单测，release 20,313,088 字节，安装包 7,699,260 字节 | 本次提交 |
 | 2026-11-12 | 范围调整：自动更新与中/英多语言纳入 v1.0（新增 P1-M8 / M9），图库（M6）后移 v1.1、动画（M7）后移 v1.2 | 本次提交 |
@@ -115,10 +120,12 @@ P2 不阻塞 v1.0；P3 为探索性方向，进入开发前需拆成 P1/P2 级�
 
 ```text
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo build --release
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+pnpm --dir app build
 ```
+
+Tauri 版不再产出单文件 exe，发布由 `v*` 标签触发的 GitHub Actions 完成；需要本地安装包时在 `app/` 下运行 `pnpm tauri build`。
 
 发布前额外要求：
 

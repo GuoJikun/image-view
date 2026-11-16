@@ -167,7 +167,7 @@ Pinia 只保存 `DirectorySnapshot`、`PreviewReady` 元数据、视图参数（
 | 验收项（docs/03 §12） | 状态 | 说明 |
 | --- | --- | --- |
 | WebView 运行时与打包策略 | Windows 已验证 | `npm run build` 生成 MSI（6.32 MiB）与 NSIS 安装包（4.43 MiB）；macOS/Linux WebView 尚未验证 |
-| 预览协议性能与缓存行为 | 部分验证 | PNG 惰性编码 + 4 张预览 LRU + 512 张缩略图 LRU；缺少真实大量图片切换的基准数据 |
+| 预览协议性能与缓存行为 | 部分验证 | PNG 惰性编码 + 3 张 / 72 MP 预览缓存 + 相邻图片预加载；缩略图 512 张内存 LRU + 256 MB 磁盘缓存；缺少真实大量图片切换的基准数据 |
 | 大图不经 Base64/JSON | 已验证（代码路径） | 像素只经 `iviewer://` 二进制响应传输；事件/DTO 不含像素 |
 | 快速切换旧请求不覆盖新图 | 已验证（单元测试 + 代码路径） | 全局 `request_id` + 每图 `revision`；队列只保留最新任务 |
 | 高 DPI Canvas 缩放/旋转/拖动 | 部分验证 | DPR backing store 与视图数学已实现；需在 125%/150%/200% 缩放下手工确认 |
@@ -177,13 +177,13 @@ Pinia 只保存 `DirectorySnapshot`、`PreviewReady` 元数据、视图参数（
 已完成的自动化检查：
 
 ```text
-cargo fmt --all --check                         通过
-cargo clippy -p image-view --all-targets 通过（-D warnings）
-cargo test --workspace                          通过
-cargo test -p image-view                        9 个单元测试通过
-frontend: npm run build                         vue-tsc + vite 通过
-npm run build                                   MSI + NSIS 安装包生成成功
-release exe 冒烟启动                            带图片参数运行 10s，进程存活并记录启动路径
+cargo fmt --all --check                              通过
+cargo clippy --workspace --all-targets -- -D warnings 通过
+cargo test --workspace                               通过
+cargo test -p image-view                             19 个单元测试通过
+frontend: pnpm --dir app build                       vue-tsc + vite 通过
+pnpm --dir app tauri build                           MSI + NSIS 安装包生成成功
+release exe 冒烟启动                                 带图片参数运行 10s，进程存活并记录启动路径
 ```
 
 产物：
@@ -204,12 +204,11 @@ target/release/bundle/nsis/image-view_1.3.0_x64-setup.exe     (4.43 MiB)
 
 ## 7. 已知缺口
 
-- 缩略图不提供磁盘缓存，仅 512 张内存 LRU；进程重启后需重新解码。
-- 缩略图缓存键包含路径、修改时间与尺寸，但协议 URL 中的 revision 未参与缓存键；文件在运行期间被替换时，同一尺寸可能命中旧缩略图。
+1.2.0 迁移时遗漏的窗口/会话持久化、缩略图磁盘缓存与相邻图片预加载已于 2026-11-16 补齐（见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8）。当前仍存在：
+
 - 动图只显示第一帧；EXIF 方向与 ICC 转换由 `iv-image-decode` 现有路径处理，与 eframe 版一致。
-- 预览缓存最多 4 张，未做相邻图片预加载；切换大图时仍可能看到短暂加载态。
-- 预览调度（request_id/latest-wins、PNG 缓存）目前位于 Tauri adapter 的 `preview.rs`，尚未上移到 `iv-application` 的用例层；目录导航与解码已复用共享 crate。
-- 未实现设置持久化、窗口状态恢复、主题切换、i18n、删除/重命名、幻灯片、自动更新、文件关联注册。
-- 前端界面目前只有简体中文。
+- 主题与界面语言仍存 WebView `localStorage`（`image-view.theme` / `image-view.locale`），尚未并入 `settings.ron`；清理 WebView 数据后会回退默认。
+- 预览调度（`Open` 优先、`request_id` latest-wins、PNG 缓存、相邻预加载）仍位于 Tauri adapter 的 `preview.rs`，尚未上移到 `iv-application` 的用例层；目录导航与解码已复用共享 crate。
+- 未实现重命名；删除仅支持移入回收站。
 - macOS/Linux WebView 行为未在本机验证。
-- 安装包未做代码签名；Windows 文件关联尚未注册。
+- 安装包未做代码签名；SmartScreen 提示在首次分发时仍会出现。

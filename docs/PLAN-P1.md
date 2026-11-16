@@ -32,8 +32,8 @@
 | P1-M3 | HEIC / AVIF | 1~1.5 d | ✅ |
 | P1-M4 | 缩略图条与渲染质量 | 2~3 d | ✅ |
 | P1-M5 | 安装与文件关联 | 2~3 d | ✅ |
-| P1-M8 | 自动更新 | 1~1.5 d | ✅ | 2026-11-12 |
-| P1-M9 | 中/英多语言 | 1.5~2 d | ✅ | 2026-11-12 |
+| P1-M8 | 自动更新 | 1~1.5 d | ✅ |
+| P1-M9 | 中/英多语言 | 1.5~2 d | ✅ |
 | P1-M6 | 图库、搜索与对比（只读） | 3~4 d | ⏸ v1.1 |
 | P1-M7 | GIF / WebP 动画 | 1~1.5 d | ⏸ v1.2 |
 
@@ -57,6 +57,8 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 - 只读目录、ACL 拒绝场景不 panic、不产生错误横幅噪音。
 
 **风险**：跨平台配置目录差异 → 复用 eframe `persistence` 的存储位置（Windows：`%APPDATA%\image-view\data`）；设置项增多时在 `settings.rs` 内按 schema 版本扩展。
+
+> Tauri 版（1.2.0 起）改用 `settings.ron` 与 `tauri-plugin-window-state`，实现差异与复刻验收见 §6「P1-M1 Tauri 复刻」。
 
 ### 3.2 P1-M2 色彩管理与高位深（1.5~2 d）
 
@@ -103,6 +105,8 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 - 3000 张目录内存增长受控（缩略图缓存有明确上限）。
 
 **风险**：显存/内存增长 → 缩略图独立预算 + 磁盘缓存；大目录扫描慢 → 后台增量索引（与 M6 共用）。
+
+> Tauri 版（1.2.0 起）使用 `iv-cache::FileCache` + PNG 磁盘缓存，实现差异与复刻验收见 §6「P1-M4 Tauri 复刻」。
 
 ### 3.5 P1-M5 发布工程（2~3 d）
 
@@ -452,6 +456,53 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 - 非中文系统语言（如日文、德文）的回退仅由检测逻辑与单测覆盖，未切换系统区域设置实测。
 - 安装向导语言沿用 M5 的 NSIS 模板（English / SimpChinese），与应用内语言设置相互独立。
 
+### P1-M1 Tauri 复刻：会话与偏好持久化（2026-11-16）
+
+> Tauri 版沿用本节的验收口径，但存储位置与窗口几何的实现与 eframe 版不同；原始记录见本节开头的 2026-11-10 条目。
+
+**实现**
+
+- `Settings` 新增 `from_ron` / `to_ron`（`iv-infra`），字段保持不变：上次目录、上次图片、排序、缩略图条开关、主题、语言等。
+- 新增 `app/src-tauri/src/settings_store.rs`：整份设置以 RON 写入 `%APPDATA%\dev.jikun.imageview\settings.ron`，400 ms 防抖 + 临时文件原子替换；解析失败、缺字段或版本不兼容时回退默认值并写警告日志。
+- 关闭窗口时 `AppState::flush_settings()` 同步落盘，避免防抖线程来不及写最后一次修改。
+- 窗口大小/位置/最大化改由官方 `tauri-plugin-window-state` 2.5.0 管理；主窗口 `"visible": false`，插件恢复状态后再显示，避免启动时先出现在默认位置再跳动。`Settings` 不再保存窗口几何。
+- 恢复上次目录/图片与排序：无命令行参数启动时读取会话；命令行路径优先。前端启动时调用 `ui_preferences` 读取缩略图条开关，切换时通过 `set_show_thumbnails` 回写。
+- 回收站删除、复制路径与“在资源管理器中显示”沿用 Tauri 版既有命令（`delete_image` / `reveal_image` / 前端剪贴板），本次不改协议。
+
+**自动化验证**
+
+- `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 通过。
+- 单测覆盖：`Settings` RON 往返（目录/图片/排序/缩略图条开关）、仅含版本号时回退默认值、损坏文件回退默认（`settings_store`）、防抖未触发时不创建文件。
+
+**未覆盖**
+
+- 未实机回归“调整窗口 → 退出 → 重启”的位置/最大化恢复（依赖插件行为），也未测多显示器拔插后的位置钳制。
+- `%APPDATA%` 不可写时仅写日志并保留内存设置，未做只读配置目录的 GUI 验证。
+- macOS / Linux 未实机验证。
+
+### P1-M4 Tauri 复刻：缩略图磁盘缓存（2026-11-16）
+
+**实现**
+
+- `ThumbnailService` 在原有 512 张内存 LRU 之外接入 `iv-cache::FileCache`：磁盘目录为 `app_cache_dir()/thumbs`（Windows：`%LOCALAPPDATA%\dev.jikun.imageview\thumbs`），预算 256 MB。
+- 缓存键 = 源路径 + 修改时间（毫秒）+ 目标边长：同一源文件的所有尺寸放在同一哈希目录，文件名再对 `(mtime, size)` 取哈希，因此同一路径重新扫描时命中，文件被替换后自然失效。
+- 缩略图仍由 `iv-image-decode::decode_thumbnail` 解码，PNG（Fast + Adaptive）编码后落盘；读取时校验 PNG 签名、`IHDR` 与宽高不超过请求尺寸，坏文件删除后重新解码。
+- 写入使用临时文件 + rename 原子提交；命中时刷新文件修改时间，超过预算时按修改时间从旧到新裁剪到 90%，避免每次写入都触发清理。
+- `DirectoryEntryDto.revision` 取文件修改时间毫秒，进入 `iviewer://thumbnail/{id}/{size}/{revision}` URL；文件在运行期间被替换时 WebView 不会复用旧图。
+- 删除图片时调用 `thumbnails.remove_path()`，同时清理内存条目与该源文件的全部磁盘尺寸。
+
+**自动化验证**
+
+- `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 通过。
+- `iv-cache` 单测覆盖：读写往返、拒绝 `..` 与空键、`remove_prefix` 清理单个源的全部尺寸、预算按修改时间淘汰、命中刷新最近使用时间、启动时裁剪超预算的遗留文件、`LruCache::retain`。
+- `thumbnails.rs` 单测覆盖：尺寸钳制、PNG 头/尺寸校验拒绝损坏缓存、缓存键区分路径/修改时间/尺寸、磁盘命中不触发解码、坏缓存删除后重试、`remove_path` 清理磁盘条目。
+
+**未覆盖**
+
+- 未在 Tauri 版复测 1000 张目录的冷/热启动首屏耗时与内存水位（egui 版数据见本节 2026-11-10 记录）。
+- 磁盘写满、ACL 拒绝与缓存目录被外部删除只按错误分支处理，未做故障注入。
+- macOS / Linux 未实机验证。
+
 ## 7. 变更记录
 
 | 日期 | 变更 |
@@ -476,3 +527,6 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 | 2026-11-12 | 完成 P1-M8：`update.json` 清单、后台检查/下载、SHA-256 校验、NSIS 静默安装、`.part` 清理；网络栈升级为 `ureq` 3.5 + `sha2` 0.11 |
 | 2026-11-12 | 完成 P1-M9：`i18n` 资源表、跟随系统/中/英切换与设置持久化，覆盖工具栏、菜单、状态栏、帮助、错误横幅与更新窗口 |
 | 2026-11-14 | 恢复 1.2.0 移除的文件关联，改用打包声明式：`tauri.conf.json` 的 `bundle.fileAssociations` 覆盖 19 个扩展名，NSIS 写 ProgID `ImageView.<ext>` 与扩展名默认值（备份原型、卸载还原），macOS / Linux 侧同步生成 `CFBundleDocumentTypes` 与 `MimeType`；另加 `installer/hooks.nsh`（`windows.nsis.installerHooks`）补齐 `OpenWithProgids`、`Applications\<exe>\SupportedTypes` 与 `RegisteredApplications` + `Capabilities`，使「打开方式」与「默认应用」列表不再依赖默认处理器归属 |
+| 2026-11-16 | Tauri 版复刻 P1-M1：`settings.ron` 会话/偏好持久化（400 ms 防抖 + 关闭前 flush），窗口几何交给 `tauri-plugin-window-state`；恢复上次目录/图片/排序与缩略图条开关，验收记录见 §6 |
+| 2026-11-16 | Tauri 版复刻 P1-M4 磁盘缓存：`%LOCALAPPDATA%\dev.jikun.imageview\thumbs`、256 MB 预算、键 = 路径 + 修改时间 + 尺寸，`revision` 进入缩略图 URL，删除图片时同步失效，验收记录见 §6 |
+| 2026-11-16 | Tauri 版复刻 P0-M7：相邻图片预加载（前后各一张、`Open` 优先、>30 MP 跳过、预加载不发送事件），缓存 3 张 / 72 MP，验收记录见 [PLAN-P0.md](PLAN-P0.md) §9.8 |
