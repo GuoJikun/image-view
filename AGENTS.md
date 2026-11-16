@@ -56,6 +56,9 @@ pnpm --dir app build
   取词只用 `app/src/i18n.ts` 导出的类型化 `t(key, args?)`；插值 / 复数走第二个参数，不要字符串拼接。
 - 消息由 `@intlify/unplugin-vue-i18n` 在**构建期预编译**，运行时不需要 `new Function`。
   正因如此 CSP 才能保持 `script-src 'self'`：**不要**为了让 i18n 工作而放 `'unsafe-eval'`。
+- 「跟随系统」的判定规则在 `iv-domain::Language::resolve_tag`（只看主语言子标签，非中文回退英文），
+  系统语言由 `iv-platform::system_locale()` 读取。后端建原生菜单首帧时用它，前端用
+  `navigator.language`，两处规则必须一致。
 - 缩略图条布局常量：卡片 76×56、`ITEM_WIDTH = 85`（含 9px 间距）、`PAD = 16`、条带高 88px。
   横向滚动用自绘 `AppScrollbar.vue`，不要回退到 `scrollbar-width` / `::-webkit-scrollbar` 美化
   —— 原生滚动条会吃掉 88px 条带高度。

@@ -1,4 +1,4 @@
-//! 与桌面环境交互的文件操作：回收站与在文件管理器中定位。
+//! 与桌面环境交互：回收站、文件管理器定位与系统语言。
 
 use std::path::Path;
 use std::process::Command;
@@ -57,6 +57,14 @@ pub fn open_folder(path: &Path) -> Result<(), FileOpError> {
 pub fn open_file(path: &Path) -> Result<(), FileOpError> {
     open_path_command(path).spawn().map_err(FileOpError::Open)?;
     Ok(())
+}
+
+/// 系统界面语言的 BCP-47 标签（如 `zh-CN`、`en-US`）。
+///
+/// 前端起来之前（原生菜单首帧、启动日志）只能靠这里判断语言；
+/// 读取失败时返回 `None`，调用方按英文回退。
+pub fn system_locale() -> Option<String> {
+    sys_locale::get_locale()
 }
 
 #[cfg(target_os = "windows")]

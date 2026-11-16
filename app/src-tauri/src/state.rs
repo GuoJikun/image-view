@@ -290,6 +290,17 @@ impl AppState {
             .update(|settings| settings.show_thumbnails = show);
     }
 
+    /// 当前应使用的界面语言标签（`"zh"` / `"en"`）。
+    ///
+    /// 前端有自己的 `navigator.language`，这里只服务原生菜单首帧与启动日志——
+    /// 那时前端还没跑起来，只能由后端读设置与系统语言。
+    pub fn locale_tag(&self) -> &'static str {
+        self.settings
+            .snapshot()
+            .language
+            .resolve_tag(iv_platform::system_locale().as_deref())
+    }
+
     /// 退出前把防抖队列里的最后一次修改同步写盘。
     pub fn flush_settings(&self) {
         self.settings.flush();

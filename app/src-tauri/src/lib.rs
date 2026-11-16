@@ -203,6 +203,11 @@ pub fn run() {
             app.manage(AppState::new(app.handle(), startup_path.clone()));
             app.manage(commands::update::UpdateState::new());
 
+            // 原生菜单在 setup 阶段就要建好，此时前端还没跑起来，
+            // 语言只能由后端按设置 + 系统语言解析（与前端 `resolvedLocale` 同一规则）。
+            let locale = app.state::<AppState>().locale_tag();
+            log::debug!(target: "image_view", "界面语言：{locale}");
+
             if let Some(window) = app.get_webview_window("main") {
                 // macOS 保留系统原生标题栏与红绿灯；Win/Linux 使用 28 px 自绘标题栏。
                 #[cfg(not(target_os = "macos"))]
@@ -211,7 +216,7 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 {
                     let _ = window;
-                    if let Ok(menu) = build_app_menu(app.handle(), "zh") {
+                    if let Ok(menu) = build_app_menu(app.handle(), locale) {
                         let _ = app.handle().set_menu(menu);
                     }
                 }
