@@ -152,8 +152,9 @@ function onScroll(): void {
   });
 }
 
-/** 鼠标竖滚轮在横向容器里转成横向滚动；触控板的 deltaX 交给原生。 */
+/** 鼠标竖滚轮在横向容器里转成横向滚动；竖向容器交给原生，保留平滑与惯性。 */
 function onWheel(event: WheelEvent): void {
+  if (!horizontal.value) return;
   if (event.ctrlKey || metrics.maxScroll <= 0) return;
   if (event.deltaX !== 0 || event.deltaY === 0) return;
   const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;

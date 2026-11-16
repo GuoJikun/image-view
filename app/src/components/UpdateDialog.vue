@@ -5,10 +5,12 @@
  *          available → downloading → [ready | error | available(取消)]
  *          ready → install（安装并退出）
  */
-import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { t } from "../i18n";
 import { APP_VERSION } from "../constants";
 import * as ipc from "../services/ipc";
+import { renderMarkdown } from "../services/markdown";
+import AppScrollbar from "./AppScrollbar.vue";
 import type { UpdateInfo, UpdateProgress } from "../types/ipc";
 
 type Phase = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "ready" | "error";
@@ -20,6 +22,8 @@ const phase = ref<Phase>("idle");
 const info = ref<UpdateInfo | null>(null);
 const errorMessage = ref("");
 const progress = reactive<UpdateProgress>({ received: 0, total: null });
+/** Release 正文是 Markdown，渲染成受限 HTML 后再插入。 */
+const notesHtml = computed(() => renderMarkdown(info.value?.body ?? ""));
 
 let unlistenProgress: (() => void) | null = null;
 
@@ -141,7 +145,9 @@ function formatBytes(bytes: number): string {
           </div>
           <div v-if="info.body" class="update-notes">
             <h3>{{ t("update.notes") }}</h3>
-            <p>{{ info.body }}</p>
+            <AppScrollbar direction="vertical" class="update-notes-scroll">
+              <div class="markdown" v-html="notesHtml" />
+            </AppScrollbar>
           </div>
         </template>
 
