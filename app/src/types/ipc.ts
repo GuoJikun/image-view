@@ -72,6 +72,29 @@ export interface CommandError {
 export type FitMode = "fit" | "actual" | "custom";
 export type SortOrder = "name" | "modified";
 
+/** 主题偏好；`system` 表示跟随系统（由 CSS `prefers-color-scheme` 取值）。 */
+export type ThemeName = "system" | "light" | "dark";
+
+/** 语言偏好；`system` 表示跟随系统语言。 */
+export type LocaleName = "system" | "zh" | "en";
+
+/**
+ * 菜单可勾选项的当前状态（`sync_native_menu` 入参）。
+ *
+ * macOS 原生菜单与 Windows / Linux 自绘菜单共用这一份状态，
+ * 字段与 Rust 侧 `MenuStateDto` 一一对应。
+ */
+export interface MenuState {
+  thumbnails: boolean;
+  slideshow: boolean;
+  colorBadge: boolean;
+  metadata: boolean;
+  autoUpdate: boolean;
+  sort: SortOrder;
+  theme: ThemeName;
+  language: LocaleName;
+}
+
 /** 启动时读取的界面偏好（后端 `ui_preferences`）。 */
 export interface UiPreferences {
   showThumbnails: boolean;

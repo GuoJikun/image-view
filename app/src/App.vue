@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watchEffect } from "vue";
+import { computed, onBeforeUnmount, onMounted, watch, watchEffect } from "vue";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useViewerStore } from "./stores/viewer";
@@ -20,7 +20,11 @@ import UpdateDialog from "./components/UpdateDialog.vue";
 
 const store = useViewerStore();
 const ui = useUiStore();
-const { run, syncNativeMenu } = useActions();
+const { run, syncNativeMenu, menuState } = useActions();
+
+// macOS 原生菜单的勾选状态跟随界面：任何开关变化都推给后端，
+// 语言变化顺带重建菜单（后端按语言是否变化决定重建还是只改勾选）。
+watch(menuState, () => void syncNativeMenu());
 
 const stripVisible = computed(
   () => store.showThumbnails && (store.snapshot?.entries.length ?? 0) > 0,

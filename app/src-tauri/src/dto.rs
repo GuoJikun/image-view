@@ -3,7 +3,7 @@
 //! 前端只依赖这些轻量结构；像素数据不进入 DTO，而是通过 `iviewer://` 协议按
 //! ImageId + revision 读取。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use iv_image_decode::LoadError;
 
@@ -142,6 +142,50 @@ pub struct UiPreferencesDto {
     pub show_thumbnails: bool,
 }
 
+/// 菜单可勾选项的当前状态（`sync_native_menu` 入参）。
+///
+/// 自绘菜单（Windows / Linux）直接用前端同一份状态渲染，这里只负责 macOS 原生菜单：
+/// 语言不变时按 [`MenuStateDto::checks`] 增量 `set_checked`，不必重建菜单。
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MenuStateDto {
+    pub thumbnails: bool,
+    pub slideshow: bool,
+    pub color_badge: bool,
+    pub metadata: bool,
+    pub auto_update: bool,
+    /// `name` 或 `modified`。
+    pub sort: String,
+    /// `system` / `light` / `dark`。
+    pub theme: String,
+    /// `system` / `zh` / `en`。
+    pub language: String,
+}
+
+impl MenuStateDto {
+    /// 可勾选菜单项的动作 id 与勾选值，顺序同菜单自上而下。
+    ///
+    /// id 必须与原生菜单里的菜单项 id、前端 `actions.ts` 的动作 id 三处一致；
+    /// 原生菜单缺少某个 id 时会记一条警告（见 `menu::NativeMenu::apply`）。
+    pub fn checks(&self) -> [(&'static str, bool); 13] {
+        [
+            ("toggle-thumbnails", self.thumbnails),
+            ("slideshow", self.slideshow),
+            ("sort-name", self.sort == "name"),
+            ("sort-modified", self.sort == "modified"),
+            ("theme-system", self.theme == "system"),
+            ("theme-light", self.theme == "light"),
+            ("theme-dark", self.theme == "dark"),
+            ("lang-system", self.language == "system"),
+            ("lang-zh", self.language == "zh"),
+            ("lang-en", self.language == "en"),
+            ("color-badge", self.color_badge),
+            ("metadata", self.metadata),
+            ("auto-update", self.auto_update),
+        ]
+    }
+}
+
 /// 文件扩展名 → 展示用格式名。
 pub fn format_label(path: &std::path::Path) -> String {
     path.extension()
@@ -166,5 +210,106 @@ mod tests {
     fn command_error_keeps_stable_code() {
         let error = CommandError::from(LoadError::TooLarge { w: 1, h: 2 });
         assert_eq!(error.code, "too_large");
+    }
+
+    fn menu_state() -> MenuStateDto {
+        MenuStateDto {
+            thumbnails: true,
+            slideshow: false,
+            color_badge: true,
+            metadata: false,
+            auto_update: true,
+            sort: "modified".to_owned(),
+            theme: "light".to_owned(),
+            language: "en".to_owned(),
+        }
+    }
+
+    fn checked(checks: &[(&'static str, bool)], id: &str) -> Option<bool> {
+        checks
+            .iter()
+            .find(|(name, _)| *name == id)
+            .map(|(_, value)| *value)
+    }
+
+    #[test]
+    fn menu_checks_follow_state() {
+        let checks = menu_state().checks();
+        assert_eq!(checked(&checks, "toggle-thumbnails"), Some(true));
+        assert_eq!(checked(&checks, "slideshow"), Some(false));
+        assert_eq!(checked(&checks, "color-badge"), Some(true));
+        assert_eq!(checked(&checks, "metadata"), Some(false));
+        assert_eq!(checked(&checks, "auto-update"), Some(true));
+    }
+
+    /// 排序 / 主题 / 语言是三选一：任何时刻恰好一项勾选。
+    #[test]
+    fn menu_checks_pick_exactly_one_per_group() {
+        let checks = menu_state().checks();
+        let groups: [&[&str]; 3] = [
+            &["sort-name", "sort-modified"],
+            &["theme-system", "theme-light", "theme-dark"],
+            &["lang-system", "lang-zh", "lang-en"],
+        ];
+        for group in groups {
+            let hits = group
+                .iter()
+                .filter(|id| checked(&checks, id) == Some(true))
+                .count();
+            assert_eq!(hits, 1, "{group:?} 应恰好勾选一项");
+        }
+        assert_eq!(checked(&checks, "sort-name"), Some(false));
+        assert_eq!(checked(&checks, "theme-light"), Some(true));
+        assert_eq!(checked(&checks, "lang-en"), Some(true));
+    }
+
+    /// 未知取值不能让任何一项被误勾选（前端传错时菜单保持干净，而不是显示错误状态）。
+    #[test]
+    fn unknown_enum_values_check_nothing() {
+        let checks = MenuStateDto {
+            sort: "size".to_owned(),
+            theme: "auto".to_owned(),
+            language: "fr".to_owned(),
+            ..menu_state()
+        }
+        .checks();
+        assert!(checks.iter().all(|(id, checked)| {
+            !(id.starts_with("sort-") || id.starts_with("theme-") || id.starts_with("lang-"))
+                || !checked
+        }));
+    }
+
+    /// 菜单项 id 不能有重复，否则后台只会更新其中一个。
+    #[test]
+    fn menu_check_ids_are_unique() {
+        let checks = menu_state().checks();
+        for (index, (id, _)) in checks.iter().enumerate() {
+            assert!(
+                !checks[..index].iter().any(|(other, _)| other == id),
+                "重复的菜单项 id：{id}"
+            );
+        }
+    }
+
+    /// 前端按 camelCase 发送（`colorBadge` / `autoUpdate`），字段名对不上会整条命令失败。
+    #[test]
+    fn menu_state_deserializes_from_frontend_payload() {
+        let json = r#"{
+            "thumbnails": true,
+            "slideshow": false,
+            "colorBadge": true,
+            "metadata": false,
+            "autoUpdate": true,
+            "sort": "name",
+            "theme": "dark",
+            "language": "zh"
+        }"#;
+        let state: MenuStateDto = serde_json::from_str(json).expect("deserialize");
+        assert!(state.color_badge);
+        assert!(state.auto_update);
+        assert_eq!(state.theme, "dark");
+        let checks = state.checks();
+        assert_eq!(checked(&checks, "theme-dark"), Some(true));
+        assert_eq!(checked(&checks, "lang-zh"), Some(true));
     }
 }

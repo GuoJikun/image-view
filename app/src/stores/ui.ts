@@ -6,8 +6,9 @@ import { defineStore } from "pinia";
 import { ref, watch } from "vue";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { inTauri } from "../platform";
+import type { ThemeName } from "../types/ipc";
 
-export type ThemeSetting = "system" | "light" | "dark";
+export type ThemeSetting = ThemeName;
 
 const THEME_KEY = "image-view.theme";
 const AUTO_UPDATE_KEY = "image-view.update-on-launch";

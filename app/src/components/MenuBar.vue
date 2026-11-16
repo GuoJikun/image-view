@@ -5,10 +5,10 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useViewerStore } from "../stores/viewer";
-import { useUiStore } from "../stores/ui";
 import { useActions } from "../actions";
+import { useMenuState } from "../menu";
 import { accel, isMac } from "../platform";
-import { t, localeSetting } from "../i18n";
+import { t } from "../i18n";
 
 interface MenuEntry {
   kind: "item" | "sub" | "sep";
@@ -29,16 +29,15 @@ interface MenuGroup {
 }
 
 const store = useViewerStore();
-const ui = useUiStore();
 const { run } = useActions();
+/** 勾选状态与 macOS 原生菜单同源，见 `menu.ts`。 */
+const menu = useMenuState();
 
 const root = ref<HTMLElement | null>(null);
 const openId = ref<string | null>(null);
 const openSubId = ref<string | null>(null);
 /** 悬停切换打开的菜单：此时点击标题不应把它关掉（VS Code / macOS 行为）。 */
 const hoverOpened = ref(false);
-
-const sortOrder = computed(() => store.snapshot?.sort ?? "name");
 
 const groups = computed<MenuGroup[]>(() => [
   {
@@ -80,7 +79,7 @@ const groups = computed<MenuGroup[]>(() => [
         id: "toggle-thumbnails",
         label: t("menu.thumbnails"),
         mark: "check",
-        checked: store.showThumbnails,
+        checked: menu.value.thumbnails,
       },
       {
         kind: "item",
@@ -88,7 +87,7 @@ const groups = computed<MenuGroup[]>(() => [
         label: t("menu.slideshow"),
         shortcut: "Space",
         mark: "check",
-        checked: store.slideshow,
+        checked: menu.value.slideshow,
         disabled: !store.hasImage,
       },
       { kind: "sep" },
@@ -102,14 +101,14 @@ const groups = computed<MenuGroup[]>(() => [
             id: "sort-name",
             label: t("menu.sortName"),
             mark: "dot",
-            checked: sortOrder.value === "name",
+            checked: menu.value.sort === "name",
           },
           {
             kind: "item",
             id: "sort-modified",
             label: t("menu.sortModified"),
             mark: "dot",
-            checked: sortOrder.value === "modified",
+            checked: menu.value.sort === "modified",
           },
         ],
       },
@@ -124,9 +123,9 @@ const groups = computed<MenuGroup[]>(() => [
         id: "theme",
         label: t("menu.theme"),
         items: [
-          { kind: "item", id: "theme-system", label: t("menu.themeSystem"), mark: "dot", checked: ui.theme === "system" },
-          { kind: "item", id: "theme-light", label: t("menu.themeLight"), mark: "dot", checked: ui.theme === "light" },
-          { kind: "item", id: "theme-dark", label: t("menu.themeDark"), mark: "dot", checked: ui.theme === "dark" },
+          { kind: "item", id: "theme-system", label: t("menu.themeSystem"), mark: "dot", checked: menu.value.theme === "system" },
+          { kind: "item", id: "theme-light", label: t("menu.themeLight"), mark: "dot", checked: menu.value.theme === "light" },
+          { kind: "item", id: "theme-dark", label: t("menu.themeDark"), mark: "dot", checked: menu.value.theme === "dark" },
         ],
       },
       {
@@ -139,10 +138,10 @@ const groups = computed<MenuGroup[]>(() => [
             id: "lang-system",
             label: t("menu.langSystem"),
             mark: "dot",
-            checked: localeSetting.value === "system",
+            checked: menu.value.language === "system",
           },
-          { kind: "item", id: "lang-zh", label: t("menu.langZh"), mark: "dot", checked: localeSetting.value === "zh" },
-          { kind: "item", id: "lang-en", label: t("menu.langEn"), mark: "dot", checked: localeSetting.value === "en" },
+          { kind: "item", id: "lang-zh", label: t("menu.langZh"), mark: "dot", checked: menu.value.language === "zh" },
+          { kind: "item", id: "lang-en", label: t("menu.langEn"), mark: "dot", checked: menu.value.language === "en" },
         ],
       },
       { kind: "sep" },
@@ -151,14 +150,14 @@ const groups = computed<MenuGroup[]>(() => [
         id: "color-badge",
         label: t("menu.colorBadge"),
         mark: "check",
-        checked: ui.showColorBadge,
+        checked: menu.value.colorBadge,
       },
       {
         kind: "item",
         id: "metadata",
         label: t("menu.metadata"),
         mark: "check",
-        checked: store.showMetadata,
+        checked: menu.value.metadata,
       },
     ],
   },
@@ -173,7 +172,7 @@ const groups = computed<MenuGroup[]>(() => [
         id: "auto-update",
         label: t("menu.autoUpdate"),
         mark: "check",
-        checked: ui.checkUpdatesOnLaunch,
+        checked: menu.value.autoUpdate,
       },
       { kind: "sep" },
       { kind: "item", id: "logs", label: t("menu.logs") },

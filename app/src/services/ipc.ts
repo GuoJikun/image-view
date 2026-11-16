@@ -8,6 +8,7 @@ import type {
   AnimationReady,
   CommandError,
   DirectorySnapshot,
+  MenuState,
   PreviewFailed,
   PreviewReady,
   PreviewRequest,
@@ -104,9 +105,13 @@ export async function openLogDir(): Promise<void> {
   return invoke<void>("open_log_dir");
 }
 
-/** macOS：让系统菜单栏跟随界面语言。其它平台为空实现。 */
-export async function syncNativeMenu(locale: string): Promise<void> {
-  return invoke<void>("sync_native_menu", { locale });
+/**
+ * macOS：让系统菜单栏跟随界面语言与勾选状态。其它平台为空实现。
+ *
+ * 语言与上次不同时后端会重建整个菜单，相同则只更新勾选值。
+ */
+export async function syncNativeMenu(locale: string, state: MenuState): Promise<void> {
+  return invoke<void>("sync_native_menu", { locale, state });
 }
 
 // ---- 更新（tauri-plugin-updater + 自定义命令） ----

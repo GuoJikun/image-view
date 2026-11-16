@@ -5,6 +5,8 @@
 import { useViewerStore } from "./stores/viewer";
 import { useUiStore, type ThemeSetting } from "./stores/ui";
 import { setLocale, resolvedLocale, t, type LocaleSetting } from "./i18n";
+import { useMenuState } from "./menu";
+import { inTauri } from "./platform";
 import * as ipc from "./services/ipc";
 
 function fallbackCopy(text: string): boolean {
@@ -23,6 +25,7 @@ function fallbackCopy(text: string): boolean {
 export function useActions() {
   const store = useViewerStore();
   const ui = useUiStore();
+  const menuState = useMenuState();
 
   async function copyPath(): Promise<void> {
     const path = store.preview?.path;
@@ -56,10 +59,15 @@ export function useActions() {
     ui.setTheme(value);
   }
 
-  /** macOS 原生菜单跟随语言；其它平台静默忽略。 */
+  /**
+   * macOS 原生菜单跟随语言与勾选状态；其它平台静默忽略。
+   *
+   * 语言变化会重建整个菜单，勾选变化只改勾选值（后端按语言是否变化判断）。
+   */
   async function syncNativeMenu(): Promise<void> {
+    if (!inTauri) return;
     try {
-      await ipc.syncNativeMenu(resolvedLocale.value);
+      await ipc.syncNativeMenu(resolvedLocale.value, menuState.value);
     } catch {
       // 浏览器预览或非 macOS 平台没有系统菜单。
     }
@@ -150,5 +158,5 @@ export function useActions() {
     }
   }
 
-  return { run, copyPath, moveToTrash, syncNativeMenu };
+  return { run, copyPath, moveToTrash, syncNativeMenu, menuState };
 }

@@ -5,6 +5,7 @@
 
 mod commands;
 mod dto;
+mod menu;
 mod menu_text;
 mod preview;
 mod protocol;
@@ -16,7 +17,6 @@ use std::path::PathBuf;
 
 use tauri::{Emitter, Manager};
 
-use crate::menu_text::MenuText;
 use crate::state::AppState;
 
 /// 命令行中第一个存在的路径参数（文件或目录）。
@@ -37,141 +37,7 @@ fn forwarded_path(argv: Vec<String>) -> Option<String> {
         .map(|path| path.to_string_lossy().into_owned())
 }
 
-/// macOS 系统菜单栏。Windows / Linux 使用前端自绘菜单，不调用本函数。
-///
-/// 只在 macOS 上安装；仍然在其它平台编译，以便 CI 校验 API 用法。
-/// 文案来自前端文案表（见 [`menu_text`]），这里只写键名。
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn build_app_menu(
-    app: &tauri::AppHandle,
-    locale: &str,
-) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
-    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
-
-    let t = MenuText::new(locale);
-
-    let about = SubmenuBuilder::new(app, t.t("app.name"))
-        .about(None)
-        .separator()
-        .services()
-        .separator()
-        .hide()
-        .hide_others()
-        .show_all()
-        .separator()
-        .quit()
-        .build()?;
-
-    let file = SubmenuBuilder::new(app, t.t("menu.file"))
-        .item(
-            &MenuItemBuilder::with_id("open", t.t("menu.open"))
-                .accelerator("CmdOrCtrl+O")
-                .build(app)?,
-        )
-        .separator()
-        .item(&MenuItemBuilder::with_id("reveal", t.t("menu.reveal")).build(app)?)
-        .item(
-            &MenuItemBuilder::with_id("copy-path", t.t("menu.copyPath"))
-                .accelerator("CmdOrCtrl+Shift+C")
-                .build(app)?,
-        )
-        .separator()
-        .item(
-            &MenuItemBuilder::with_id("trash", t.t("menu.trash"))
-                .accelerator("Backspace")
-                .build(app)?,
-        )
-        .build()?;
-
-    let sort = SubmenuBuilder::new(app, t.t("menu.sort"))
-        .text("sort-name", t.t("menu.sortName"))
-        .text("sort-modified", t.t("menu.sortModified"))
-        .build()?;
-
-    let theme = SubmenuBuilder::new(app, t.t("menu.theme"))
-        .text("theme-system", t.t("menu.themeSystem"))
-        .text("theme-light", t.t("menu.themeLight"))
-        .text("theme-dark", t.t("menu.themeDark"))
-        .build()?;
-
-    let language = SubmenuBuilder::new(app, t.t("menu.language"))
-        .text("lang-system", t.t("menu.langSystem"))
-        .text("lang-zh", t.t("menu.langZh"))
-        .text("lang-en", t.t("menu.langEn"))
-        .build()?;
-
-    let display = SubmenuBuilder::new(app, t.t("menu.view"))
-        .item(
-            &MenuItemBuilder::with_id("toggle-thumbnails", t.t("menu.thumbnails"))
-                .accelerator("CmdOrCtrl+T")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("slideshow", t.t("menu.slideshow"))
-                .accelerator("Space")
-                .build(app)?,
-        )
-        .separator()
-        .item(&sort)
-        .separator()
-        .item(
-            &MenuItemBuilder::with_id("zoom-in", t.t("menu.zoomIn"))
-                .accelerator("CmdOrCtrl+=")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("zoom-out", t.t("menu.zoomOut"))
-                .accelerator("CmdOrCtrl+-")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("fit", t.t("menu.fit"))
-                .accelerator("CmdOrCtrl+0")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("actual", t.t("menu.actual"))
-                .accelerator("CmdOrCtrl+1")
-                .build(app)?,
-        )
-        .separator()
-        .item(&theme)
-        .item(&language)
-        .separator()
-        .item(&MenuItemBuilder::with_id("color-badge", t.t("menu.colorBadge")).build(app)?)
-        .item(&MenuItemBuilder::with_id("metadata", t.t("menu.metadata")).build(app)?)
-        .build()?;
-
-    let help = SubmenuBuilder::new(app, t.t("menu.help"))
-        .item(
-            &MenuItemBuilder::with_id("shortcuts", t.t("menu.shortcuts"))
-                .accelerator("CmdOrCtrl+/")
-                .build(app)?,
-        )
-        .item(&MenuItemBuilder::with_id("update", t.t("menu.update")).build(app)?)
-        .item(&MenuItemBuilder::with_id("auto-update", t.t("menu.autoUpdate")).build(app)?)
-        .separator()
-        .item(&MenuItemBuilder::with_id("logs", t.t("menu.logs")).build(app)?)
-        .build()?;
-
-    MenuBuilder::new(app)
-        .items(&[&about, &file, &display, &help])
-        .build()
-}
-
-/// macOS：按界面语言重建原生菜单；其它平台无系统菜单，空实现。
-#[tauri::command]
-fn sync_native_menu(app: tauri::AppHandle, locale: String) {
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(menu) = build_app_menu(&app, &locale) {
-            let _ = app.set_menu(menu);
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    let _ = (app, locale);
-}
-
+/// macOS 系统菜单栏的构建与勾选同步见 [`menu`]；Windows / Linux 使用前端自绘菜单。
 pub fn run() {
     iv_infra::logging::init();
     iv_infra::logging::install_panic_hook();
@@ -202,11 +68,18 @@ pub fn run() {
         .setup(move |app| {
             app.manage(AppState::new(app.handle(), startup_path.clone()));
             app.manage(commands::update::UpdateState::new());
+            app.manage(menu::NativeMenu::new());
 
-            // 原生菜单在 setup 阶段就要建好，此时前端还没跑起来，
-            // 语言只能由后端按设置 + 系统语言解析（与前端 `resolvedLocale` 同一规则）。
+            // 原生菜单在 setup 阶段就要建好，此时前端还没跑起来：
+            // 语言与勾选状态只能由后端按设置 + 系统语言解析（与前端同一规则）。
             let locale = app.state::<AppState>().locale_tag();
             log::debug!(target: "image_view", "界面语言：{locale}");
+
+            #[cfg(target_os = "macos")]
+            {
+                let state = app.state::<AppState>().menu_state();
+                menu::install(app.handle(), locale, &state);
+            }
 
             if let Some(window) = app.get_webview_window("main") {
                 // macOS 保留系统原生标题栏与红绿灯；Win/Linux 使用 28 px 自绘标题栏。
@@ -214,12 +87,7 @@ pub fn run() {
                 let _ = window.set_decorations(false);
 
                 #[cfg(target_os = "macos")]
-                {
-                    let _ = window;
-                    if let Ok(menu) = build_app_menu(app.handle(), locale) {
-                        let _ = app.handle().set_menu(menu);
-                    }
-                }
+                let _ = window;
             }
 
             log::info!(
@@ -253,7 +121,7 @@ pub fn run() {
             commands::update::download_update,
             commands::update::cancel_update_download,
             commands::update::install_update,
-            sync_native_menu,
+            menu::sync_native_menu,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

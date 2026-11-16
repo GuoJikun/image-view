@@ -12,6 +12,7 @@ import { computed, ref, watch } from "vue";
 import { createI18n } from "vue-i18n";
 import en from "./locales/en.json";
 import zh from "./locales/zh.json";
+import type { LocaleName } from "./types/ipc";
 
 /** 层级展平后的点号键，如 `"menu.open"`。 */
 type Leaves<T> = T extends string
@@ -30,7 +31,7 @@ type MessageShape<T> = {
 
 const messages: { zh: typeof zh; en: MessageShape<typeof zh> } = { zh, en };
 
-export type LocaleSetting = "system" | "zh" | "en";
+export type LocaleSetting = LocaleName;
 export type ResolvedLocale = "zh" | "en";
 
 const STORAGE_KEY = "image-view.locale";

@@ -9,12 +9,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::UNIX_EPOCH;
 
 use iv_application::FolderNav;
-use iv_domain::SortOrder;
+use iv_domain::{Language, SortOrder, ThemeSetting};
 use iv_image_decode::Caps;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
-use crate::dto::{CommandError, DirectoryEntryDto, DirectorySnapshot, PreviewRequestDto};
+use crate::dto::{
+    CommandError, DirectoryEntryDto, DirectorySnapshot, MenuStateDto, PreviewRequestDto,
+};
 use crate::preview::PreviewService;
 use crate::settings_store::SettingsStore;
 use crate::thumbnails::ThumbnailService;
@@ -301,6 +303,24 @@ impl AppState {
             .resolve_tag(iv_platform::system_locale().as_deref())
     }
 
+    /// 原生菜单首帧的勾选状态：同样只服务前端启动前的那一刻，
+    /// 之后由前端 `useMenuState()` 推送真实状态。
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub fn menu_state(&self) -> MenuStateDto {
+        let settings = self.settings.snapshot();
+        MenuStateDto {
+            thumbnails: settings.show_thumbnails,
+            // 幻灯片与元数据面板只是运行时状态，启动时一定未开启。
+            slideshow: false,
+            color_badge: settings.show_color_status,
+            metadata: false,
+            auto_update: settings.check_updates_on_startup,
+            sort: self.snapshot().sort,
+            theme: theme_label(settings.theme).to_owned(),
+            language: language_label(settings.language).to_owned(),
+        }
+    }
+
     /// 退出前把防抖队列里的最后一次修改同步写盘。
     pub fn flush_settings(&self) {
         self.settings.flush();
@@ -362,6 +382,24 @@ pub fn sort_label(order: SortOrder) -> &'static str {
     }
 }
 
+/// 主题的界面取值，与前端 `ThemeSetting` 一致。
+pub fn theme_label(theme: ThemeSetting) -> &'static str {
+    match theme {
+        ThemeSetting::System => "system",
+        ThemeSetting::Light => "light",
+        ThemeSetting::Dark => "dark",
+    }
+}
+
+/// 语言设置的界面取值，与前端 `LocaleSetting` 一致（`system` 表示跟随系统）。
+pub fn language_label(language: Language) -> &'static str {
+    match language {
+        Language::System => "system",
+        Language::Zh => "zh",
+        Language::En => "en",
+    }
+}
+
 pub fn parse_sort(value: &str) -> Result<SortOrder, CommandError> {
     match value {
         "name" => Ok(SortOrder::Name),
@@ -394,5 +432,16 @@ mod tests {
             parse_sort("unknown").expect_err("unknown").code,
             "invalid_argument"
         );
+    }
+
+    /// 这些取值直接传给前端与 `settings.ron`，改动会打破两边约定。
+    #[test]
+    fn preference_labels_match_frontend_values() {
+        assert_eq!(theme_label(ThemeSetting::System), "system");
+        assert_eq!(theme_label(ThemeSetting::Light), "light");
+        assert_eq!(theme_label(ThemeSetting::Dark), "dark");
+        assert_eq!(language_label(Language::System), "system");
+        assert_eq!(language_label(Language::Zh), "zh");
+        assert_eq!(language_label(Language::En), "en");
     }
 }

@@ -36,6 +36,10 @@ pnpm --dir app build
 - macOS 原生菜单文案不在 Rust 里另写一份：`app/src-tauri/src/menu_text.rs` 用 `include_str!`
   内嵌 `app/src/locales/*.json`，按点号路径取词。新增菜单项只需在 JSON 加键并补进 `KEYS`，
   单测会校验两种语言都能取到、且中英文不雷同。
+- 原生菜单的勾选状态只有一条链路：前端 `app/src/menu.ts` 的 `useMenuState()` → `sync_native_menu`
+  → `app/src-tauri/src/menu.rs`。语言变化才重建菜单，其余开关只 `set_checked`。
+  新增可勾选项要同时改 `MenuBar.vue`（自绘菜单）、`menu.rs` 的 `build`、`dto.rs` 的
+  `MenuStateDto::checks()` 三处，id 与 `actions.ts` 的动作 id 保持同名。
 
 ## 资源协议
 
