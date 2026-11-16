@@ -22,6 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
+    outputs:
+      release_body: ${{ steps.changelog.outputs.body }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,6 +52,40 @@ jobs:
           fi
 
           echo "Releasing image-view v$WS_VERSION"
+
+      # Release 正文取自 CHANGELOG.md 的对应版本段，保持单一来源。
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        shell: bash
+        run: |
+          VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+
+          SECTION=$(awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { inside = 1; next }
+            inside && index($0, "## [") == 1 { inside = 0 }
+            inside { print }
+          ' CHANGELOG.md)
+
+          if [[ -z "${SECTION//[[:space:]]/}" ]]; then
+            echo "::error::CHANGELOG.md 缺少 '## [$VERSION]' 段落，补齐后再打 tag。"
+            exit 1
+          fi
+
+          {
+            echo 'body<<RELEASE_BODY_EOF_7c1f'
+            echo "$SECTION"
+            echo ''
+            echo '### 下载'
+            echo ''
+            echo '- Windows：`*-setup.exe`（普通电脑选 x64，ARM 设备选 arm64）'
+            echo '- macOS：Apple 芯片选 `aarch64.dmg`，Intel 选 `x64.dmg`'
+            echo '- Linux：`.deb`、`.rpm` 或 `.AppImage`'
+            echo ''
+            echo '安装后可通过「帮助 → 检查更新…」升级。'
+            echo 'RELEASE_BODY_EOF_7c1f'
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Extracted $(printf '%s\n' "$SECTION" | wc -l) lines of release notes."
 
   build:
     name: Build ${{ matrix.platform }}
@@ -122,7 +159,7 @@ jobs:
           projectPath: app
           tagName: ${{ github.ref_name }}
           releaseName: 'image-view ${{ github.ref_name }}'
-          releaseBody: 'See the assets to download and install this version.'
+          releaseBody: ${{ needs.validate.outputs.release_body }}
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

@@ -54,6 +54,8 @@ git push origin v1.3.0
 
 工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.3.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
+Release 正文取自 `CHANGELOG.md` 中 `## [版本号]` 段落（到下一个 `## [` 为止），并追加三端安装包的选择说明。该段落缺失时工作流会在校验阶段直接失败，因此打标签前需先把这个版本的变更记录补进 `CHANGELOG.md`。
+
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
 - **文件关联**：安装时注册 19 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
 - **卸载**：从「设置 → 应用」或开始菜单卸载。
