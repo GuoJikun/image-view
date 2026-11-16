@@ -34,6 +34,8 @@
   --shadow-tile: 0 2px 8px rgba(0, 0, 0, 0.22);
   --tooltip-bg: #2b2b2e;
   --tooltip-text: #f5f5f7;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
 
   /* 画布恒深，三端一致 */
   --canvas: #1c1c1e;
@@ -76,6 +78,8 @@
     --shadow-tile: 0 2px 8px rgba(0, 0, 0, 0.45);
     --tooltip-bg: #f5f5f7;
     --tooltip-text: #1d1d1f;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.24);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.44);
     --canvas: #101012;
     color-scheme: dark;
   }
@@ -106,6 +110,8 @@
   --shadow-tile: 0 2px 8px rgba(0, 0, 0, 0.22);
   --tooltip-bg: #2b2b2e;
   --tooltip-text: #f5f5f7;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.22);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.4);
   --canvas: #1c1c1e;
   color-scheme: light;
 }
@@ -133,6 +139,8 @@
   --shadow-tile: 0 2px 8px rgba(0, 0, 0, 0.45);
   --tooltip-bg: #f5f5f7;
   --tooltip-text: #1d1d1f;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.24);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.44);
   --canvas: #101012;
   color-scheme: dark;
 }
@@ -748,11 +756,8 @@ kbd {
   position: relative;
   flex: 0 0 88px;
   height: 88px;
-  overflow-x: auto;
-  overflow-y: hidden;
   background: var(--strip);
   border-top: 1px solid var(--hairline);
-  scrollbar-width: thin;
 }
 
 .thumb-track {
@@ -1377,6 +1382,116 @@ kbd {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ---------- overlay 滚动条（仿 ElScrollbar） ---------- */
+
+.app-scrollbar {
+  position: relative;
+  /* 外层只做定位基准与裁剪，本身不滚动，bar 才能固定在可视区底部。 */
+  overflow: hidden;
+}
+
+/* 真正的滚动容器；绝对定位的 bar 不能放在它里面，否则会跟着内容一起滚。 */
+.app-scrollbar__wrap {
+  width: 100%;
+  height: 100%;
+  /* 原生条彻底隐藏，滚动能力（滚轮 / 触控板 / 触屏 / 惯性）保留。 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior: contain;
+}
+
+.app-scrollbar__wrap::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.app-scrollbar--horizontal .app-scrollbar__wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.app-scrollbar--vertical .app-scrollbar__wrap {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* 横向：view 由内容撑开，内容不足时仍不短于视口。 */
+.app-scrollbar--horizontal .app-scrollbar__view {
+  width: max-content;
+  min-width: 100%;
+  height: 100%;
+}
+
+.app-scrollbar--vertical .app-scrollbar__view {
+  min-height: 100%;
+}
+
+.app-scrollbar__bar {
+  position: absolute;
+  z-index: 2;
+  border-radius: 3px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+  user-select: none;
+  touch-action: none;
+}
+
+/* 淡出时不拦截任何点击，避免挡住条带里的卡片。 */
+.app-scrollbar.is-visible .app-scrollbar__bar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.app-scrollbar--horizontal .app-scrollbar__bar {
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 8px;
+}
+
+.app-scrollbar--vertical .app-scrollbar__bar {
+  top: 0;
+  bottom: 0;
+  right: 2px;
+  width: 8px;
+}
+
+.app-scrollbar__thumb {
+  position: absolute;
+  border-radius: 3px;
+  background: var(--scrollbar-thumb);
+  transition: background-color 120ms ease;
+  will-change: transform;
+}
+
+.app-scrollbar--horizontal .app-scrollbar__thumb {
+  top: 1px;
+  bottom: 1px;
+  left: 0;
+}
+
+.app-scrollbar--vertical .app-scrollbar__thumb {
+  top: 0;
+  right: 1px;
+  left: 1px;
+}
+
+.app-scrollbar.is-visible .app-scrollbar__thumb:hover,
+.app-scrollbar.is-dragging .app-scrollbar__thumb {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.app-scrollbar.is-dragging {
+  cursor: default;
+}
+
+.app-scrollbar__thumb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* ---------- 滚动条 ---------- */

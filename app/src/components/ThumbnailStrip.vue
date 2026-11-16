@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useViewerStore } from "../stores/viewer";
 import { thumbnailUrl } from "../services/ipc";
+import AppScrollbar from "./AppScrollbar.vue";
 
 const store = useViewerStore();
-const scroller = ref<HTMLDivElement | null>(null);
+const strip = ref<InstanceType<typeof AppScrollbar> | null>(null);
 const scrollLeft = ref(0);
 const viewportWidth = ref(0);
 /** 卡片 76 × 56 + 间距 9；左右内边距 16（设计 4.3）。 */
 const ITEM_WIDTH = 85;
 const PAD = 16;
 const OVERSCAN = 4;
-
-let observer: ResizeObserver | null = null;
 
 const entries = computed(() => store.snapshot?.entries ?? []);
 const startIndex = computed(() =>
@@ -28,20 +27,24 @@ const visible = computed(() =>
 );
 const trackWidth = computed(() => `${PAD * 2 + entries.value.length * ITEM_WIDTH}px`);
 
-function onScroll(): void {
-  scrollLeft.value = scroller.value?.scrollLeft ?? 0;
+function onScroll(offset: number): void {
+  scrollLeft.value = offset;
+}
+
+function onResize(size: { client: number; scroll: number }): void {
+  viewportWidth.value = size.client;
 }
 
 function measure(): void {
-  viewportWidth.value = scroller.value?.clientWidth ?? 0;
+  viewportWidth.value = strip.value?.wrap?.clientWidth ?? 0;
 }
 
 function centerCurrent(behavior: ScrollBehavior = "smooth"): void {
   const index = store.currentIndex;
-  const element = scroller.value;
+  const element = strip.value?.wrap;
   if (index < 0 || !element) return;
   const target = PAD + index * ITEM_WIDTH - element.clientWidth / 2 + 38;
-  element.scrollTo({ left: Math.max(0, target), behavior });
+  strip.value?.scrollTo(Math.max(0, target), behavior);
 }
 
 watch(
@@ -56,24 +59,35 @@ watch(
   () => store.snapshot?.dir,
   async () => {
     scrollLeft.value = 0;
-    if (scroller.value) scroller.value.scrollLeft = 0;
+    strip.value?.scrollTo(0, "auto");
     await nextTick();
     centerCurrent("auto");
   },
 );
 
+/* 条目数量变化后内容宽度才落定，补一次测量，避免 thumb 停在旧比例上。 */
+watch(
+  () => entries.value.length,
+  async () => {
+    await nextTick();
+    strip.value?.update();
+  },
+);
+
 onMounted(() => {
-  observer = new ResizeObserver(measure);
-  if (scroller.value) observer.observe(scroller.value);
   measure();
   nextTick(() => centerCurrent("auto"));
 });
-
-onBeforeUnmount(() => observer?.disconnect());
 </script>
 
 <template>
-  <section ref="scroller" class="thumbnail-strip" aria-label="缩略图" @scroll.passive="onScroll">
+  <AppScrollbar
+    ref="strip"
+    class="thumbnail-strip"
+    aria-label="缩略图"
+    @scroll="onScroll"
+    @resize="onResize"
+  >
     <div class="thumb-track" :style="{ width: trackWidth }">
       <button
         v-for="{ entry, index } in visible"
@@ -94,5 +108,5 @@ onBeforeUnmount(() => observer?.disconnect());
         />
       </button>
     </div>
-  </section>
+  </AppScrollbar>
 </template>

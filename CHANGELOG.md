@@ -13,6 +13,10 @@
 - Windows 安装包补齐协助程序声明：`OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` + `Capabilities` 能力项，本程序始终出现在右键「打开方式」与「设置 → 默认应用」中，不再依赖是否持有默认处理器；卸载时清理上述键值。
 - macOS 与 Linux 同步声明文档类型（`CFBundleDocumentTypes` / `.desktop` 的 `MimeType`），三端「打开方式」菜单均可列出本程序。
 
+### 变更
+
+- 缩略图条改用自绘悬浮滚动条（仿 Element Plus `ElScrollbar`）：滚动条浮在条带底部、不再挤占 88 px 高度，Windows 下缩略图卡片不再被原生滚动条压扁；鼠标进入条带时淡入，支持拖拽滑块、点击轨道跳转、滚轮横滚与键盘方向键 / Home / End。
+
 ## [1.3.0] - 2026-11-14
 
 统一安装与运行标识，日志改为随安装目录存放；从 1.2.0 升级需先卸载旧版。
