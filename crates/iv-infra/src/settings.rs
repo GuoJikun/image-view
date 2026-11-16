@@ -1,7 +1,7 @@
 //! 持久化设置：上次浏览位置、排序方式与界面偏好。
 //!
 //! GUI 适配器决定存储位置与文件格式；这里只负责数据结构和兼容性检查。
-//! Tauri 版把整份 [`Settings`] 以 RON 写入 `settings.ron`，
+//! 应用把整份 [`Settings`] 以 RON 写入 `settings.ron`，
 //! 窗口几何由 `tauri-plugin-window-state` 单独管理。
 
 use std::path::PathBuf;

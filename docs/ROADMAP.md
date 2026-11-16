@@ -42,16 +42,16 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 - [x] 幻灯片：3s 间隔，`Space` 开始/停止，手动翻页重置计时，末张自动停止。
 - [x] 相邻图片预加载（`Open` 优先，>30 MP 跳过）+ 3 张 LRU 纹理缓存（≤72M 像素）。
 
-> Tauri 版（1.2.0 起）的 P0-M7 复刻实现与验收见 [PLAN-P0.md](PLAN-P0.md) §9.8。
+> 1.2.0 起的 P0-M7 重写实现与验收见 [PLAN-P0.md](PLAN-P0.md) §9.8。
 
 **质量基线**：37 个单元测试；`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`cargo test`、`cargo build --release` 全部通过；release exe 约 16.8 MB。
 
 ## 当前焦点
 
 - **下一步**：P1 只剩 M6 图库/搜索/对比（v1.5.0）。GIF/WebP 动画（M7）已于 2026-11-16 补齐，随下个版本发布。
-- **理由**：查看体验（M1~M4）、发布工程（M5）、自动更新（M8）、中/英多语言（M9）与动画（M7）均已完成，v1.0 范围收敛；Tauri 版复刻的持久化/缓存/预加载也已补齐。
+- **理由**：查看体验（M1~M4）、发布工程（M5）、自动更新（M8）、中/英多语言（M9）与动画（M7）均已完成，v1.0 范围收敛；1.2.0 重写的持久化/缓存/预加载也已补齐。
 - **发布前检查**：推送 `v*` 标签由 GitHub Actions（`tauri-apps/tauri-action`，`includeUpdaterJson` + `updaterJsonPreferNsis`）构建三端安装包并生成 `latest.json`；核对 `latest.json` 中的签名与各安装包哈希一致；确认首版发布说明注明未签名与 SmartScreen 提示。
-- **完成定义**：`cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 全部通过，[PLAN-P1.md](PLAN-P1.md) §6 已补 M8 / M9 与 Tauri 复刻验收记录。
+- **完成定义**：`cargo fmt --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 全部通过，[PLAN-P1.md](PLAN-P1.md) §6 已补 M8 / M9 与 M1 / M4 重写验收记录。
 
 ## P1 里程碑看板（v1.0）
 
@@ -67,11 +67,11 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 | P1-M6 | 图库、搜索与对比（只读） | 3~4 d | ⏸ 延后至 v1.1 | — |
 | P1-M7 | GIF / WebP 动画 | 1~1.5 d | ✅ | 2026-11-16 |
 
-发布策略：M1~M5 + M8 + M9 全部完成 → v1.0.0；图库（M6）移到 v1.1；动画（M7）已于 2026-11-16 由 Tauri 版补齐。**编辑能力不在 P1**，见 P2-M8。
+发布策略：M1~M5 + M8 + M9 全部完成 → v1.0.0；图库（M6）移到 v1.1；动画（M7）已于 2026-11-16 补齐。**编辑能力不在 P1**，见 P2-M8。
 
 P1-M5 已完成安装器、文件关联、崩溃日志与版本规范；原属 M5 的自动更新与中/英 UI 于 2026-11-12 提升为独立的 M8 / M9 并纳入 v1.0。界面改版（版式 A）已随 M5 之后的 `f852060` 落地。
 
-Tauri 版（1.2.0 起）对 M1 / M4 的复刻（`settings.ron`、`tauri-plugin-window-state`、缩略图磁盘缓存）与 P0-M7 的相邻预加载已在 2026-11-16 完成；P1-M7 的 GIF/WebP 逐帧播放同日补齐，验收记录见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8。
+1.2.0 起对 M1 / M4 的重写（`settings.ron`、`tauri-plugin-window-state`、缩略图磁盘缓存）与 P0-M7 的相邻预加载已在 2026-11-16 完成；P1-M7 的 GIF/WebP 逐帧播放同日补齐，验收记录见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8。
 
 ## P2 / P3 摘要
 
@@ -86,9 +86,9 @@ P2 不阻塞 v1.0；P3 为探索性方向，进入开发前需拆成 P1/P2 级�
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
-| 2026-11-16 | P1-M7（Tauri 版）GIF/WebP 动画：逐帧解码（帧间隔钳制 50~1000 ms、循环次数按容器语义换算、64 MP/1200 帧预算回退首帧）、`iviewer://frame` 帧资源与 `image:animation-ready` 事件、前端逐帧播放 + 缓存窗口预取、`Space` 与工具栏播放键「动画优先、否则幻灯片」；112 个单测 | 本次提交 |
+| 2026-11-16 | P1-M7 GIF/WebP 动画：逐帧解码（帧间隔钳制 50~1000 ms、循环次数按容器语义换算、64 MP/1200 帧预算回退首帧）、`iviewer://frame` 帧资源与 `image:animation-ready` 事件、前端逐帧播放 + 缓存窗口预取、`Space` 与工具栏播放键「动画优先、否则幻灯片」；112 个单测 | `e0c437a` |
 | 2026-11-16 | v1.4.1 发布：更新说明改为按 Markdown 渲染（标题 / 列表 / 行内代码 / 粗体），弹窗内独立滚动，不再撑高对话框；当前版本改为运行时读取，删除前端 `APP_VERSION` 常量 | `1610603` · `adbd56b` |
-| 2026-11-16 | v1.4.0 发布：Tauri 复刻 P1-M1 / P1-M4 / P0-M7（`settings.ron` + `tauri-plugin-window-state` 恢复会话与窗口几何、缩略图磁盘缓存 256 MB、相邻图片预加载）；缩略图条改用自绘悬浮滚动条；更新弹窗仅允许通过关闭按钮退出 | `b908d92` · `2220e46` · `75bb618` · `c190901` · `5f782b4` |
+| 2026-11-16 | v1.4.0 发布：重写 P1-M1 / P1-M4 / P0-M7（`settings.ron` + `tauri-plugin-window-state` 恢复会话与窗口几何、缩略图磁盘缓存 256 MB、相邻图片预加载）；缩略图条改用自绘悬浮滚动条；更新弹窗仅允许通过关闭按钮退出 | `b908d92` · `2220e46` · `75bb618` · `c190901` · `5f782b4` |
 | 2026-11-14 | v1.3.0 标识统一：Cargo 包名 / `productName` / bundle identifier 统一为 `image-view`，安装目录改为 `%LOCALAPPDATA%\image-view`；日志改为随安装目录存放并带可写性回退；清理根 `assets/` 遗留资源 | `70f0856` |
 | 2026-11-12 | P1-M8 自动更新 + P1-M9 中/英多语言：`update.json` 清单、SHA-256 校验、NSIS 静默安装、`.part` 清理；`i18n` 资源表与即时切换；98 个单测，release 20,313,088 字节，安装包 7,699,260 字节 | 本次提交 |
 | 2026-11-12 | 范围调整：自动更新与中/英多语言纳入 v1.0（新增 P1-M8 / M9），图库（M6）后移 v1.1、动画（M7）后移 v1.2 | 本次提交 |
@@ -127,7 +127,7 @@ cargo test --workspace
 pnpm --dir app build
 ```
 
-Tauri 版不再产出单文件 exe，发布由 `v*` 标签触发的 GitHub Actions 完成；需要本地安装包时在 `app/` 下运行 `pnpm tauri build`。
+不再产出单文件 exe，发布由 `v*` 标签触发的 GitHub Actions 完成；需要本地安装包时在 `app/` 下运行 `pnpm tauri build`。
 
 发布前额外要求：
 
