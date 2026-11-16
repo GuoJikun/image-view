@@ -86,7 +86,7 @@ onBeforeUnmount(() => observer?.disconnect());
         @click="store.select(index)"
       >
         <img
-          :src="thumbnailUrl(entry.id, 128, 0)"
+          :src="thumbnailUrl(entry.id, 128, entry.revision)"
           :alt="entry.name"
           loading="lazy"
           decoding="async"

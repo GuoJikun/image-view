@@ -1,10 +1,15 @@
 //! 通用 LRU 缓存。
 //!
-//! 提供两种策略：
+//! 提供三种策略：
 //! - [`LruCache`]：按条目数淘汰，适合缩略图纹理句柄。
 //! - [`BudgetCache`]：按条目数 + 成本（如像素数）淘汰，可保护当前显示的条目。
+//! - [`FileCache`]：目录级磁盘缓存，按总字节数淘汰最久未使用的文件。
 //!
-//! 本 crate 不持有像素或 GUI 资源，只做键值容器。
+//! 本 crate 不持有像素或 GUI 资源；[`LruCache`] / [`BudgetCache`] 只做键值容器。
+
+mod file_cache;
+
+pub use file_cache::FileCache;
 
 use std::collections::VecDeque;
 
@@ -51,6 +56,11 @@ impl<K: PartialEq, V: Clone> LruCache<K, V> {
 
     pub fn remove(&mut self, key: &K) {
         self.entries.retain(|(entry, _)| entry != key);
+    }
+
+    /// 删除所有不满足 `keep` 的条目；用于“源文件删除后清理它的所有尺寸”。
+    pub fn retain(&mut self, mut keep: impl FnMut(&K) -> bool) {
+        self.entries.retain(|(key, _)| keep(key));
     }
 
     pub fn len(&self) -> usize {
@@ -245,5 +255,18 @@ mod tests {
         assert!(cache.contains(&"a"));
         assert!(!cache.contains(&"b"));
         assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn lru_retain_drops_matching_entries() {
+        let mut cache = LruCache::new(8);
+        for key in ["keep", "drop-1", "drop-2"] {
+            cache.insert(key, 1);
+        }
+
+        cache.retain(|key| !key.starts_with("drop"));
+
+        assert_eq!(cache.len(), 1);
+        assert!(cache.contains(&"keep"));
     }
 }

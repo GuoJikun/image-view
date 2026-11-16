@@ -4,6 +4,7 @@ export interface DirectoryEntry {
   id: string;
   path: string;
   name: string;
+  revision: number;
 }
 
 export interface DirectorySnapshot {

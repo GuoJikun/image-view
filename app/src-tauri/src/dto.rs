@@ -61,6 +61,8 @@ pub struct DirectoryEntryDto {
     pub id: String,
     pub path: String,
     pub name: String,
+    /// 文件修改时间（毫秒），进入缩略图 URL 以刷新 WebView 缓存。
+    pub revision: u64,
 }
 
 /// 一次目录扫描的完整快照。

@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::UNIX_EPOCH;
 
 use iv_application::FolderNav;
 use iv_domain::SortOrder;
@@ -43,6 +44,10 @@ impl DirectoryState {
                 .zip(self.nav.files.iter())
                 .all(|(entry, path)| entry.path == path.to_string_lossy());
         if unchanged {
+            // 只刷新当前图片的 revision，避免每次翻页都为整个目录做 metadata。
+            if let Some(entry) = self.nav.index.and_then(|index| self.entries.get_mut(index)) {
+                entry.revision = modified_millis(Path::new(&entry.path));
+            }
             return;
         }
 
@@ -57,6 +62,7 @@ impl DirectoryState {
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_default(),
+                revision: modified_millis(path),
             })
             .collect();
 
@@ -116,7 +122,7 @@ impl AppState {
             directory: Mutex::new(DirectoryState::new(restored.sort)),
             registry: Mutex::new(HashMap::new()),
             previews: PreviewService::new(app.clone()),
-            thumbnails: ThumbnailService::default(),
+            thumbnails: ThumbnailService::new(thumbnail_cache_dir(app)),
             caps: Caps::default(),
             startup_path,
             settings,
@@ -244,6 +250,7 @@ impl AppState {
         directory.nav.remove_current();
         directory.sync_entries(&mut registry);
         self.previews.cancel();
+        self.thumbnails.remove_path(&path);
         self.persist_session(&directory);
         Ok(directory.snapshot())
     }
@@ -286,6 +293,30 @@ fn settings_path(app: &AppHandle) -> PathBuf {
             std::env::temp_dir().join("image-view").join("settings.ron")
         }
     }
+}
+
+/// 缩略图磁盘缓存放在应用缓存目录；与配置分开，浏览器/系统清理缓存时可直接删除。
+fn thumbnail_cache_dir(app: &AppHandle) -> Option<PathBuf> {
+    match app.path().app_cache_dir() {
+        Ok(dir) => Some(dir.join("thumbs")),
+        Err(error) => {
+            log::warn!(
+                target: "image_view::thumbnail",
+                "无法确定缓存目录，缩略图只保存在内存：{error}"
+            );
+            None
+        }
+    }
+}
+
+/// 图片修改时间（毫秒）；0 表示无法读取，前端据此刷新缩略图。
+fn modified_millis(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 pub fn sort_label(order: SortOrder) -> &'static str {
