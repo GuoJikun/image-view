@@ -16,9 +16,11 @@
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.14.1",
     "pinia": "^4.1.0",
-    "vue": "^3.5.45"
+    "vue": "^3.5.45",
+    "vue-i18n": "^11.4.20"
   },
   "devDependencies": {
+    "@intlify/unplugin-vue-i18n": "^11.2.8",
     "@tauri-apps/cli": "^2.12.4",
     "@vitejs/plugin-vue": "^6.0.11",
     "typescript": "~5.9.3",

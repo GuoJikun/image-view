@@ -1,0 +1,140 @@
+{
+  "app": {
+    "name": "Image Viewer"
+  },
+  "menu": {
+    "file": "File",
+    "view": "View",
+    "help": "Help",
+    "label": "Main menu",
+    "open": "Open Image…",
+    "reveal": "Reveal in File Manager",
+    "copyPath": "Copy Path",
+    "trash": "Move to Trash",
+    "thumbnails": "Thumbnails",
+    "slideshow": "Slideshow",
+    "sort": "Sort",
+    "sortName": "By Name",
+    "sortModified": "By Date Modified",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "fit": "Fit to Window",
+    "actual": "Actual Size",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "language": "Language",
+    "langSystem": "System",
+    "langZh": "简体中文",
+    "langEn": "English",
+    "colorBadge": "Show Color Conversion Badge",
+    "metadata": "Metadata Panel",
+    "shortcuts": "Keyboard Shortcuts…",
+    "update": "Check for Updates…",
+    "autoUpdate": "Check for Updates at Launch",
+    "logs": "Open Logs Folder",
+    "licenses": "Third-Party Licenses"
+  },
+  "toolbar": {
+    "open": "Open image",
+    "prev": "Previous image",
+    "next": "Next image",
+    "thumbnails": "Thumbnails",
+    "slideshow": "Slideshow",
+    "pauseSlideshow": "Pause slideshow",
+    "animation": "Play animation",
+    "pauseAnimation": "Pause animation",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "fit": "Fit to window"
+  },
+  "empty": {
+    "title": "No image open",
+    "hintPrefix": "Drop a file, or press ",
+    "hintSuffix": " to choose",
+    "open": "Open Image…",
+    "drag": "Drop to open"
+  },
+  "status": {
+    "noImage": "No image",
+    "downscaled": "Downsampled",
+    "slideshow": "Slideshow",
+    "slideshowHint": "Space starts or stops the slideshow",
+    "animation": "Animation",
+    "animationPaused": "Animation paused",
+    "animationHint": "Space plays or pauses the animation",
+    "decoding": "Decoding…"
+  },
+  "error": {
+    "retry": "Retry",
+    "close": "Dismiss"
+  },
+  "notice": {
+    "copied": "Path copied",
+    "trashed": "Moved to Trash",
+    "copyFailed": "Copy failed"
+  },
+  "dialog": {
+    "shortcuts": "Keyboard Shortcuts",
+    "update": "Check for Updates",
+    "version": "Current version",
+    "close": "Close"
+  },
+  "update": {
+    "checking": "Checking for updates…",
+    "upToDate": "You're up to date.",
+    "available": "Update available",
+    "notes": "Release notes",
+    "download": "Download Update",
+    "downloading": "Downloading…",
+    "cancel": "Cancel",
+    "ready": "Update ready",
+    "readyHint": "Click \"Install & Restart\" to finish updating.",
+    "install": "Install & Restart",
+    "error": "Update check failed",
+    "retry": "Retry",
+    "check": "Check for Updates",
+    "autoCheckFailed": "Auto-check for updates failed"
+  },
+  "metadata": {
+    "title": "Metadata",
+    "hide": "Hide panel",
+    "empty": "Image details appear here after opening a file.",
+    "format": "Format",
+    "sourceSize": "Source size",
+    "displaySize": "Display size",
+    "depth": "Depth",
+    "fileSize": "File size",
+    "modified": "Modified",
+    "color": "Color",
+    "downscaled": "Downsampled",
+    "yes": "Yes",
+    "no": "No",
+    "converted": "Converted to sRGB",
+    "note": "The preview is downsampled; 100% refers to the displayed size, not the source."
+  },
+  "shortcut": {
+    "open": "Open image",
+    "navigate": "Previous / next image",
+    "zoom": "Zoom in / out",
+    "fit": "Fit to window",
+    "actual": "Actual size",
+    "rotate": "Rotate clockwise / counter-clockwise",
+    "flipH": "Flip horizontally",
+    "flipV": "Flip vertically",
+    "playback": "Play / pause animation (slideshow when static)",
+    "fullscreen": "Fullscreen",
+    "trash": "Move to Trash",
+    "copyPath": "Copy path",
+    "dismiss": "Dismiss banner or dialog",
+    "pan": "Drag to pan",
+    "wheel": "Wheel to zoom at cursor"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  }
+}

@@ -1,275 +1,39 @@
 /**
- * 极简 i18n：只覆盖窗口 chrome（菜单、工具栏、状态栏、空状态、弹窗）。
- * 语言菜单提供「跟随系统 / 简体中文 / English」，切换即时生效。
+ * 多语言：基于 vue-i18n（Composition 模式）的全局 composer。
+ *
+ * - 文案表在 `locales/zh.json` / `locales/en.json`，嵌套结构直接对应 `t("menu.open")` 的路径；
+ *   两者键结构由 `MessageShape` 约束，漏翻或多写都会编译失败。
+ * - 消息**在构建时预编译**（`@intlify/unplugin-vue-i18n`），运行时不需要 `new Function`，
+ *   因此无需为了 i18n 放开 CSP 的 `script-src`。
+ * - 语言菜单提供「跟随系统 / 简体中文 / English」，切换即时生效并写 localStorage。
+ * - 插值走第二个参数：`t("update.available", { version })`，文案里写 `{version}`。
  */
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { createI18n } from "vue-i18n";
+import en from "./locales/en.json";
+import zh from "./locales/zh.json";
+
+/** 层级展平后的点号键，如 `"menu.open"`。 */
+type Leaves<T> = T extends string
+  ? never
+  : {
+      [K in keyof T & string]: T[K] extends string ? K : `${K}.${Leaves<T[K]>}`;
+    }[keyof T & string];
+
+/** 全部可用文案键；`t()` 的入参即此联合类型，拼错键名编译期就报错。 */
+export type MessageKey = Leaves<typeof zh>;
+
+/** 把 zh 的键结构放宽成 string 值，用于强制其它语言结构一致。 */
+type MessageShape<T> = {
+  [K in keyof T]: T[K] extends string ? string : MessageShape<T[K]>;
+};
+
+const messages: { zh: typeof zh; en: MessageShape<typeof zh> } = { zh, en };
 
 export type LocaleSetting = "system" | "zh" | "en";
 export type ResolvedLocale = "zh" | "en";
 
 const STORAGE_KEY = "image-view.locale";
-
-const zh = {
-  "app.name": "图片查看器",
-
-  "menu.file": "文件",
-  "menu.view": "显示",
-  "menu.help": "帮助",
-  "menu.label": "主菜单",
-  "menu.open": "打开图片…",
-  "menu.reveal": "在文件管理器中显示",
-  "menu.copyPath": "复制路径",
-  "menu.trash": "移到废纸篓",
-  "menu.thumbnails": "缩略图条",
-  "menu.slideshow": "幻灯片",
-  "menu.sort": "排序",
-  "menu.sortName": "按名称",
-  "menu.sortModified": "按修改时间",
-  "menu.zoomIn": "放大",
-  "menu.zoomOut": "缩小",
-  "menu.fit": "适配窗口",
-  "menu.actual": "实际大小",
-  "menu.theme": "主题",
-  "menu.themeSystem": "跟随系统",
-  "menu.themeLight": "浅色",
-  "menu.themeDark": "深色",
-  "menu.language": "语言",
-  "menu.langSystem": "跟随系统",
-  "menu.langZh": "简体中文",
-  "menu.langEn": "English",
-  "menu.colorBadge": "显示色彩转换标记",
-  "menu.metadata": "元数据面板",
-  "menu.shortcuts": "快捷键…",
-  "menu.update": "检查更新…",
-  "menu.autoUpdate": "启动时检查更新",
-  "menu.logs": "打开日志文件夹",
-  "menu.licenses": "第三方许可证",
-
-  "toolbar.open": "打开图片",
-  "toolbar.prev": "上一张",
-  "toolbar.next": "下一张",
-  "toolbar.thumbnails": "缩略图条",
-  "toolbar.slideshow": "幻灯片",
-  "toolbar.pauseSlideshow": "暂停幻灯片",
-  "toolbar.animation": "播放动画",
-  "toolbar.pauseAnimation": "暂停动画",
-  "toolbar.zoomOut": "缩小",
-  "toolbar.zoomIn": "放大",
-  "toolbar.fit": "适配窗口",
-
-  "empty.title": "还没有打开图片",
-  "empty.hintPrefix": "拖入文件，或按 ",
-  "empty.hintSuffix": " 选择",
-  "empty.open": "打开图片…",
-  "empty.drag": "松开以打开",
-
-  "status.noImage": "没有图片",
-  "status.downscaled": "已降采样",
-  "status.slideshow": "幻灯片中",
-  "status.slideshowHint": "Space 控制幻灯片",
-  "status.animation": "动画",
-  "status.animationPaused": "动画已暂停",
-  "status.animationHint": "Space 控制动画播放 / 暂停",
-  "status.decoding": "正在解码…",
-
-  "error.retry": "重试",
-  "error.close": "关闭",
-
-  "notice.copied": "已复制路径",
-  "notice.trashed": "已移到废纸篓",
-  "notice.copyFailed": "复制失败",
-
-  "dialog.shortcuts": "快捷键",
-  "dialog.update": "检查更新",
-  "dialog.version": "当前版本",
-  "dialog.close": "关闭",
-
-  "update.checking": "正在检查更新…",
-  "update.upToDate": "当前已是最新版本。",
-  "update.available": "发现新版本",
-  "update.notes": "更新内容",
-  "update.download": "下载更新",
-  "update.downloading": "正在下载…",
-  "update.cancel": "取消",
-  "update.ready": "更新已就绪",
-  "update.readyHint": "点击「安装并重启」完成更新。",
-  "update.install": "安装并重启",
-  "update.error": "检查更新失败",
-  "update.retry": "重试",
-  "update.check": "检查更新",
-  "update.autoCheckFailed": "自动检查更新失败",
-
-  "metadata.title": "元数据",
-  "metadata.hide": "隐藏面板",
-  "metadata.empty": "打开图片后显示尺寸、格式与色彩信息。",
-  "metadata.format": "格式",
-  "metadata.sourceSize": "原图尺寸",
-  "metadata.displaySize": "显示尺寸",
-  "metadata.depth": "位深",
-  "metadata.fileSize": "文件大小",
-  "metadata.modified": "修改时间",
-  "metadata.color": "色彩",
-  "metadata.downscaled": "降采样",
-  "metadata.yes": "是",
-  "metadata.no": "否",
-  "metadata.converted": "已转换到 sRGB",
-  "metadata.note":
-    "当前显示的是降采样结果；「100%」相对显示尺寸，而非原图。",
-
-  "shortcut.open": "打开图片",
-  "shortcut.navigate": "上一张 / 下一张",
-  "shortcut.zoom": "放大 / 缩小",
-  "shortcut.fit": "适配窗口",
-  "shortcut.actual": "实际大小",
-  "shortcut.rotate": "顺时针 / 逆时针旋转",
-  "shortcut.flipH": "水平翻转",
-  "shortcut.flipV": "垂直翻转",
-  "shortcut.playback": "播放 / 暂停动画（无动画时为幻灯片）",
-  "shortcut.fullscreen": "全屏",
-  "shortcut.trash": "移到废纸篓",
-  "shortcut.copyPath": "复制路径",
-  "shortcut.dismiss": "关闭提示或对话框",
-  "shortcut.pan": "拖动平移",
-  "shortcut.wheel": "滚轮以光标为中心缩放",
-
-  "window.minimize": "最小化",
-  "window.maximize": "最大化",
-  "window.restore": "还原",
-  "window.close": "关闭",
-} as const;
-
-export type MessageKey = keyof typeof zh;
-
-const en: Record<MessageKey, string> = {
-  "app.name": "Image Viewer",
-
-  "menu.file": "File",
-  "menu.view": "View",
-  "menu.help": "Help",
-  "menu.label": "Main menu",
-  "menu.open": "Open Image…",
-  "menu.reveal": "Reveal in File Manager",
-  "menu.copyPath": "Copy Path",
-  "menu.trash": "Move to Trash",
-  "menu.thumbnails": "Thumbnails",
-  "menu.slideshow": "Slideshow",
-  "menu.sort": "Sort",
-  "menu.sortName": "By Name",
-  "menu.sortModified": "By Date Modified",
-  "menu.zoomIn": "Zoom In",
-  "menu.zoomOut": "Zoom Out",
-  "menu.fit": "Fit to Window",
-  "menu.actual": "Actual Size",
-  "menu.theme": "Theme",
-  "menu.themeSystem": "System",
-  "menu.themeLight": "Light",
-  "menu.themeDark": "Dark",
-  "menu.language": "Language",
-  "menu.langSystem": "System",
-  "menu.langZh": "简体中文",
-  "menu.langEn": "English",
-  "menu.colorBadge": "Show Color Conversion Badge",
-  "menu.metadata": "Metadata Panel",
-  "menu.shortcuts": "Keyboard Shortcuts…",
-  "menu.update": "Check for Updates…",
-  "menu.autoUpdate": "Check for Updates at Launch",
-  "menu.logs": "Open Logs Folder",
-  "menu.licenses": "Third-Party Licenses",
-
-  "toolbar.open": "Open image",
-  "toolbar.prev": "Previous image",
-  "toolbar.next": "Next image",
-  "toolbar.thumbnails": "Thumbnails",
-  "toolbar.slideshow": "Slideshow",
-  "toolbar.pauseSlideshow": "Pause slideshow",
-  "toolbar.animation": "Play animation",
-  "toolbar.pauseAnimation": "Pause animation",
-  "toolbar.zoomOut": "Zoom out",
-  "toolbar.zoomIn": "Zoom in",
-  "toolbar.fit": "Fit to window",
-
-  "empty.title": "No image open",
-  "empty.hintPrefix": "Drop a file, or press ",
-  "empty.hintSuffix": " to choose",
-  "empty.open": "Open Image…",
-  "empty.drag": "Drop to open",
-
-  "status.noImage": "No image",
-  "status.downscaled": "Downsampled",
-  "status.slideshow": "Slideshow",
-  "status.slideshowHint": "Space starts or stops the slideshow",
-  "status.animation": "Animation",
-  "status.animationPaused": "Animation paused",
-  "status.animationHint": "Space plays or pauses the animation",
-  "status.decoding": "Decoding…",
-
-  "error.retry": "Retry",
-  "error.close": "Dismiss",
-
-  "notice.copied": "Path copied",
-  "notice.trashed": "Moved to Trash",
-  "notice.copyFailed": "Copy failed",
-
-  "dialog.shortcuts": "Keyboard Shortcuts",
-  "dialog.update": "Check for Updates",
-  "dialog.version": "Current version",
-  "dialog.close": "Close",
-
-  "update.checking": "Checking for updates…",
-  "update.upToDate": "You're up to date.",
-  "update.available": "Update available",
-  "update.notes": "Release notes",
-  "update.download": "Download Update",
-  "update.downloading": "Downloading…",
-  "update.cancel": "Cancel",
-  "update.ready": "Update ready",
-  "update.readyHint": "Click \"Install & Restart\" to finish updating.",
-  "update.install": "Install & Restart",
-  "update.error": "Update check failed",
-  "update.retry": "Retry",
-  "update.check": "Check for Updates",
-  "update.autoCheckFailed": "Auto-check for updates failed",
-
-  "metadata.title": "Metadata",
-  "metadata.hide": "Hide panel",
-  "metadata.empty": "Image details appear here after opening a file.",
-  "metadata.format": "Format",
-  "metadata.sourceSize": "Source size",
-  "metadata.displaySize": "Display size",
-  "metadata.depth": "Depth",
-  "metadata.fileSize": "File size",
-  "metadata.modified": "Modified",
-  "metadata.color": "Color",
-  "metadata.downscaled": "Downsampled",
-  "metadata.yes": "Yes",
-  "metadata.no": "No",
-  "metadata.converted": "Converted to sRGB",
-  "metadata.note":
-    "The preview is downsampled; 100% refers to the displayed size, not the source.",
-
-  "shortcut.open": "Open image",
-  "shortcut.navigate": "Previous / next image",
-  "shortcut.zoom": "Zoom in / out",
-  "shortcut.fit": "Fit to window",
-  "shortcut.actual": "Actual size",
-  "shortcut.rotate": "Rotate clockwise / counter-clockwise",
-  "shortcut.flipH": "Flip horizontally",
-  "shortcut.flipV": "Flip vertically",
-  "shortcut.playback": "Play / pause animation (slideshow when static)",
-  "shortcut.fullscreen": "Fullscreen",
-  "shortcut.trash": "Move to Trash",
-  "shortcut.copyPath": "Copy path",
-  "shortcut.dismiss": "Dismiss banner or dialog",
-  "shortcut.pan": "Drag to pan",
-  "shortcut.wheel": "Wheel to zoom at cursor",
-
-  "window.minimize": "Minimize",
-  "window.maximize": "Maximize",
-  "window.restore": "Restore",
-  "window.close": "Close",
-};
-
-const messages: Record<ResolvedLocale, Record<MessageKey, string>> = { zh, en };
 
 function readStored(): LocaleSetting {
   try {
@@ -281,23 +45,47 @@ function readStored(): LocaleSetting {
   return "system";
 }
 
-export const localeSetting = ref<LocaleSetting>(readStored());
-
 const systemLocale: ResolvedLocale = navigator.language.toLowerCase().startsWith("zh")
   ? "zh"
   : "en";
+
+/** 语言菜单的当前选择；`system` 表示跟随系统。 */
+export const localeSetting = ref<LocaleSetting>(readStored());
 
 export const resolvedLocale = computed<ResolvedLocale>(() =>
   localeSetting.value === "system" ? systemLocale : localeSetting.value,
 );
 
-export function t(key: MessageKey): string {
-  return messages[resolvedLocale.value][key];
+export const i18n = createI18n({
+  legacy: false,
+  locale: resolvedLocale.value,
+  // 缺译文时退回英文，而不是把键名显示给用户。
+  fallbackLocale: "en",
+  messages,
+});
+
+export type TranslateParams = Record<string, string | number>;
+
+/**
+ * 取词。在渲染函数或 `computed` 里调用会随语言切换自动重算。
+ *
+ * - 插值：`t("status.frameCount", { index, total })`，文案里写 `{index}`；
+ * - 复数：`t("status.imageCount", n)`，文案里写 `{count} image | {count} images`
+ *   （中文无复数变化，两份写一样即可）。
+ */
+export function t(key: MessageKey, args?: TranslateParams | number): string {
+  if (args === undefined) return i18n.global.t(key);
+  if (typeof args === "number") return i18n.global.t(key, args);
+  return i18n.global.t(key, args);
 }
 
-function applyDocumentLang(): void {
+function applyLocale(): void {
+  i18n.global.locale.value = resolvedLocale.value;
   document.documentElement.lang = resolvedLocale.value === "zh" ? "zh-CN" : "en";
 }
+
+// immediate 覆盖启动时的首次应用。
+watch(resolvedLocale, applyLocale, { immediate: true });
 
 export function setLocale(next: LocaleSetting): void {
   localeSetting.value = next;
@@ -306,7 +94,4 @@ export function setLocale(next: LocaleSetting): void {
   } catch {
     // 存储不可用时仅在本次会话生效。
   }
-  applyDocumentLang();
 }
-
-applyDocumentLang();
