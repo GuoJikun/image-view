@@ -130,7 +130,7 @@ image-view [PATH]
   -V, --version   显示版本
 ```
 
-日志默认写入安装目录的 `logs\image-view.log`（Windows 按用户安装即 `%LOCALAPPDATA%\image-view\logs\image-view.log`；目录不可写时回退到用户数据目录，macOS 固定为 `~/Library/Logs/image-view`；可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含 backtrace，最多 10 份），可用“帮助 → 打开日志文件夹”直接定位。
+日志默认写入安装目录的 `logs\image-view.log`（Windows 按用户安装即 `%LOCALAPPDATA%\image-view\logs\image-view.log`；目录不可写时回退到用户数据目录，macOS 固定为 `~/Library/Logs/image-view`；可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；每行格式为 `[<时间> <级别> <target>] <消息>`，时间按**本地时区**渲染并带 UTC 偏移（如 `2026-11-16T14:33:37.123+08:00`）；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含本地时间、backtrace，最多 10 份），可用“帮助 → 打开日志文件夹”直接定位。
 
 ## 隐私
 
