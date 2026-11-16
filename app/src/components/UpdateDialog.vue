@@ -6,8 +6,8 @@
  *          ready → install（安装并退出）
  */
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { getVersion } from "@tauri-apps/api/app";
 import { t } from "../i18n";
-import { APP_VERSION } from "../constants";
 import * as ipc from "../services/ipc";
 import { renderMarkdown } from "../services/markdown";
 import AppScrollbar from "./AppScrollbar.vue";
@@ -22,13 +22,24 @@ const phase = ref<Phase>("idle");
 const info = ref<UpdateInfo | null>(null);
 const errorMessage = ref("");
 const progress = reactive<UpdateProgress>({ received: 0, total: null });
+/** 当前版本取自二进制（构建时嵌入的 `tauri.conf.json`），与更新检查用的是同一个值。 */
+const appVersion = ref("");
 /** Release 正文是 Markdown，渲染成受限 HTML 后再插入。 */
 const notesHtml = computed(() => renderMarkdown(info.value?.body ?? ""));
 
 let unlistenProgress: (() => void) | null = null;
 
+async function loadVersion(): Promise<void> {
+  try {
+    appVersion.value = await getVersion();
+  } catch {
+    // 纯浏览器预览没有 Tauri runtime，留空即可。
+  }
+}
+
 onMounted(async () => {
   closeButton.value?.focus();
+  void loadVersion();
   try {
     unlistenProgress = await ipc.onUpdateProgress((payload) => {
       progress.received = payload.received;
@@ -123,7 +134,7 @@ function formatBytes(bytes: number): string {
         <!-- 当前版本 -->
         <p class="update-version">
           <span>{{ t("dialog.version") }}</span>
-          <strong>{{ APP_VERSION }}</strong>
+          <strong>{{ appVersion }}</strong>
         </p>
 
         <!-- 检查中 -->
