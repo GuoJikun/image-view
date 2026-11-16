@@ -104,7 +104,7 @@ function formatBytes(bytes: number): string {
 </script>
 
 <template>
-  <div class="dialog-backdrop" @pointerdown.self="emit('close')">
+  <div class="dialog-backdrop">
     <section
       class="dialog update-dialog"
       role="dialog"

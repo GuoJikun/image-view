@@ -57,10 +57,14 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
   if (isTextInput(event.target)) return;
 
   if (event.key === "Escape") {
-    if (ui.helpOpen || ui.updateOpen) {
+    if (ui.helpOpen) {
       event.preventDefault();
       ui.helpOpen = false;
-      ui.updateOpen = false;
+      return;
+    }
+    // 更新弹窗只能通过「关闭」按钮退出，避免检查或下载过程中被误关。
+    if (ui.updateOpen) {
+      event.preventDefault();
       return;
     }
     store.clearError();
