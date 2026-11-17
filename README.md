@@ -13,6 +13,7 @@
 - **元数据面板**：右侧面板显示格式、文件名、尺寸、文件大小、修改时间、位深与色彩转换信息。
 - **幻灯片**：`Space` 开始 / 停止，3 秒一张，到最后一张自动停止。
 - **文件操作**：`Delete` 移到系统回收站、`Ctrl+Shift+C` 复制路径、在资源管理器中定位；F11 全屏。
+- **界面**：按 [design/macos-first](design/macos-first/README.md) 规范实现——浅 / 深两套色板令牌、30×30 SVG 图标工具栏、三段式胶囊缩放控件（− / 百分比 / +）、76×72 缩略图卡片（选中 2px 强调环）、26px 状态栏、居中空状态、错误横幅与拖放悬停提示。macOS 用系统原生标题栏；Windows / Linux 关系统装饰、自绘 28px 标题栏（拖动、双击最大化、最小化 / 最大化 / 关闭）。
 - **会话记忆**：上次目录 / 图片、排序、缩略图条开关写入配置文件，下次启动自动恢复。
 
 ## 运行
@@ -20,29 +21,29 @@
 需要 Rust 1.95+（edition 2024）：
 
 ```bash
-cargo run -p image-view-iced -- "D:\photos\a.jpg"
-cargo run -p image-view-iced -- "D:\photos"    # 打开目录中第一张
+cargo run -p image-view -- "D:\photos\a.jpg"
+cargo run -p image-view -- "D:\photos"    # 打开目录中第一张
 ```
 
 命令行参数：
 
 ```sh
-image-view-iced [PATH]
+image-view [PATH]
 
   PATH            要打开的图片文件，或目录（打开其中第一张）
   -h, --help      显示帮助
   -V, --version   显示版本
 ```
 
-只读取第一个位置参数，多余参数被忽略。二进制名为 `image-view-iced`，版本号继承自工作区 `Cargo.toml`（当前 1.5.0），随 `main` 同步；本分支不产出安装包。
+只读取第一个位置参数，多余参数被忽略。二进制名为 `image-view`，版本号继承自工作区 `Cargo.toml`（当前 1.5.0），随 `main` 同步；本分支不产出安装包。
 
 ## 配置
 
 偏好写入 `settings.ron`，默认位置：
 
-- Windows：`%APPDATA%\image-view-iced\`
-- macOS：`~/Library/Application Support/image-view-iced/`
-- Linux：`$XDG_CONFIG_HOME/image-view-iced/`（未设则 `~/.config/image-view-iced/`）
+- Windows：`%APPDATA%\image-view\`
+- macOS：`~/Library/Application Support/image-view/`
+- Linux：`$XDG_CONFIG_HOME/image-view/`（未设则 `~/.config/image-view/`）
 
 可用环境变量 `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖目录。文件采用 RON 格式、原子写入（先写临时文件再重命名），解析失败时静默回退默认值。
 
@@ -83,7 +84,7 @@ JPEG / TIFF / PNG / WebP / JXL / HEIC / AVIF 内嵌的 ICC profile 会按 Core �
 - **无文件监听**：目录内容在运行期间新增 / 删除后，需重新打开目录才刷新。
 - **无动画播放**：GIF / WebP / APNG 按静态首帧显示，不逐帧播放。
 - **无翻转、无触控板手势**：旋转只有视图级 90° 步进，不写回文件，切换图片后重置。
-- **主题**：只在读配置文件时生效（跟随系统在本分支回落为深色），界面没有切换控件；元数据面板开关也不持久化。
+- **主题无切换控件**：界面已按规范实现浅 / 深两套色板，但界面没有切换入口，只能读配置文件里的值；「跟随系统」在本分支回落为深色。元数据面板开关也不持久化。
 - **目录扫描不递归**且只在打开时执行一次。
 - **Display P3 输出与 16-bit 屏幕观感**等依赖 WebView 画布的能力不适用于本分支；编码、ICC 转换与 PNG 传输环节仍保留位深，最终由 Iced 的 wgpu renderer 以常规精度呈现。
 
@@ -92,15 +93,16 @@ JPEG / TIFF / PNG / WebP / JXL / HEIC / AVIF 内嵌的 ICC profile 会按 Core �
 ```plain
 Cargo.toml              cargo workspace：成员、共享依赖、release profile 与版本号
 app/                    Iced GUI：入口、状态、消息、Update/View、自绘 widgets 与适配器
-  Cargo.toml            GUI 包声明（image-view-iced）与 Iced 依赖/特性
+  Cargo.toml            GUI 包声明（image-view）与 Iced 依赖/特性
   src/
     main.rs             CLI、日志、窗口图标与 Application 构建
     app.rs              boot / update / view / subscription / title / theme 装配
     message.rs          UI 事件与异步结果（不进入 Core）
+    theme.rs            色板令牌与容器/按钮/胶囊/卡片样式函数
     state/              顶层状态、查看器状态、图库/元数据状态
     update/             Message → Core 用例的映射与周期轮询
-    view/               工具栏、画布区、状态栏、溢出菜单
-    widgets/            图片画布、缩略图条、元数据面板
+    view/               工具栏、画布区、状态栏、溢出菜单、自绘标题栏
+    widgets/            图片画布、缩略图条、元数据面板、内联 SVG 图标集
     adapters/           预览/缩略图服务、RON 存储、错误文案
 crates/                 与 GUI 无关的业务逻辑（从 main 同步），按依赖方向分层
   iv-domain/            排序、语言、主题与支持的扩展名

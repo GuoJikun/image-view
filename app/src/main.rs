@@ -37,7 +37,7 @@ fn main() -> iced::Result {
             return Ok(());
         }
         Some(arg) if arg == OsStr::new("-V") || arg == OsStr::new("--version") => {
-            println!("image-view-iced {}", env!("CARGO_PKG_VERSION"));
+            println!("image-view {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
         }
         Some(arg) => Some(PathBuf::from(arg)),
@@ -45,10 +45,18 @@ fn main() -> iced::Result {
     };
     let _ = STARTUP_PATH.set(startup);
 
+    // 标题栏策略（design/macos-first 二/五）：macOS 用系统原生标题栏，
+    // Windows / Linux 关装饰后由 view/titlebar.rs 自绘 28px 标题栏。
+    #[cfg(not(target_os = "macos"))]
+    let decorations = false;
+    #[cfg(target_os = "macos")]
+    let decorations = true;
+
     let window = iced::window::Settings {
         size: iced::Size::new(1100.0, 760.0),
-        min_size: Some(iced::Size::new(480.0, 320.0)),
+        min_size: Some(iced::Size::new(720.0, 520.0)),
         icon: load_icon(),
+        decorations,
         ..Default::default()
     };
 
@@ -58,7 +66,7 @@ fn main() -> iced::Result {
         .subscription(app::subscription)
         .window(window)
         .settings(iced::Settings {
-            id: Some("image-view-iced".to_owned()),
+            id: Some("image-view".to_owned()),
             ..Default::default()
         })
         .run();
@@ -90,9 +98,9 @@ fn load_icon() -> Option<iced::window::Icon> {
 
 fn print_help() {
     println!(
-        "image-view-iced {}
+        "image-view {}
 用法:
-    image-view-iced [PATH]
+    image-view [PATH]
 
 参数:
     PATH    要打开的图片文件或目录（目录则打开其中第一张图片）

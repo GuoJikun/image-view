@@ -22,7 +22,16 @@ pub fn handle_event(state: &mut AppState, event: iced::Event) -> Task<Message> {
         iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
             key_pressed(state, key, modifiers)
         }
+        iced::Event::Window(iced::window::Event::FileHovered(_)) => {
+            state.drag_hover = true;
+            Task::none()
+        }
+        iced::Event::Window(iced::window::Event::FilesHoveredLeft) => {
+            state.drag_hover = false;
+            Task::none()
+        }
         iced::Event::Window(iced::window::Event::FileDropped(path)) => {
+            state.drag_hover = false;
             library::open_path(state, path)
         }
         iced::Event::Window(iced::window::Event::Rescaled(factor)) => {

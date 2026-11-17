@@ -521,8 +521,8 @@ GUI 依赖为 `iced`，特性见 `app/Cargo.toml`（`wgpu` + `canvas` +
 像素解码只开 `image/png`，用于窗口图标与测试夹具。
 
 ``` bash
-cargo run -p image-view-iced -- "D:\photos\a.jpg"
-cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
+cargo run -p image-view -- "D:\photos\a.jpg"
+cargo run -p image-view -- "D:\photos"     # 目录取第一张
 ```
 
 ### 12.1 目录与文档草案的差异
@@ -533,7 +533,7 @@ cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
 | `adapters/image_resource.rs` | `adapters/preview.rs`（`PreviewService` / `ThumbnailService`） | 主图复用 `iv-image-decode::Loader`，缩略图用独立 2 线程池，句柄统一为 `iced::widget::image::Handle`。 |
 | （未定义） | `adapters/storage.rs` | Iced 没有 egui 的 `Storage`，用一个 RON 键值文件实现 `iv-infra` 的存储端口。 |
 | （未定义） | `adapters/errors.rs` | 把 Core 错误类型转成界面文案，避免文案散落在 View。 |
-| `theme/`（目录） | `theme.rs`（单文件） | 只有 3 个容器样式，无需拆目录。 |
+| `theme/`（目录） | `theme.rs`（单文件）+ `widgets/icons.rs` | 主题令牌与样式函数集中在单文件，内联 SVG 图标单独成模块，无需拆目录。 |
 
 ### 12.2 已实现能力
 
@@ -552,9 +552,21 @@ cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
 - **异步**：主图解码复用 `iv-image-decode::Loader` 的 latest-wins 语义，过期
   结果按 generation 丢弃；`Message::Poll` 每 50 ms 收拢一次，消息量有上界。
 - **系统集成**：`rfd` 文件对话框、拖放打开、回收站删除、资源管理器定位、
-  复制路径、全屏切换、幻灯片（3 s 自动前进）。
+  复制路径、全屏切换、幻灯片（3 s 自动前进）。拖放悬停时画布叠加强调色
+  描边与「松开以打开」提示（`window::Event::FileHovered` /
+  `FilesHoveredLeft`）。
+- **界面视觉规范**：按 [design/macos-first](../design/macos-first/README.md)
+  实现令牌化的浅/深两套色板（`theme::Palette`）与样式函数（chrome、strip、
+  panel、danger_banner、primary_button、icon_button、capsule_segment、
+  thumb_card、text_button、icon_svg）。工具栏为 30×30 图标按钮 + 1×18 分隔线
+  + 118×30 三段式缩放胶囊（−/值块/+，值块点击回适配），图标为内联 SVG
+  （`widgets/icons.rs`，随主题着色）。缩略图卡片 76×72、圆角 8、选中态
+  2px accent 环 + 投影。状态栏 26px 分左右两组，空状态居中图标 + 标题 +
+  说明 + 主按钮，错误用 danger-soft 底横幅。标题栏策略：macOS 保持系统原生；
+  Windows / Linux 关系统装饰、自绘 28px 标题栏（`view/titlebar.rs`，
+  拖动 / 双击最大化 / caption 按钮），全屏时隐藏。
 - **持久化**：最近目录、最近文件、排序、缩略图条开关写入 `settings.ron`
-  （默认 `%APPDATA%\image-view-iced\`，可用
+  （默认 `%APPDATA%\image-view\`，可用
   `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。主题从该文件读取但没有界面切换入口，
   元数据面板开关目前也不持久化。
 - **测试**：源码内有 14 个单测（`app/src` 随实现放置）；
@@ -565,7 +577,8 @@ cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
 1. 单实例、IPC 与文件关联：需要 `iv-platform` 与安装包层面配合，POC 未接入。
 2. 文件监听（`notify`）：当前目录内新增/删除文件后需重新打开目录才刷新。
 3. 原生菜单栏与触控板手势：目前只有自绘工具栏与 `⋯` 溢出菜单。
-4. 长时浏览的大图 GPU 资源生命周期、macOS/Linux renderer 实机验证。
+4. 长时浏览的大图 GPU 资源生命周期、macOS/Linux renderer 实机验证；自绘标题栏
+   与窗口拖动/缩放同样只在 Windows 上验证过，macOS 分支未交叉编译验证。
 5. 多语言（i18n）：POC 只提供中文界面，未接入 `iv-domain::Language`。
 6. 「跟随系统」主题回落为深色：Iced 0.14 的 `Theme` 没有系统主题探测入口；
    界面也没有主题切换控件。

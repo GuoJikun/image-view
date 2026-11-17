@@ -31,6 +31,8 @@ pub struct AppState {
     pub scale_factor: f32,
     pub window_id: Option<iced::window::Id>,
     pub fullscreen: bool,
+    /// 文件正被拖入窗口：画布叠加强调色提示「松开以打开」。
+    pub drag_hover: bool,
 }
 
 impl AppState {
@@ -67,6 +69,7 @@ impl AppState {
             last_advance: Instant::now(),
             scale_factor: 1.0,
             window_id: None,
+            drag_hover: false,
             fullscreen: false,
         };
 
@@ -108,6 +111,7 @@ impl AppState {
             last_advance: Instant::now(),
             scale_factor: 1.0,
             window_id: None,
+            drag_hover: false,
             fullscreen: false,
         }
     }

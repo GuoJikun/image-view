@@ -17,50 +17,73 @@ pub fn menu(state: &AppState) -> Option<Element<'_, Message>> {
 
     let sort = row![
         text("排序：").size(12),
-        button(text("文件名").size(12)).on_press(Message::SetSort(SortOrder::Name)),
-        button(text("修改时间").size(12)).on_press(Message::SetSort(SortOrder::ModifiedNewest)),
+        button(text("文件名").size(12))
+            .style(theme::text_button)
+            .on_press(Message::SetSort(SortOrder::Name)),
+        button(text("修改时间").size(12))
+            .style(theme::text_button)
+            .on_press(Message::SetSort(SortOrder::ModifiedNewest)),
         text(format!("当前 {}", sort_label(state.nav.sort))).size(12),
     ]
     .spacing(8)
     .align_y(iced::Center);
 
     let navigation = row![
-        button(text("首张 (Home)").size(12))
-            .on_press_maybe(state.nav.can_prev().then_some(Message::FirstImage)),
-        button(text("上一张 (←)").size(12))
-            .on_press_maybe(state.nav.can_prev().then_some(Message::Navigate(-1))),
-        button(text("下一张 (→)").size(12))
-            .on_press_maybe(state.nav.can_next().then_some(Message::Navigate(1))),
-        button(text("末张 (End)").size(12))
-            .on_press_maybe(state.nav.can_next().then_some(Message::LastImage)),
+        nav_button("首张 (Home)", state.nav.can_prev(), Message::FirstImage),
+        nav_button("上一张 (←)", state.nav.can_prev(), Message::Navigate(-1)),
+        nav_button("下一张 (→)", state.nav.can_next(), Message::Navigate(1)),
+        nav_button("末张 (End)", state.nav.can_next(), Message::LastImage),
+    ]
+    .spacing(8)
+    .align_y(iced::Center);
+
+    let view_actions = row![
+        labeled_button("实际大小 (1)", Message::ActualSize),
+        labeled_button("顺时针旋转 (R)", Message::Rotate(1)),
+        labeled_button("逆时针旋转 (Shift+R)", Message::Rotate(-1)),
     ]
     .spacing(8)
     .align_y(iced::Center);
 
     let actions = row![
-        button(text("在资源管理器中显示").size(12)).on_press(Message::Reveal),
-        button(text("复制路径").size(12)).on_press(Message::CopyPath),
-        button(text("删除到回收站").size(12)).on_press(Message::DeleteCurrent),
-        button(
-            text(if state.fullscreen {
-                "退出全屏"
+        labeled_button("在资源管理器中显示", Message::Reveal),
+        labeled_button("复制路径", Message::CopyPath),
+        labeled_button("删除到回收站", Message::DeleteCurrent),
+        labeled_button(
+            if state.fullscreen {
+                "退出全屏 (F11)"
             } else {
                 "全屏 (F11)"
-            })
-            .size(12)
-        )
-        .on_press(Message::ToggleFullscreen),
+            },
+            Message::ToggleFullscreen,
+        ),
     ]
     .spacing(8)
     .align_y(iced::Center);
 
     Some(
-        container(column![sort, navigation, actions].spacing(10))
+        container(column![sort, navigation, view_actions, actions].spacing(10))
             .style(theme::panel)
-            .padding(10)
+            .padding(12)
             .width(iced::Fill)
             .into(),
     )
+}
+
+/// 次级菜单按钮，统一样式令牌。
+fn labeled_button(label: &str, message: Message) -> Element<'_, Message> {
+    button(text(label).size(12))
+        .style(theme::text_button)
+        .on_press(message)
+        .into()
+}
+
+fn nav_button(label: &str, enabled: bool, message: Message) -> Element<'_, Message> {
+    let mut btn = button(text(label).size(12)).style(theme::text_button);
+    if enabled {
+        btn = btn.on_press(message);
+    }
+    btn.into()
 }
 
 fn sort_label(order: SortOrder) -> &'static str {

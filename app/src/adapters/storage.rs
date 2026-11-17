@@ -102,8 +102,7 @@ fn config_dir() -> PathBuf {
             .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
     };
 
-    base.unwrap_or_else(std::env::temp_dir)
-        .join("image-view-iced")
+    base.unwrap_or_else(std::env::temp_dir).join("image-view")
 }
 
 #[cfg(test)]
@@ -113,7 +112,7 @@ mod tests {
     #[test]
     fn round_trip_and_remove() {
         let dir = std::env::temp_dir().join(format!(
-            "image-view-iced-storage-{}-{}",
+            "image-view-storage-{}-{}",
             std::process::id(),
             FILE_NAME
         ));

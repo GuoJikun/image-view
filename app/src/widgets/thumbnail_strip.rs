@@ -36,34 +36,29 @@ pub fn view<'a>(
 
         let preview: Element<'a, Message> = match library.thumbs.handle(path) {
             Some(handle) => image(handle.clone())
-                .width(THUMB_ITEM_WIDTH - 16.0)
-                .height(STRIP_HEIGHT - 32.0)
+                .width(66.0)
+                .height(44.0)
                 .content_fit(ContentFit::Contain)
                 .into(),
             None => container(text("…").size(20))
-                .width(THUMB_ITEM_WIDTH - 16.0)
-                .height(STRIP_HEIGHT - 32.0)
+                .width(66.0)
+                .height(44.0)
                 .align_x(iced::Center)
                 .align_y(iced::Center)
                 .into(),
         };
 
+        // 卡片 76×56、圆角 8、选中 2px accent 环 + 投影（规范 4.3）。
         let card = button(
             column![preview, text(name).size(10)]
-                .spacing(4)
+                .spacing(2)
                 .align_x(iced::Center),
         )
         .on_press(Message::Select(position))
         .padding(4)
-        .width(THUMB_ITEM_WIDTH - 8.0)
-        .height(STRIP_HEIGHT - 8.0)
-        .style(move |theme, status| {
-            if selected {
-                button::primary(theme, status)
-            } else {
-                button::text(theme, status)
-            }
-        });
+        .width(76.0)
+        .height(72.0)
+        .style(move |theme, status| crate::theme::thumb_card(theme, status, selected));
 
         cards.push(
             container(card)
@@ -81,7 +76,7 @@ pub fn view<'a>(
             .into(),
     );
 
-    scrollable(row(cards).height(STRIP_HEIGHT))
+    let scroller = scrollable(row(cards).height(STRIP_HEIGHT))
         .id(THUMB_SCROLL_ID)
         .direction(scrollable::Direction::Horizontal(
             scrollable::Scrollbar::new().width(8),
@@ -94,6 +89,12 @@ pub fn view<'a>(
                 offset_x: offset.x,
                 viewport_w: viewport.bounds().width,
             }
-        })
+        });
+
+    // 条底用 strip 令牌，上缘 1px 发丝线与画布分隔（规范 4.3 / 体验清单 9）。
+    container(scroller)
+        .style(crate::theme::strip)
+        .width(Fill)
+        .height(STRIP_HEIGHT)
         .into()
 }

@@ -144,7 +144,11 @@ fn run_worker(queue: &Arc<(Mutex<Queue>, Condvar)>, sender: &Sender<ThumbResult>
 
         let result = decode_thumbnail(&path, MAX_THUMB_SIDE)
             .map(|decoded| {
-                Handle::from_rgba(decoded.size[0] as u32, decoded.size[1] as u32, decoded.rgba)
+                Handle::from_rgba(
+                    decoded.size[0] as u32,
+                    decoded.size[1] as u32,
+                    decoded.rgba.into_rgba8(),
+                )
             })
             .map_err(|error| error.to_string());
 

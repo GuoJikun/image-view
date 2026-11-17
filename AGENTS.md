@@ -21,7 +21,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-本地运行 GUI：`cargo run -p image-view-iced -- <图片或目录路径>`。CI 配置（`*.yml`）由维护者单独维护，改动本分支文档时不要顺手改它。
+本地运行 GUI：`cargo run -p image-view -- <图片或目录路径>`。CI 配置（`*.yml`）由维护者单独维护，改动本分支文档时不要顺手改它。
 
 ## 代码分层
 
@@ -42,6 +42,8 @@ cargo test --workspace
 - 偏好只有一处持久化：`app/src/adapters/storage.rs` 的 `FileStorage`（`settings.ron`，原子写）。新增字段走 `iv-infra::Settings`（加 `#[serde(default)]` 保持兼容），在 `state/` 读写并经 `persist` 落盘；不要引入第二份本地存储。
 - `settings.ron` 目录可用 `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖；默认位置按平台取 `%APPDATA%` / `Application Support` / `XDG_CONFIG_HOME`。
 - 主题只有 Light / Dark / System 三档，且 `app.rs::theme` 把 System 回落为 Dark（Iced 0.14 无系统主题探测入口）；界面无主题切换控件，改主题是改配置文件的行为。
+- 视觉规范以 [design/macos-first](design/macos-first/README.md) 为准。颜色、圆角、间距、字号只从 `theme::Palette` 与 `theme::` 样式函数取，**不要在 `view/` / `widgets/` 里硬编码颜色**；新增可复用样式加在 `theme.rs`，不要就地写匿名闭包样式。图标统一用 `widgets/icons.rs` 的内联 SVG（`Icon` 枚举 + 主题着色），不引入图标字体或图标 crate。
+- 标题栏按平台分叉：macOS 保持系统原生装饰；Windows / Linux 关装饰、用 `view/titlebar.rs` 自绘（拖动、双击最大化、caption 按钮）。改标题栏或窗口 `Settings` 时两侧都要照顾，且注意全屏下自绘标题栏要隐藏。
 - 「跟随系统」的语言判定在 `iv-domain::Language::resolve_tag`（只看主语言子标签，非中文回退英文），系统语言由 `iv-platform::system_locale()` 读取。本分支 GUI 未接线，但 Core 侧规则不要擅自改。
 
 ## 本分支没有的能力

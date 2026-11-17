@@ -32,7 +32,11 @@ impl LoadedImage {
     pub fn from_decoded(path: PathBuf, decoded: Decoded) -> Self {
         Self {
             path,
-            handle: Handle::from_rgba(decoded.size[0] as u32, decoded.size[1] as u32, decoded.rgba),
+            handle: Handle::from_rgba(
+                decoded.size[0] as u32,
+                decoded.size[1] as u32,
+                decoded.rgba.into_rgba8(),
+            ),
             pixel_size: [decoded.size[0] as u32, decoded.size[1] as u32],
             source_size: [decoded.source_size[0] as u32, decoded.source_size[1] as u32],
             depth: decoded.source_depth,

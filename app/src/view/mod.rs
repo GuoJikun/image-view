@@ -2,6 +2,8 @@
 
 pub mod library;
 pub mod settings;
+#[cfg(not(target_os = "macos"))]
+pub mod titlebar;
 pub mod viewer;
 
 use iced::widget::{column, row};
@@ -12,6 +14,13 @@ use crate::state::AppState;
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let mut sections: Vec<Element<'_, Message>> = Vec::new();
+
+    // macOS 用系统原生标题栏；Windows / Linux 自绘（规范二/五）。全屏时隐藏。
+    #[cfg(not(target_os = "macos"))]
+    if !state.fullscreen {
+        sections.push(titlebar::view(state));
+    }
+
     sections.push(viewer::toolbar(state));
 
     if let Some(menu) = settings::menu(state) {

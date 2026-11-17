@@ -32,7 +32,8 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 - **已实现**：命令行 / 对话框 / 拖放打开、单层目录翻页与排序、缩放平移与 90° 旋转、适配 / 100%、
   虚拟滚动缩略图条、元数据面板、3 秒幻灯片、回收站删除 / 复制路径 / 资源管理器定位、全屏、
-  `settings.ron` 会话与偏好持久化。
+  `settings.ron` 会话与偏好持久化；界面已按 `design/macos-first` 规范做视觉规范化（色板令牌、
+  图标工具栏、缩放胶囊、空状态与错误横幅、Windows / Linux 自绘标题栏）。
 - **未完成**：i18n、原生菜单、动画逐帧播放、文件监听、单实例 / 文件关联、触控板手势、
   主题切换控件；这些能力在主分支存在与否都不构成本分支的验收项。
 
@@ -73,6 +74,8 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
+| 2026-11-17 | Iced GUI 按 [design/macos-first](../design/macos-first/README.md) 完成界面视觉规范化：令牌化浅/深色板、图标工具栏与缩放胶囊、缩略图卡片、状态栏、空状态与错误横幅、拖放提示，Windows / Linux 自绘标题栏 | 未提交 |
+| 2026-11-17 | 目录结构整理：`apps/iced-app` 提升为 `app`；workspace 依赖只保留被 ≥2 个成员共享的 6 条，其余内联或删除 | `277ee2e` |
 | 2026-11-17 | 合并 `main` 的非 GUI 部分到本分支：`crates/*` 与工作区 `Cargo.toml`（farbfeld / JPEG XL / APNG、源位深保留、广色域转换、动画降级提示、磁盘缩略图缓存与日志等），并按实际代码重写核心文档 | `456a7bc` |
 | 2026-11-16 | v1.5.0：GIF/WebP 动画逐帧播放、界面偏好统一进 `settings.ron`、macOS 原生菜单勾选状态（`main` 交付，Core 部分随合并进入本分支） | `e0c437a` 等 |
 | 2026-11-14 | v1.2.0 ~ v1.4.1：Tauri + Vue 迁移、三端打包与自动更新、窗口/会话记忆与缩略图磁盘缓存（`main` 交付） | 见 CHANGELOG.md |
@@ -97,7 +100,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-本地运行：`cargo run -p image-view-iced -- <路径>`。CI 配置由维护者单独维护，本文档不描述其细节。
+本地运行：`cargo run -p image-view -- <路径>`。CI 配置由维护者单独维护，本文档不描述其细节。
 
 ## 文档索引
 

@@ -96,6 +96,22 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
         }
         Message::ToggleFullscreen => task::toggle_fullscreen(state),
         Message::ApplyWindowMode(mode) => task::apply_window_mode(state, mode),
+        Message::DragWindow => match state.window_id {
+            Some(id) => iced::window::drag(id),
+            None => Task::none(),
+        },
+        Message::ToggleMaximize => match state.window_id {
+            Some(id) => iced::window::toggle_maximize(id),
+            None => Task::none(),
+        },
+        Message::MinimizeWindow => match state.window_id {
+            Some(id) => iced::window::minimize(id, true),
+            None => Task::none(),
+        },
+        Message::CloseWindow => match state.window_id {
+            Some(id) => iced::window::close(id),
+            None => Task::none(),
+        },
         Message::Poll => task::poll(state),
         Message::Dismiss => {
             state.notice = None;

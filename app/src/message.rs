@@ -52,6 +52,12 @@ pub enum Message {
     ToggleFullscreen,
     ApplyWindowMode(iced::window::Mode),
 
+    /// 自绘标题栏（Win/Linux）：拖动 / 双击最大化 / caption 按钮。
+    DragWindow,
+    ToggleMaximize,
+    MinimizeWindow,
+    CloseWindow,
+
     /// 定时轮询解码线程与缩略图线程的结果。
     Poll,
     Dismiss,
