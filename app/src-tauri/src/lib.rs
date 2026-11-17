@@ -110,6 +110,7 @@ pub fn run() {
             commands::image::request_preview,
             commands::image::set_sort,
             commands::image::startup_path,
+            commands::image::set_color_target,
             commands::image::ui_preferences,
             commands::image::set_ui_preferences,
             commands::image::close_image,

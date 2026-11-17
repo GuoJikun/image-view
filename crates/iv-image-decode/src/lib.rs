@@ -11,7 +11,7 @@ use image::metadata::Orientation;
 use iv_metadata::{self as color, ColorInfo};
 
 /// 解码输出的像素缓冲类型；供 GUI 层按位深编码 PNG。
-pub use iv_metadata::Pixels;
+pub use iv_metadata::{ColorTarget, Pixels};
 use iv_task::Generation;
 
 /// 解码与纹理上传的安全上限。
@@ -76,7 +76,7 @@ pub struct Decoded {
     pub color: ColorInfo,
 }
 
-/// 动画的一帧：已转换为 sRGB 的 RGBA，尺寸与 `DecodedAnimation::size` 一致。
+/// 动画的一帧：已转换到目标空间的 RGBA，尺寸与 `DecodedAnimation::size` 一致。
 #[derive(Clone, Debug)]
 pub struct AnimationFrame {
     pub rgba: Pixels,
@@ -428,21 +428,44 @@ fn map_decode_error(error: image::ImageError) -> LoadError {
 }
 
 fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    decode_to(path, caps, purpose, ColorTarget::Srgb)
+}
+
+/// 带目标空间的格式分派；`decode` 是它的 sRGB 包装。
+fn decode_to(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     match format_for(path) {
-        Format::Standard => decode_standard(path, caps, purpose),
-        Format::Avif => decode_avif(path, caps, purpose),
-        Format::Heic => decode_heic(path, caps, purpose),
-        Format::Jxl => decode_jxl(path, caps, purpose),
-        Format::Svg => decode_svg(path, caps, purpose),
+        Format::Standard => decode_standard(path, caps, purpose, target),
+        Format::Avif => decode_avif(path, caps, purpose, target),
+        Format::Heic => decode_heic(path, caps, purpose, target),
+        Format::Jxl => decode_jxl(path, caps, purpose, target),
+        Format::Svg => decode_svg(path, caps, purpose, target),
     }
 }
 
-/// 单次同步解码入口。
+/// 单次同步解码入口（目标空间 sRGB）。
 ///
 /// `Loader` 面向单窗口 GUI 的 latest-wins 队列；其他 GUI adapter（如 Tauri）
 /// 需要自己的请求调度时，可直接调用本函数复用同一套格式分派、ICC 与限额逻辑。
 pub fn decode_image(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
     decode(path, caps, purpose)
+}
+
+/// 单次同步解码入口，可指定目标色彩空间。
+///
+/// 目标为 [`ColorTarget::DisplayP3`] 时，宽色域源的像素会被变换到 P3；
+/// 调用方要保证显示端画布也声明了同一空间，否则颜色会被二次解释。
+pub fn decode_image_to(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    target: ColorTarget,
+) -> Result<Decoded, LoadError> {
+    decode_to(path, caps, purpose, target)
 }
 
 /// 按缩略图尺寸解码；复用主图路径的格式分派、ICC 转换与错误类型。
@@ -479,10 +502,19 @@ fn animation_kind(path: &Path) -> Option<AnimationKind> {
 /// 却被降级为静态首帧（超预算 / 16-bit / 解码失败）。GUI 只对 `Degraded` 提示。
 /// 帧间隔按 APNG delay / GIF delay / WebP duration 计时，异常值钳制到 50~1000 ms。
 pub fn decode_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
+    decode_animation_to(path, caps, ColorTarget::Srgb)
+}
+
+/// 解码全部动画帧，并把像素转换到 `target`。
+pub fn decode_animation_to(
+    path: &Path,
+    caps: &Caps,
+    target: ColorTarget,
+) -> Result<AnimationOutcome, LoadError> {
     match animation_kind(path) {
-        Some(AnimationKind::Apng) => decode_png_animation(path, caps),
-        Some(AnimationKind::Gif) => decode_gif_animation(path, caps),
-        Some(AnimationKind::Webp) => decode_webp_animation(path, caps),
+        Some(AnimationKind::Apng) => decode_png_animation(path, caps, target),
+        Some(AnimationKind::Gif) => decode_gif_animation(path, caps, target),
+        Some(AnimationKind::Webp) => decode_webp_animation(path, caps, target),
         None => Ok(AnimationOutcome::NotAnimated),
     }
 }
@@ -509,19 +541,27 @@ fn png_bit_depth(path: &Path) -> Option<u8> {
     Some(header[24])
 }
 
-fn decode_png_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
+fn decode_png_animation(
+    path: &Path,
+    caps: &Caps,
+    target: ColorTarget,
+) -> Result<AnimationOutcome, LoadError> {
     // 16-bit APNG：`image` 的 PNG 解码路径只支持 8-bit，可能在构造 decoder、
     // 判断 is_apng 或逐帧合成的任一环节报 Unsupported(Rgba16)。先读 IHDR 位深，
     // 把这类「能力限制」与真正的「文件损坏」区分开。
     let is_16bit = png_bit_depth(path) == Some(16);
-    match decode_png_animation_inner(path, caps) {
+    match decode_png_animation_inner(path, caps, target) {
         Ok(outcome) => Ok(outcome),
         Err(_) if is_16bit => Ok(AnimationOutcome::Degraded(DegradeReason::Unsupported16Bit)),
         Err(error) => Err(error),
     }
 }
 
-fn decode_png_animation_inner(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
+fn decode_png_animation_inner(
+    path: &Path,
+    caps: &Caps,
+    target: ColorTarget,
+) -> Result<AnimationOutcome, LoadError> {
     use image::AnimationDecoder as _;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -550,10 +590,14 @@ fn decode_png_animation_inner(path: &Path, caps: &Caps) -> Result<AnimationOutco
         image::metadata::LoopCount::Finite(times) => Some(times.get()),
     };
 
-    build_animation(path, caps, apng.into_frames(), loops, icc_profile)
+    build_animation(path, caps, apng.into_frames(), loops, icc_profile, target)
 }
 
-fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
+fn decode_gif_animation(
+    path: &Path,
+    caps: &Caps,
+    target: ColorTarget,
+) -> Result<AnimationOutcome, LoadError> {
     use image::AnimationDecoder as _;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -568,10 +612,14 @@ fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, Lo
     };
 
     // GIF 没有 ICC profile（image 的 GifDecoder 也不提供读取入口）。
-    build_animation(path, caps, decoder.into_frames(), loops, None)
+    build_animation(path, caps, decoder.into_frames(), loops, None, target)
 }
 
-fn decode_webp_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
+fn decode_webp_animation(
+    path: &Path,
+    caps: &Caps,
+    target: ColorTarget,
+) -> Result<AnimationOutcome, LoadError> {
     use image::AnimationDecoder as _;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -599,16 +647,24 @@ fn decode_webp_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, L
         image::metadata::LoopCount::Finite(times) => Some(times.get()),
     };
 
-    build_animation(path, caps, decoder.into_frames(), loops, icc_profile)
+    build_animation(
+        path,
+        caps,
+        decoder.into_frames(),
+        loops,
+        icc_profile,
+        target,
+    )
 }
 
-/// 逐帧收集动画：每帧按 `Caps` 降采样并转 sRGB，累计像素超预算时整体退回静态图。
+/// 逐帧收集动画：每帧按 `Caps` 降采样并转到目标空间，累计像素超预算时整体退回静态图。
 fn build_animation(
     path: &Path,
     caps: &Caps,
     frames: impl Iterator<Item = image::ImageResult<image::Frame>>,
     loops: Option<u32>,
     icc_profile: Option<Vec<u8>>,
+    color_target: ColorTarget,
 ) -> Result<AnimationOutcome, LoadError> {
     let mut decoded: Vec<AnimationFrame> = Vec::new();
     let mut size = [1usize; 2];
@@ -622,7 +678,8 @@ fn build_animation(
         let image = image::DynamicImage::ImageRgba8(frame.into_buffer());
         source_size = [image.width() as usize, image.height() as usize];
 
-        let (target, rgba, info) = animation_pixels(caps, image, icc_profile.as_deref());
+        let (target, rgba, info) =
+            animation_pixels(caps, image, icc_profile.as_deref(), color_target);
         total_pixels += target[0] as u64 * target[1] as u64;
         if total_pixels > caps.max_animation_pixels || decoded.len() >= caps.max_animation_frames {
             log::debug!(
@@ -672,6 +729,7 @@ fn animation_pixels(
     caps: &Caps,
     image: image::DynamicImage,
     icc_profile: Option<&[u8]>,
+    target_space: ColorTarget,
 ) -> ([usize; 2], Pixels, ColorInfo) {
     let source_size = [image.width() as usize, image.height() as usize];
     let target = target_size(source_size, caps.max_side, caps.max_pixels);
@@ -680,7 +738,7 @@ fn animation_pixels(
     } else {
         image
     };
-    let (pixels, info) = color::to_srgb_rgba(image, icc_profile);
+    let (pixels, info) = color::to_target_rgba(image, icc_profile, target_space);
     (target, pixels, info)
 }
 
@@ -707,7 +765,12 @@ fn check_source_limits(
     Ok(())
 }
 
-fn decode_standard(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_standard(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     // 先只读头部尺寸，拒绝解压炸弹，避免为超大图分配完整缓冲。
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
     let (width, height) = reader.into_dimensions()?;
@@ -733,11 +796,16 @@ fn decode_standard(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded
     let mut image = image::DynamicImage::from_decoder(decoder).map_err(map_decode_error)?;
     image.apply_orientation(orientation);
 
-    finish(path, caps, image, icc_profile)
+    finish(path, caps, image, icc_profile, target)
 }
 
 #[cfg(feature = "avif")]
-fn decode_avif(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_avif(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     use imgalifier_avif::{Av1Backend, Decoder, Limits};
 
     let data = std::fs::read(path)?;
@@ -769,7 +837,7 @@ fn decode_avif(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Lo
         .map(image::DynamicImage::ImageRgba8)
         .ok_or_else(|| LoadError::Avif("像素数据长度与尺寸不匹配".to_owned()))?;
 
-    finish(path, caps, image, icc_profile)
+    finish(path, caps, image, icc_profile, target)
 }
 
 /// 读取 HEIF 主图的 `colr` ICC profile（若存在）。
@@ -788,12 +856,22 @@ fn extract_icc<B: imgalifier_heif::CodecBackend>(
 }
 
 #[cfg(not(feature = "avif"))]
-fn decode_avif(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_avif(
+    path: &Path,
+    _caps: &Caps,
+    _purpose: Purpose,
+    _target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     Err(missing_decoder(path, Format::Avif))
 }
 
 #[cfg(feature = "heic")]
-fn decode_heic(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_heic(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     use imgalifier_heif::hevc::HevcBackend;
     use imgalifier_heif::{Decoder, Limits};
 
@@ -819,18 +897,28 @@ fn decode_heic(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Lo
         .map(image::DynamicImage::ImageRgba8)
         .ok_or_else(|| LoadError::Heic("像素数据长度与尺寸不匹配".to_owned()))?;
 
-    finish(path, caps, image, icc_profile)
+    finish(path, caps, image, icc_profile, target)
 }
 
 #[cfg(not(feature = "heic"))]
-fn decode_heic(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_heic(
+    path: &Path,
+    _caps: &Caps,
+    _purpose: Purpose,
+    _target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     Err(missing_decoder(path, Format::Heic))
 }
 
 /// JPEG XL：`jxl-oxide` 的 `image` 集成直接给出 `ImageDecoder`，走与通用路径相同的
 /// 尺寸检查与 `finish` 收尾。
 #[cfg(feature = "jxl")]
-fn decode_jxl(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_jxl(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     use jxl_oxide::integration::JxlDecoder;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -853,11 +941,16 @@ fn decode_jxl(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Loa
     };
     let image = image::DynamicImage::from_decoder(decoder).map_err(map_decode_error)?;
 
-    finish(path, caps, image, icc_profile)
+    finish(path, caps, image, icc_profile, target)
 }
 
 #[cfg(not(feature = "jxl"))]
-fn decode_jxl(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_jxl(
+    path: &Path,
+    _caps: &Caps,
+    _purpose: Purpose,
+    _target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     Err(missing_decoder(path, Format::Jxl))
 }
 
@@ -894,7 +987,12 @@ fn svg_pixels(value: f32) -> u32 {
 /// SVG 不能像位图那样「解码即得像素」：先解析出树与固有尺寸，
 /// 按 `Caps` 做尺寸检查，再直接光栅化到目标尺寸（矢量缩放即渲染，无需二次重采样）。
 #[cfg(feature = "svg")]
-fn decode_svg(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_svg(
+    path: &Path,
+    caps: &Caps,
+    purpose: Purpose,
+    color_target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     use resvg::tiny_skia;
 
     let data = std::fs::read(path)?;
@@ -929,15 +1027,21 @@ fn decode_svg(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Loa
         );
     }
 
-    // tiny-skia 输出预乘 alpha，纹理管线需要非预乘的 sRGB RGBA。
+    // tiny-skia 输出预乘 alpha，纹理管线需要非预乘的 RGBA。
     let rgba = pixmap.take_demultiplied();
+    // SVG 没有内嵌 ICC，像素按 sRGB 约定；目标为 P3 时同样要走一次变换，
+    // 否则画布会把 sRGB 数值当成 P3 数值。
+    let image = image::RgbaImage::from_raw(target_w, target_h, rgba)
+        .map(image::DynamicImage::ImageRgba8)
+        .ok_or(LoadError::OutOfMemory)?;
+    let (pixels, color_info) = color::to_target_rgba(image, None, color_target);
 
     Ok(Decoded {
         size: target,
         source_size,
-        rgba: Pixels::Rgba8(rgba),
+        rgba: pixels,
         source_depth: 8,
-        color: ColorInfo::default(),
+        color: color_info,
     })
 }
 
@@ -981,16 +1085,22 @@ fn has_intrinsic_size(data: &[u8]) -> bool {
 }
 
 #[cfg(not(feature = "svg"))]
-fn decode_svg(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+fn decode_svg(
+    path: &Path,
+    _caps: &Caps,
+    _purpose: Purpose,
+    _target: ColorTarget,
+) -> Result<Decoded, LoadError> {
     Err(missing_decoder(path, Format::Svg))
 }
 
-/// 解码后的公共出口：降采样、位深记录与 ICC → sRGB 转换。
+/// 解码后的公共出口：降采样、位深记录与 ICC → 目标空间转换。
 fn finish(
     path: &Path,
     caps: &Caps,
     image: image::DynamicImage,
     icc_profile: Option<Vec<u8>>,
+    color_target: ColorTarget,
 ) -> Result<Decoded, LoadError> {
     let source_size = [image.width() as usize, image.height() as usize];
     let target = target_size(source_size, caps.max_side, caps.max_pixels);
@@ -1008,11 +1118,12 @@ fn finish(
 
     // 位深跟随源图：16-bit 在转换与降采样后仍保持 16-bit，不再提前量化。
     let source_depth = color::source_depth(&image);
-    let (pixels, color_info) = color::to_srgb_rgba(image, icc_profile.as_deref());
+    let (pixels, color_info) = color::to_target_rgba(image, icc_profile.as_deref(), color_target);
     if color_info.converted {
         log::debug!(
             target: "image_view::loader",
-            "已转换到 sRGB：{} ({})",
+            "已转换到 {:?}：{} ({})",
+            color_info.target,
             path.display(),
             color_info.source_label().unwrap_or("未命名 profile")
         );
@@ -1254,6 +1365,38 @@ mod tests {
             "应转换到约 188，实际 {}",
             rgba8(&decoded)[0]
         );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn display_p3_target_converts_srgb_source() {
+        let dir = temp_dir("icc-p3");
+        let path = dir.join("red.png");
+        // 不带 profile 的 sRGB 正红：目标为 P3 时必须真的转换，而不是原样输出。
+        let image = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            2,
+            2,
+            image::Rgb([255, 0, 0]),
+        ));
+        image.save(&path).expect("write png");
+
+        let srgb = decode_image_to(&path, &Caps::default(), Purpose::Open, ColorTarget::Srgb)
+            .expect("decode srgb");
+        let p3 = decode_image_to(
+            &path,
+            &Caps::default(),
+            Purpose::Open,
+            ColorTarget::DisplayP3,
+        )
+        .expect("decode p3");
+
+        assert_eq!(srgb.rgba.into_rgba8(), [255, 0, 0, 255].repeat(4));
+        assert!(p3.color.converted, "P3 目标必须执行转换");
+        assert_eq!(p3.color.target, ColorTarget::DisplayP3);
+        let rgba = p3.rgba.into_rgba8();
+        assert!(rgba[0].abs_diff(234) <= 3, "R 实际 {}", rgba[0]);
+        assert!(rgba[1].abs_diff(51) <= 3, "G 实际 {}", rgba[1]);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }

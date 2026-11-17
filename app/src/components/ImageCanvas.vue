@@ -4,6 +4,7 @@ import { useViewerStore } from "../stores/viewer";
 import { useUiStore } from "../stores/ui";
 import { modSymbol } from "../platform";
 import { t } from "../i18n";
+import { colorTarget } from "../services/color";
 import Icon from "./Icon.vue";
 
 const store = useViewerStore();
@@ -62,7 +63,9 @@ function ensureChecker(context: CanvasRenderingContext2D): CanvasPattern | null 
 function draw(): void {
   const element = canvas.value;
   if (!element) return;
-  const context = element.getContext("2d");
+  // 画布空间必须与后端编码 PNG 的目标空间一致：否则 P3 数值会被当成 sRGB
+  // 再转换一次，颜色整体过饱和。空间在首次 getContext 时固定。
+  const context = element.getContext("2d", { colorSpace: colorTarget });
   if (!context) return;
 
   const dpr = window.devicePixelRatio || 1;

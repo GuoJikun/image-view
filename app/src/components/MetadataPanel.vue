@@ -3,6 +3,7 @@
 import { computed } from "vue";
 import { useViewerStore } from "../stores/viewer";
 import { resolvedLocale, t } from "../i18n";
+import { targetLabel } from "../services/color";
 
 const store = useViewerStore();
 
@@ -29,9 +30,10 @@ function formatDate(timestamp: number | null): string {
 const rows = computed<[string, string][]>(() => {
   const image = store.preview;
   if (!image) return [];
+  const target = targetLabel(image.colorTarget);
   const color = image.colorConverted
-    ? `${t("metadata.converted")}${image.colorSource ? ` (${image.colorSource})` : ""}`
-    : "sRGB";
+    ? `${t("metadata.converted")} ${target}${image.colorSource ? ` (${image.colorSource})` : ""}`
+    : target;
   return [
     [t("metadata.format"), image.format],
     [t("metadata.sourceSize"), `${image.sourceWidth} × ${image.sourceHeight}`],

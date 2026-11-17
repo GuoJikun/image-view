@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AnimationReady,
+  ColorTarget,
   CommandError,
   Degraded,
   DirectorySnapshot,
@@ -67,6 +68,16 @@ export async function currentSnapshot(): Promise<DirectorySnapshot> {
 
 export async function requestPreview(imageId: string): Promise<PreviewRequest> {
   return invoke<PreviewRequest>("request_preview", { imageId });
+}
+
+/**
+ * 声明显示目标色彩空间。
+ *
+ * 返回 `true` 表示目标真的变了，后端已丢弃旧目标的缓存，调用方需要重新请求
+ * 当前图片（新条目会带新的 revision，URL 随之变化）。
+ */
+export async function setColorTarget(target: ColorTarget): Promise<boolean> {
+  return invoke<boolean>("set_color_target", { target });
 }
 
 export async function setSort(order: SortOrder): Promise<DirectorySnapshot> {

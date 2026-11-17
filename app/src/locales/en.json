@@ -116,7 +116,7 @@
     "downscaled": "Downsampled",
     "yes": "Yes",
     "no": "No",
-    "converted": "Converted to sRGB",
+    "converted": "Converted to",
     "note": "The preview is downsampled; 100% refers to the displayed size, not the source."
   },
   "shortcut": {

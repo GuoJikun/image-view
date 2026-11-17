@@ -9,6 +9,7 @@ import { usePreferences } from "./preferences";
 import { inTauri, platform } from "./platform";
 import { t } from "./i18n";
 import * as ipc from "./services/ipc";
+import { colorTarget, onColorTargetChange } from "./services/color";
 import AppToolbar from "./components/AppToolbar.vue";
 import ErrorBanner from "./components/ErrorBanner.vue";
 import HelpDialog from "./components/HelpDialog.vue";
@@ -52,6 +53,7 @@ watchEffect(() => {
 let unlistenDragDrop: (() => void) | null = null;
 let unlistenMenu: (() => void) | null = null;
 let unlistenResize: (() => void) | null = null;
+let stopColorWatch: (() => void) | null = null;
 
 function isTextInput(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -200,11 +202,23 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
 onMounted(async () => {
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("contextmenu", onContextMenu);
+  // 目标色彩空间必须在首次解码前告诉后端，否则第一张图会按 sRGB 编码。
+  // 探测本身是同步的，模块加载时就已完成，这里只负责回传。
+  if (inTauri) await ipc.setColorTarget(colorTarget);
   await store.initialize();
   // 偏好来自 settings.ron，读取后覆盖默认值；随后的菜单同步才能拿到真实勾选状态。
   await loadPreferences();
 
   if (!inTauri) return;
+
+  // 窗口拖到另一块屏、HDR 开关都会改变显示能力：重新回传并重取当前图片。
+  // 画布空间在首次 getContext 时已固定，P3 收益要下次启动才生效，但颜色始终正确
+  // （预览 PNG 带 iCCP 标签，画布空间与标签不一致时浏览器会自行换算）。
+  stopColorWatch = onColorTargetChange((next) => {
+    void ipc.setColorTarget(next).then((changed) => {
+      if (changed) void store.requestCurrent();
+    });
+  });
 
   try {
     unlistenDragDrop = await getCurrentWebview().onDragDropEvent((event) => {
@@ -259,6 +273,7 @@ onBeforeUnmount(() => {
   unlistenDragDrop?.();
   unlistenMenu?.();
   unlistenResize?.();
+  stopColorWatch?.();
   store.stopSlideshow();
 });
 </script>

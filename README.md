@@ -19,7 +19,7 @@
 **格式与色彩**
 
 - 18 种常见格式，其中 APNG / GIF / WebP 支持多帧动画，HEIC / AVIF / SVG / JPEG XL 为纯 Rust 解码，详见下方「支持的格式」
-- 读取内嵌 ICC profile 转换到 sRGB，16-bit 图像在转换与缩放阶段保持精度；状态栏显示位深、格式与色彩转换标记
+- 读取内嵌 ICC profile 转换到显示目标空间：广色域屏且引擎支持 `display-p3` 画布时转到 Display P3，其余情况转 sRGB；16-bit 图像在转换与缩放阶段保持精度；状态栏显示位深、格式与色彩转换标记
 
 **界面与设置**
 
@@ -178,7 +178,9 @@ JPEG XL 默认启用，使用纯 Rust 的 `jxl-oxide`（附 `image` 集成与 `l
 
 SVG 默认启用，使用 `resvg`（usvg + tiny-skia）光栅化，同样为纯 Rust、无系统 DLL：先解析出 `width`/`height`（缺失时回退 `viewBox`，两者都没有时按规范用 300×150）并做 250 MP 原图上限检查，再直接渲染到目标尺寸——矢量缩放即渲染，不会先画成位图再重采样。`.svgz`（gzip 压缩）暂不支持。
 
-JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
+JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到显示目标空间；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
+
+目标空间只有两档，因为画布能声明的空间只有两个（`CanvasRenderingContext2DSettings.colorSpace`）：`(color-gamut: p3)` 与 `getContext("2d", { colorSpace: "display-p3" })` 都成立时用 Display P3，否则 sRGB。预览 PNG 会写入对应的 `iCCP` 块——画布空间与标签不一致时浏览器会自行换算，所以即使在 P3 途中切回普通屏，颜色也不会错。
 
 ## 已知限制
 
@@ -206,6 +208,7 @@ JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 p
 - 预加载会跳过超过 30 MP 的图片（仅影响速度，不影响正常打开）。
 - 16-bit 图片在解码、ICC 转换与 PNG 传输中全程保留 16-bit 精度；显示端由 WebView 解码 PNG 后落到 8-bit Canvas，因此屏幕观感仍是 8-bit。10-bit/HDR 输出不在当前版本范围内。
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
+- Display P3 需要广色域屏与支持该画布空间的引擎：WebView2 与新版本 WKWebView 可用，WebKitGTK 通常回退到 sRGB（颜色仍正确，只是吃不到广色域）。画布空间在首次绘制时固定，换显示器后需要重启才真正生效。
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
 - Windows 10/11 的默认应用由系统 `UserChoice` 保护：安装器写入扩展名关联后，若用户此前已在系统中选定其它默认应用，系统仍以 `UserChoice` 为准；请在「设置 → 应用 → 默认应用」中确认。
 - 文件关联分两层写入：打包声明（`bundle.fileAssociations`）写 ProgID 与扩展名默认值，`app/src-tauri/installer/hooks.nsh` 写 `OpenWithProgids`、`Applications\<exe>\SupportedTypes` 与 `RegisteredApplications` + `Capabilities` 能力项。前者让双击可用，后者保证本程序始终出现在右键「打开方式」与「设置 → 默认应用」列表中；默认处理器本身仍由系统 `UserChoice` 决定，安装器不会强行改写。

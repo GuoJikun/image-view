@@ -116,7 +116,7 @@
     "downscaled": "降采样",
     "yes": "是",
     "no": "否",
-    "converted": "已转换到 sRGB",
+    "converted": "已转换到",
     "note": "当前显示的是降采样结果；「100%」相对显示尺寸，而非原图。"
   },
   "shortcut": {

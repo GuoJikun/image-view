@@ -24,6 +24,13 @@ export interface PreviewRequest {
   revision: number;
 }
 
+/**
+ * 像素被编码到的目标空间。
+ *
+ * 只有两档：画布能声明的空间就这么两个（`srgb` / `display-p3`）。
+ */
+export type ColorTarget = "srgb" | "display-p3";
+
 export interface PreviewReady {
   requestId: number;
   imageId: string;
@@ -39,6 +46,7 @@ export interface PreviewReady {
   sourceDepth: number;
   colorConverted: boolean;
   colorSource: string | null;
+  colorTarget: ColorTarget;
   fileSize: number;
   modifiedAt: number | null;
 }

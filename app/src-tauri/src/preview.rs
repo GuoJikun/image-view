@@ -10,14 +10,14 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, mpsc};
 use std::thread;
 use std::time::{Instant, UNIX_EPOCH};
 
 use iv_image_decode::{
-    AnimationOutcome, Caps, DecodedAnimation, DegradeReason, LoadError, Pixels, Purpose,
-    decode_animation, decode_image,
+    AnimationOutcome, Caps, ColorTarget, DecodedAnimation, DegradeReason, LoadError, Pixels,
+    Purpose, decode_animation_to, decode_image_to,
 };
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
@@ -30,6 +30,29 @@ pub const PREVIEW_READY_EVENT: &str = "image:preview-ready";
 pub const PREVIEW_FAILED_EVENT: &str = "image:preview-failed";
 pub const ANIMATION_READY_EVENT: &str = "image:animation-ready";
 pub const DEGRADED_EVENT: &str = "image:degraded";
+
+/// 当前显示目标空间；前端探测完屏幕与画布能力后通过 `set_color_target` 写入。
+///
+/// 0 = sRGB，1 = Display P3。解码线程与命令线程都读这个值，条目上另存一份用于
+/// 判断缓存是否仍然有效（目标变了必须重新解码，不能只重编码 PNG）。
+static COLOR_TARGET: AtomicU8 = AtomicU8::new(0);
+
+/// 读取当前目标空间。
+pub fn current_color_target() -> ColorTarget {
+    match COLOR_TARGET.load(Ordering::Relaxed) {
+        1 => ColorTarget::DisplayP3,
+        _ => ColorTarget::Srgb,
+    }
+}
+
+/// 写入目标空间；返回是否真的发生了变化。
+fn store_color_target(target: ColorTarget) -> bool {
+    let raw = match target {
+        ColorTarget::Srgb => 0u8,
+        ColorTarget::DisplayP3 => 1u8,
+    };
+    COLOR_TARGET.swap(raw, Ordering::Relaxed) != raw
+}
 
 /// 缓存最近三张预览：当前 + 前后各一张。
 const MAX_CACHED_PREVIEWS: usize = 3;
@@ -76,6 +99,11 @@ pub struct PreviewEntry {
     source_depth: u8,
     color_converted: bool,
     color_source: Option<String>,
+    /// 解码时的目标空间；与当前目标不一致时缓存视为失效。
+    color_target: ColorTarget,
+    /// 像素实际所在的空间：转换成功时等于 `color_target`，回退时像素仍是原样，
+    /// 按 sRGB 处理。PNG 的 `iCCP` 必须标它，标错会让浏览器按错误的前提换算。
+    png_space: ColorTarget,
     file_size: u64,
     modified_at: Option<i64>,
 }
@@ -93,13 +121,16 @@ pub struct Animation {
     frames: Vec<AnimationFrameEntry>,
     width: u32,
     height: u32,
+    /// 帧像素实际所在的空间，规则与 `PreviewEntry::png_space` 一致。
+    png_space: ColorTarget,
 }
 
 impl Animation {
-    fn new(decoded: DecodedAnimation) -> Self {
+    fn new(decoded: DecodedAnimation, png_space: ColorTarget) -> Self {
         let width = decoded.size[0] as u32;
         let height = decoded.size[1] as u32;
         Self {
+            png_space,
             loops: decoded.loops,
             delays: decoded.frames.iter().map(|frame| frame.delay_ms).collect(),
             frames: decoded
@@ -124,14 +155,31 @@ impl Animation {
         let frame = self.frames.get(index)?;
         let bytes = frame
             .png
-            .get_or_init(|| encode_png(&frame.rgba, self.width, self.height, "动画帧"))
+            .get_or_init(|| {
+                encode_png(
+                    &frame.rgba,
+                    self.width,
+                    self.height,
+                    self.png_space,
+                    "动画帧",
+                )
+            })
             .clone();
         (!bytes.is_empty()).then_some(bytes)
     }
 }
 
 /// RGBA → PNG，位深跟随 `Pixels` 变体；失败时返回空字节，由调用方转成 500 / 404。
-fn encode_png(pixels: &Pixels, width: u32, height: u32, context: &str) -> Arc<[u8]> {
+///
+/// 非 sRGB 目标必须写入对应的 `iCCP` 块：像素已经按该空间编码，画布再按标签解释
+/// 才是恒等；画布不支持该空间时，浏览器也会据此正确降级到 sRGB。
+fn encode_png(
+    pixels: &Pixels,
+    width: u32,
+    height: u32,
+    color_target: ColorTarget,
+    context: &str,
+) -> Arc<[u8]> {
     use image::ImageEncoder as _;
 
     let color_type = match pixels {
@@ -139,11 +187,19 @@ fn encode_png(pixels: &Pixels, width: u32, height: u32, context: &str) -> Arc<[u
         Pixels::Rgba16(_) => image::ExtendedColorType::Rgba16,
     };
     let mut bytes = Vec::new();
-    let encoder = image::codecs::png::PngEncoder::new_with_quality(
+    let mut encoder = image::codecs::png::PngEncoder::new_with_quality(
         &mut bytes,
         image::codecs::png::CompressionType::Fast,
         image::codecs::png::FilterType::Adaptive,
     );
+    if let Some(icc) = color_target.icc()
+        && let Err(error) = encoder.set_icc_profile(icc.to_vec())
+    {
+        log::debug!(
+            target: "image_view::preview",
+            "{context} 写入 ICC profile 失败，按无标签 PNG 输出：{error}"
+        );
+    }
     match encoder.write_image(pixels.as_bytes(), width, height, color_type) {
         Ok(()) => Arc::from(bytes),
         Err(error) => {
@@ -160,7 +216,7 @@ impl PreviewEntry {
     /// 编码为 WebView 可直接解码的 PNG。失败时返回空字节，由协议层转成 500。
     pub fn png(&self) -> Arc<[u8]> {
         self.png
-            .get_or_init(|| encode_png(&self.rgba, self.width, self.height, "预览"))
+            .get_or_init(|| encode_png(&self.rgba, self.width, self.height, self.png_space, "预览"))
             .clone()
     }
 
@@ -208,6 +264,7 @@ impl PreviewEntry {
             source_depth: self.source_depth,
             color_converted: self.color_converted,
             color_source: self.color_source.clone(),
+            color_target: self.color_target.id(),
             file_size: self.file_size,
             modified_at: self.modified_at,
         }
@@ -233,21 +290,33 @@ impl PreviewStore {
         self.next_revision
     }
 
-    /// 按文件身份查找；命中后刷新最近使用顺序。
-    fn find(&mut self, image_id: &str, stamp: &FileStamp) -> Option<Arc<PreviewEntry>> {
-        let index = self
-            .entries
-            .iter()
-            .position(|entry| entry.image_id == image_id && &entry.stamp == stamp)?;
+    /// 按文件身份与目标空间查找；命中后刷新最近使用顺序。
+    ///
+    /// 目标空间必须一起匹配：条目里的像素和 PNG 标签都按当时的目标生成，
+    /// 换了目标只能重新解码，不能复用。
+    fn find(
+        &mut self,
+        image_id: &str,
+        stamp: &FileStamp,
+        target: ColorTarget,
+    ) -> Option<Arc<PreviewEntry>> {
+        let index = self.entries.iter().position(|entry| {
+            entry.image_id == image_id && &entry.stamp == stamp && entry.color_target == target
+        })?;
         let entry = self.entries.remove(index)?;
         self.entries.push_back(entry.clone());
         Some(entry)
     }
 
-    fn contains(&self, image_id: &str, stamp: &FileStamp) -> bool {
-        self.entries
-            .iter()
-            .any(|entry| entry.image_id == image_id && &entry.stamp == stamp)
+    fn contains(&self, image_id: &str, stamp: &FileStamp, target: ColorTarget) -> bool {
+        self.entries.iter().any(|entry| {
+            entry.image_id == image_id && &entry.stamp == stamp && entry.color_target == target
+        })
+    }
+
+    /// 只保留指定目标的条目；目标空间切换后其余条目必须丢弃。
+    fn retain_target(&mut self, target: ColorTarget) {
+        self.entries.retain(|entry| entry.color_target == target);
     }
 
     fn get(&mut self, image_id: &str, revision: u64) -> Option<Arc<PreviewEntry>> {
@@ -385,9 +454,10 @@ impl PreviewService {
         lock(&self.shared.store).drop_animations_except(&image_id);
 
         let stamp = file_stamp(&path);
+        let target = current_color_target();
         let cached = {
             let mut store = lock(&self.shared.store);
-            store.find(&image_id, &stamp).map(|entry| {
+            store.find(&image_id, &stamp, target).map(|entry| {
                 (
                     entry.revision,
                     entry.ready_payload(request_id),
@@ -475,7 +545,8 @@ impl PreviewService {
     /// 后台预加载一张相邻图片；命中缓存或在途时直接跳过。
     pub fn preload(&self, image_id: String, path: PathBuf, caps: Caps) {
         let stamp = file_stamp(&path);
-        if lock(&self.shared.store).contains(&image_id, &stamp) {
+        let target = current_color_target();
+        if lock(&self.shared.store).contains(&image_id, &stamp, target) {
             return;
         }
 
@@ -512,6 +583,25 @@ impl PreviewService {
     pub fn clear(&self) {
         lock(&self.shared.store).clear();
         lock(&self.shared.pending).clear();
+    }
+
+    /// 切换目标空间；返回是否真的发生变化。
+    ///
+    /// 变化时丢弃其他目标的缓存条目并推进代号：在途的旧目标解码结果不再写入缓存。
+    /// 前端收到 `true` 后应重新请求当前图片，新条目会分配新的 revision。
+    pub fn set_color_target(&self, target: ColorTarget) -> bool {
+        if !store_color_target(target) {
+            return false;
+        }
+        lock(&self.shared.store).retain_target(target);
+        lock(&self.shared.pending).clear();
+        self.shared.epoch.fetch_add(1, Ordering::Relaxed);
+        log::debug!(
+            target: "image_view::preview",
+            "色彩目标切换为 {}，已丢弃旧缓存",
+            target.id()
+        );
+        true
     }
 
     fn emit_ready(&self, payload: PreviewReadyDto) {
@@ -555,14 +645,16 @@ fn run_animation(shared: &Shared, job: AnimationJob) {
     }
 
     let started = Instant::now();
-    let decoded = decode_animation(&job.stamp.path, &job.caps);
+    let target = current_color_target();
+    let decoded = decode_animation_to(&job.stamp.path, &job.caps, target);
     if shared.current.load(Ordering::Relaxed) != job.request_id {
         return;
     }
 
     match decoded {
         Ok(AnimationOutcome::Ready(decoded)) => {
-            let animation = Arc::new(Animation::new(decoded));
+            let png_space = pixel_space(decoded.color.converted, decoded.color.target);
+            let animation = Arc::new(Animation::new(decoded, png_space));
             let payload = AnimationReadyDto {
                 request_id: job.request_id,
                 image_id: job.image_id.clone(),
@@ -685,7 +777,10 @@ fn run_open(shared: &Shared, job: Job) {
     }
 
     // 预加载可能刚好在入队后完成：重新查一次缓存，避免重复解码。
-    if let Some(entry) = lock(&shared.store).find(&job.image_id, &file_stamp(&job.stamp.path)) {
+    let target = current_color_target();
+    if let Some(entry) =
+        lock(&shared.store).find(&job.image_id, &file_stamp(&job.stamp.path), target)
+    {
         let payload = entry.ready_payload(job.request_id);
         emit_ready(shared, payload);
         return;
@@ -720,7 +815,8 @@ fn run_preload(shared: &Shared, job: Job) {
     }
 
     let stamp = file_stamp(&job.stamp.path);
-    if lock(&shared.store).contains(&job.image_id, &stamp) {
+    let target = current_color_target();
+    if lock(&shared.store).contains(&job.image_id, &stamp, target) {
         lock(&shared.pending).remove(&pending_key);
         return;
     }
@@ -735,7 +831,7 @@ fn run_preload(shared: &Shared, job: Job) {
     let Ok(entry) = decoded else {
         return;
     };
-    if lock(&shared.store).contains(&job.image_id, &stamp) {
+    if lock(&shared.store).contains(&job.image_id, &stamp, target) {
         return;
     }
 
@@ -745,7 +841,8 @@ fn run_preload(shared: &Shared, job: Job) {
 
 fn decode_entry(job: &Job, purpose: Purpose) -> Result<Arc<PreviewEntry>, LoadError> {
     let path = job.stamp.path.as_path();
-    let decoded = decode_image(path, &job.caps, purpose)?;
+    let target = current_color_target();
+    let decoded = decode_image_to(path, &job.caps, purpose, target)?;
     let stamp = file_stamp(path);
     let modified_at = std::fs::metadata(path)
         .ok()
@@ -767,8 +864,15 @@ fn decode_entry(job: &Job, purpose: Purpose) -> Result<Arc<PreviewEntry>, LoadEr
         source_depth: decoded.source_depth,
         color_converted: decoded.color.converted,
         color_source: decoded.color.source_label().map(str::to_owned),
+        color_target: decoded.color.target,
+        png_space: pixel_space(decoded.color.converted, decoded.color.target),
         modified_at,
     }))
+}
+
+/// 像素实际所在的空间：成功转换时等于目标空间，回退时像素保持原样（按 sRGB 约定）。
+fn pixel_space(converted: bool, target: ColorTarget) -> ColorTarget {
+    if converted { target } else { ColorTarget::Srgb }
 }
 
 fn emit_ready(shared: &Shared, payload: PreviewReadyDto) {
@@ -871,6 +975,8 @@ mod tests {
             source_depth: 8,
             color_converted: false,
             color_source: None,
+            color_target: ColorTarget::Srgb,
+            png_space: ColorTarget::Srgb,
             file_size: 4,
             modified_at: None,
         })
@@ -881,6 +987,7 @@ mod tests {
         Arc::new(Animation {
             loops: Some(2),
             delays: delays.to_vec(),
+            png_space: ColorTarget::Srgb,
             frames: delays
                 .iter()
                 .enumerate()
@@ -907,11 +1014,49 @@ mod tests {
         store.insert(entry("id-a", 7, stamp("a.jpg", 100)), None);
 
         assert_eq!(
-            store.find("id-a", &stamp("a.jpg", 100)).map(|e| e.revision),
+            store
+                .find("id-a", &stamp("a.jpg", 100), ColorTarget::Srgb)
+                .map(|e| e.revision),
             Some(7)
         );
-        assert!(store.find("id-a", &stamp("a.jpg", 101)).is_none());
-        assert!(store.find("id-b", &stamp("a.jpg", 100)).is_none());
+        assert!(
+            store
+                .find("id-a", &stamp("a.jpg", 101), ColorTarget::Srgb)
+                .is_none()
+        );
+        assert!(
+            store
+                .find("id-b", &stamp("a.jpg", 100), ColorTarget::Srgb)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn cache_hit_requires_the_same_color_target() {
+        let mut store = PreviewStore::new();
+        store.insert(entry("id-a", 7, stamp("a.jpg", 100)), None);
+
+        assert!(
+            store
+                .find("id-a", &stamp("a.jpg", 100), ColorTarget::DisplayP3)
+                .is_none(),
+            "目标空间不同必须视为未命中，否则会拿到旧空间的像素"
+        );
+        assert!(
+            store
+                .find("id-a", &stamp("a.jpg", 100), ColorTarget::Srgb)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn switching_target_drops_entries_from_other_spaces() {
+        let mut store = PreviewStore::new();
+        store.insert(entry("id-a", 1, stamp("a", 1)), None);
+
+        store.retain_target(ColorTarget::DisplayP3);
+
+        assert!(store.get("id-a", 1).is_none(), "sRGB 条目应被丢弃");
     }
 
     #[test]

@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 
 use iv_application::FolderNav;
 use iv_domain::{Language, SortOrder, ThemeSetting};
-use iv_image_decode::Caps;
+use iv_image_decode::{Caps, ColorTarget};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -196,6 +196,13 @@ impl AppState {
     /// 只接受当前目录登记过的 ImageId。
     pub fn path_for(&self, image_id: &str) -> Option<PathBuf> {
         lock(&self.registry).get(image_id).cloned()
+    }
+
+    /// 切换显示目标色彩空间；返回是否真的发生变化。
+    ///
+    /// 变化时缓存会失效，前端据此重新请求当前图片。
+    pub fn set_color_target(&self, target: ColorTarget) -> bool {
+        self.previews.set_color_target(target)
     }
 
     pub fn request_preview(&self, image_id: &str) -> Result<PreviewRequestDto, CommandError> {

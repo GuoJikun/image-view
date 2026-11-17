@@ -7,6 +7,7 @@ import { computed } from "vue";
 import { useViewerStore } from "../stores/viewer";
 import { useUiStore } from "../stores/ui";
 import { t } from "../i18n";
+import { targetLabel } from "../services/color";
 
 const store = useViewerStore();
 const ui = useUiStore();
@@ -24,7 +25,9 @@ const info = computed<{ text: string; tone?: "warn" }[]>(() => {
     { text: image.format },
   ];
   if (ui.showColorBadge && image.colorConverted) {
-    parts.push({ text: image.colorSource ? `${image.colorSource} → sRGB` : "sRGB" });
+    // 目标空间是编码时就定下的，不能写死 sRGB：P3 模式下这里要显示实际目标。
+    const target = targetLabel(image.colorTarget);
+    parts.push({ text: image.colorSource ? `${image.colorSource} → ${target}` : target });
   }
   if (image.downscaled) parts.push({ text: t("status.downscaled"), tone: "warn" });
   return parts;

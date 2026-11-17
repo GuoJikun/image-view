@@ -4,6 +4,8 @@ use std::path::Path;
 
 use tauri::State;
 
+use iv_image_decode::ColorTarget;
+
 use crate::dto::{CommandError, DirectorySnapshot, PreviewRequestDto, UiPreferencesDto};
 use crate::state::AppState;
 
@@ -61,6 +63,22 @@ pub fn set_sort(
 ) -> Result<DirectorySnapshot, CommandError> {
     let order = crate::state::parse_sort(&order)?;
     Ok(state.set_sort(order))
+}
+
+/// 设置显示目标色彩空间（`srgb` / `display-p3`）。
+///
+/// 未知标识按 sRGB 处理：这是前端探测结果的回传，不该因为拼错而阻断打开图片。
+/// 返回 `true` 表示目标真的变了，缓存已失效，前端需要重新请求当前图片。
+#[tauri::command]
+pub fn set_color_target(state: State<'_, AppState>, target: String) -> bool {
+    let target = ColorTarget::from_id(&target).unwrap_or_else(|| {
+        log::debug!(
+            target: "image_view::preview",
+            "未知的色彩目标 {target}，按 sRGB 处理"
+        );
+        ColorTarget::Srgb
+    });
+    state.set_color_target(target)
 }
 
 #[tauri::command]

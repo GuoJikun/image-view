@@ -107,6 +107,8 @@ pub struct PreviewReadyDto {
     pub source_depth: u8,
     pub color_converted: bool,
     pub color_source: Option<String>,
+    /// 像素被编码到的目标空间：`srgb` 或 `display-p3`。
+    pub color_target: &'static str,
     pub file_size: u64,
     pub modified_at: Option<i64>,
 }
