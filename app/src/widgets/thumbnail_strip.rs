@@ -14,11 +14,14 @@ use crate::state::library_state::{LibraryState, THUMB_ITEM_WIDTH};
 pub const THUMB_SCROLL_ID: &str = "thumbnail-strip";
 pub const STRIP_HEIGHT: f32 = 88.0;
 
-/// 卡片 76×56（规范 4.3），四边留 4 px，内容区刚好 68×48。
+/// 卡片 76×56（规范 4.3），内缩 3 px 让 1 px 发丝线与圆角不被图片方角盖住。
 const CARD_WIDTH: f32 = 76.0;
 const CARD_HEIGHT: f32 = 56.0;
-const PREVIEW_WIDTH: f32 = 68.0;
-const PREVIEW_HEIGHT: f32 = 48.0;
+/// 选中态外扩 2 px：环画在卡片外沿（80×60），内缩 5 px 后图片仍是 70×50。
+const SELECTED_WIDTH: f32 = CARD_WIDTH + 4.0;
+const SELECTED_HEIGHT: f32 = CARD_HEIGHT + 4.0;
+const CARD_INSET: f32 = 3.0;
+const SELECTED_INSET: f32 = 5.0;
 
 pub fn view<'a>(
     library: &'a LibraryState,
@@ -38,25 +41,32 @@ pub fn view<'a>(
 
         let preview: Element<'a, Message> = match library.thumbs.handle(path) {
             Some(handle) => image(handle.clone())
-                .width(PREVIEW_WIDTH)
-                .height(PREVIEW_HEIGHT)
-                .content_fit(ContentFit::Contain)
+                .width(Fill)
+                .height(Fill)
+                .content_fit(ContentFit::Cover)
                 .into(),
             None => container(text("…").size(20))
-                .width(PREVIEW_WIDTH)
-                .height(PREVIEW_HEIGHT)
+                .width(Fill)
+                .height(Fill)
                 .align_x(iced::Center)
                 .align_y(iced::Center)
                 .into(),
         };
 
-        // 卡片 76×56、圆角 8、选中 2px accent 环 + 投影（规范 4.3）；
+        // 卡片 76×56、圆角 8、图片满铺（`Cover` 与 `main` 的 `object-fit: cover` 一致）；
         // 只显示缩略图，不显示文件名（标题栏与元数据面板已给出文件名）。
+        // 选中态把卡片撑到 80×60：环画在外沿、与图片留 3 px 空隙，图片尺寸保持 70×50
+        // 不变，避免选中时缩略图跳动；外层格子宽度固定，相邻卡片不会位移。
+        let (width, height, padding) = if selected {
+            (SELECTED_WIDTH, SELECTED_HEIGHT, SELECTED_INSET)
+        } else {
+            (CARD_WIDTH, CARD_HEIGHT, CARD_INSET)
+        };
         let card = button(preview)
             .on_press(Message::Select(position))
-            .padding(4)
-            .width(CARD_WIDTH)
-            .height(CARD_HEIGHT)
+            .padding(padding)
+            .width(width)
+            .height(height)
             .style(move |theme, status| crate::theme::thumb_card(theme, status, selected));
 
         cards.push(
@@ -75,10 +85,13 @@ pub fn view<'a>(
             .into(),
     );
 
+    // 滚动条不占位：常驻的 8 px 滚动条会吃掉条带高度、把 56 px 卡片裁成 52 px
+    // （与 `main` 的悬浮滚动条也不一致）。隐藏后条带恢复 88 px，卡片上下各 16 px；
+    // 滚动仍可用 Shift + 滚轮，翻页时由 `center_thumbnails` 自动定位。
     let scroller = scrollable(row(cards).height(STRIP_HEIGHT))
         .id(THUMB_SCROLL_ID)
         .direction(scrollable::Direction::Horizontal(
-            scrollable::Scrollbar::new().width(8),
+            scrollable::Scrollbar::hidden(),
         ))
         .width(Fill)
         .height(STRIP_HEIGHT)
