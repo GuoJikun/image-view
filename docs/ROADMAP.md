@@ -74,7 +74,7 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 | 日期 | 内容 | 提交 |
 | --- | --- | --- |
-| 2026-11-17 | Iced GUI 按 [design/macos-first](../design/macos-first/README.md) 完成界面视觉规范化：令牌化浅/深色板、图标工具栏与缩放胶囊、缩略图卡片、状态栏、空状态与错误横幅、拖放提示，Windows / Linux 自绘标题栏 | 未提交 |
+| 2026-11-17 | Iced GUI 按 [design/macos-first](../design/macos-first/README.md) 完成界面视觉规范化：令牌化浅/深色板、图标工具栏与缩放胶囊、缩略图卡片、状态栏、空状态与错误横幅、拖放提示，Windows / Linux 自绘标题栏 | `dd693d3` |
 | 2026-11-17 | 目录结构整理：`apps/iced-app` 提升为 `app`；workspace 依赖只保留被 ≥2 个成员共享的 6 条，其余内联或删除 | `277ee2e` |
 | 2026-11-17 | 合并 `main` 的非 GUI 部分到本分支：`crates/*` 与工作区 `Cargo.toml`（farbfeld / JPEG XL / APNG、源位深保留、广色域转换、动画降级提示、磁盘缩略图缓存与日志等），并按实际代码重写核心文档 | `456a7bc` |
 | 2026-11-16 | v1.5.0：GIF/WebP 动画逐帧播放、界面偏好统一进 `settings.ron`、macOS 原生菜单勾选状态（`main` 交付，Core 部分随合并进入本分支） | `e0c437a` 等 |
