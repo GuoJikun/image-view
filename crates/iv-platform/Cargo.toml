@@ -4,9 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "ImageViewer 平台集成：回收站、文件管理器定位"
+description = "ImageViewer 平台集成：回收站、文件管理器定位、系统语言"
 
 [dependencies]
+sys-locale = { workspace = true }
 trash = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

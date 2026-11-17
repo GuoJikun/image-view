@@ -16,6 +16,7 @@ heic = [
     "imgalifier-heif/unci-compression",
 ]
 svg = ["dep:resvg"]
+jxl = ["dep:jxl-oxide"]
 
 [dependencies]
 iv-metadata = { path = "../iv-metadata" }
@@ -34,12 +35,16 @@ image = { workspace = true, features = [
     "hdr",
     "exr",
     "dds",
+    "ff",
     "rayon",
 ] }
 log = { workspace = true }
 imgalifier-avif = { workspace = true, optional = true }
 imgalifier-heif = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
+jxl-oxide = { workspace = true, optional = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }
+# APNG 测试夹具：生产解码走 `image`，这里只用编码器生成多帧 PNG。
+png = "0.18"

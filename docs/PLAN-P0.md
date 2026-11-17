@@ -8,7 +8,7 @@
 | 目标平台 | Windows 10/11 x64 优先，代码保持 macOS / Linux 可编译 |
 | 技术栈 | Rust 2024 + eframe/egui 0.37 + image 0.25 |
 | 预估工期 | 5 ~ 6.5 个工作日（单人），体验完善项另计 0.5 天 |
-| 当前状态 | P0 与后续体验完善项全部完成；验证记录见 §9.5 ~ §9.7 |
+| 当前状态 | P0 与后续体验完善项全部完成；验证记录见 §9.5 ~ §9.8 |
 | 后续计划 | [ROADMAP.md](ROADMAP.md)（总览）· [PLAN-P1.md](PLAN-P1.md) · [PLAN-P2.md](PLAN-P2.md) · [PLAN-P3.md](PLAN-P3.md) |
 
 ---
@@ -1008,6 +1008,33 @@ cache hit ...\s4.png
 - 3 张 40MP 纹理的像素预算淘汰仅由单元测试覆盖，未做 GUI 实测。
 - 150% / 200% DPI、跨显示器与多窗口未复测。
 
+### 9.8 P0-M7 重写记录：相邻预览与缓存（1.2.0，2026-11-16）
+
+> GUI 已于 1.2.0 迁移到 Tauri 2 + Vue 3。本节只记录 P0-M7 的预加载/缓存语义在 `app/src-tauri/src/preview.rs` 的重写；eframe 版原始验收见 §9.7。
+
+**实现**
+
+- 预览服务改为单解码线程 + `JobKind::{Open, Preload}` 队列。`AppState::request_preview` 先提交 `Open`，随后由 `preload_neighbors()` 提交前后各一张 `Preload`。
+- worker 每轮取出队列批次，先执行批次中**最新**的 `Open`，再处理其余 `Preload`；解码耗时较长时新的 `Open` 也不会排在同一批的预加载后面。
+- 预加载只在后台填充缓存，**不发送任何事件**；命中时由下一次 `Open` 立即发出 `image:preview-ready`，前端无额外状态。
+- 缓存键为 `image_id + FileStamp{路径, 修改时间(ms), 文件长度}`；同一图片只有一条条目，新 revision 写入时移除旧 revision。PNG 仍按首次协议访问惰性编码，预加载完成的条目可直接复用该编码结果。
+- 预算：最多 3 张、总像素 ≤ 72M；淘汰时跳过 `current_image`，保证当前显示图片不被相邻预加载挤出。
+- 调度：每次 `Open` / `cancel` 推进 `epoch`，切换图片后旧预加载结果直接丢弃；`pending` 集合对同一图片的 `Preload` 去重。
+- 大图保护：`Preload` 通过 `Purpose::Preload` 走解码层的 30 MP 阈值，超限返回 `LoadError::PreloadSkipped` 并静默丢弃；用户真正打开时仍按 `Open` 的完整尺寸上限解码。
+
+**自动化验证**
+
+- `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 通过。
+- `preview.rs` 单测覆盖：revision 单调递增、缓存命中要求 `FileStamp` 完全一致（路径/修改时间/长度）、插入新 revision 替换旧 revision、条目上限淘汰时保留当前图片、72 MP 像素预算只淘汰非当前条目、`image_id` 必须是 UUID。
+- `state.rs` 的 `preload_neighbors` 由编译期类型检查与 `request_preview` 路径覆盖（只接受目录扫描时登记的 `ImageId`）。
+
+**未覆盖**
+
+- 未在应用窗口做翻页耗时基准；§9.7 的 24MP/100MP 数据仍来自 eframe 版，解码层相同但 WebView 呈现路径不同。
+- 预加载不发送事件、>30 MP 跳过由单元测试与代码路径验证，未用 100 MP 夹具重跑 GUI 场景。
+- 单解码线程下，已经在解码的预加载仍会让随后到达的 `Open` 等待；30 MP 阈值只限制单次预加载的耗时上限。
+- 3 张 / 72 MP 预算的实际内存占用未单独计量（预览像素与缩略图缓存共用进程堆）。
+
 ---
 
 ## 10. 性能预算
@@ -1045,7 +1072,7 @@ cache hit ...\s4.png
 | 管理员权限下拖放失效（Windows UIPI） | 低 | 低 | README 说明“不要以管理员运行” |
 | 中文/emoji 字体缺字 | 低 | 中 | 依赖系统字体回退；测试；需要时内嵌 Noto 子集（PLAN-P1 P1-M5） |
 | egui 升级破坏 API | 中 | 中 | 锁定 0.37，升级单独 PR，跑手工矩阵 |
-| 动画格式只显示首帧 | 高 | 低 | README 声明；PLAN-P1 P1-M7 实现动画 |
+| 动画格式只显示首帧 | 高 | 低 | 已于 2026-11-16 由 P1-M7 实现逐帧播放，见 PLAN-P1 §6 |
 | 缓存 3 张纹理抬高常驻内存 | 中 | 低 | 像素预算 72M，当前图片不淘汰；24MP×3 实测约 306 MB |
 | 长路径/UNC 兼容 | 低 | 中 | 全程 `PathBuf`；测试 `\\?\` 与 UNC |
 

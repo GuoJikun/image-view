@@ -10,5 +10,6 @@ description = "ImageViewer 基础设施：设置持久化与日志"
 iv-domain = { path = "../iv-domain" }
 log = { workspace = true }
 env_logger = { workspace = true }
+chrono = { workspace = true }
 serde = { workspace = true }
 ron = { workspace = true }

@@ -2,3 +2,4 @@ target/
 dist/
 node_modules/
 .workbuddy/
+test_files/

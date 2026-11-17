@@ -362,7 +362,7 @@ Variables / Fluent 2 自建组件 - Canvas 2D 起步；需要时评估 WebGL2/We
 ## 3. 应用结构
 
 ``` text
-apps/tauri-app/
+app/
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -505,7 +505,7 @@ Runtime 的安装和版本策略。 - macOS WKWebView 行为。 - Linux WebKitGT
 
 ## 11. 本方案的 GUI 替换成本
 
-替换为 eframe 或 Iced 时需要替换： - `apps/tauri-app` - Vue
+替换为 eframe 或 Iced 时需要替换： - `app` - Vue
 页面、组件、Pinia Store 和 CSS - Commands/Events/Custom Protocol
 Adapter - WebView 图片资源加载与 Canvas 实现 - Tauri 窗口和系统菜单适配
 

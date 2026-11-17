@@ -1,24 +1,36 @@
 //! 日志与崩溃转储。
 //!
-//! - 常规日志写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`
-//!   （可用 `IMAGE_VIEW_LOG_DIR` 覆盖），单文件超过 4 MiB 时轮转为
+//! - 常规日志优先写入可执行文件所在目录的 `logs\`，即安装目录
+//!   （开发模式为 `target\<profile>\logs\`）；该目录不可写时回退到用户数据
+//!   目录（Windows `%LOCALAPPDATA%\image-view\logs`、macOS
+//!   `~/Library/Logs/image-view`、Linux `$XDG_STATE_HOME/image-view/logs`）。
+//!   `IMAGE_VIEW_LOG_DIR` 可完全覆盖。单文件超过 4 MiB 时轮转为
 //!   `.1`、`.2`、`.3`，最多保留 3 份历史。
+//! - 每行格式为 `[<时间> <级别> <target>] <消息>`，时间按**用户本地时区**
+//!   渲染并带 UTC 偏移（`2026-11-16T14:33:37.123+08:00`），与用户看到的系统
+//!   时间一致；环境变量 `TZ` 生效，夏令时由系统时区数据库决定。
 //! - panic 时额外写一份 `crash-*.log`，包含版本、系统、位置与 backtrace，
 //!   最多保留 10 份，方便用户反馈问题。
 //! - release 构建使用 `windows_subsystem = "windows"`，没有控制台，文件是
 //!   唯一的诊断入口；因此日志初始化失败时不应阻塞启动。
 
+use std::fmt::Write as _;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::{DateTime, FixedOffset, Local};
+
 /// 覆盖日志目录的环境变量（测试或便携场景）。
 pub const LOG_DIR_ENV: &str = "IMAGE_VIEW_LOG_DIR";
 
 /// 当前日志文件名。
 pub const LOG_FILE_NAME: &str = "image-view.log";
+
+/// 安装目录下用于存放日志的子目录名。
+pub const LOG_DIR_NAME: &str = "logs";
 
 /// 单份日志的轮转阈值。
 const MAX_LOG_BYTES: u64 = 4 * 1024 * 1024;
@@ -32,12 +44,64 @@ const MAX_CRASH_FILES: usize = 10;
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 static CRASH_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// 日志目录；优先使用 `IMAGE_VIEW_LOG_DIR`，否则按平台约定。
+/// 日志目录：`IMAGE_VIEW_LOG_DIR` > 安装目录（可执行文件同级的 `logs`）> 平台用户数据目录。
 pub fn log_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os(LOG_DIR_ENV).filter(|value| !value.is_empty()) {
         return PathBuf::from(dir);
     }
-    platform_log_dir()
+    install_log_dir().unwrap_or_else(platform_log_dir)
+}
+
+/// 安装目录下的日志目录；目录不可写时为 `None`。
+///
+/// 只探测一次：启动后目录权限不会变化，而 `log_dir()` 会被日志初始化、
+/// 「打开日志文件夹」命令与崩溃转储多次调用。
+fn install_log_dir() -> Option<PathBuf> {
+    static CACHE: OnceLock<Option<PathBuf>> = OnceLock::new();
+    CACHE.get_or_init(resolve_install_log_dir).clone()
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_install_log_dir() -> Option<PathBuf> {
+    // macOS 的安装目录是 `.app` 包内部，写入会破坏代码签名与公证，
+    // 系统升级安装时也会被整体替换；因此固定回退到 ~/Library/Logs。
+    None
+}
+
+#[cfg(not(target_os = "macos"))]
+fn resolve_install_log_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    install_log_dir_from(&exe)
+}
+
+/// 由可执行文件路径推导安装目录下的日志目录；不可写时为 `None`。
+#[cfg(not(target_os = "macos"))]
+fn install_log_dir_from(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?.join(LOG_DIR_NAME);
+    is_writable(&dir).then_some(dir)
+}
+
+/// 创建目录并写入探针文件，确认当前用户确实可写。
+///
+/// 系统级安装（`/usr/bin`、`Program Files`）与 AppImage 的挂载目录都不可写，
+/// 需要据此回退，避免启动时报错或静默丢日志。
+fn is_writable(dir: &Path) -> bool {
+    if fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".write-probe");
+    match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// 当前日志文件路径；日志文件创建失败时为 `None`。
@@ -97,14 +161,14 @@ pub fn init() {
                 env_logger::Env::default().default_filter_or("warn,image_view=info"),
             )
             .target(env_logger::Target::Pipe(Box::new(writer)))
-            .format_timestamp_millis()
+            .format(format_record)
             .try_init();
         }
         Err(error) => {
             env_logger::Builder::from_env(
                 env_logger::Env::default().default_filter_or("warn,image_view=info"),
             )
-            .format_timestamp_millis()
+            .format(format_record)
             .init();
             log::error!(
                 target: "image_view::logging",
@@ -141,6 +205,46 @@ fn log_startup() {
             .map(|path| path.display().to_string())
             .unwrap_or_else(|| "<仅 stderr>".to_owned())
     );
+}
+
+/// `env_logger` 的自定义格式器。
+///
+/// 默认格式器的时间戳走 `humantime`，恒为 UTC 且不可配置时区，
+/// 因此这里自己拼一行：`[<本地时间> <级别> <target>] <消息>`。
+fn format_record(buf: &mut env_logger::fmt::Formatter, record: &log::Record<'_>) -> io::Result<()> {
+    let stamp = local_stamp(SystemTime::now());
+    let message = record.args().to_string();
+    let line = format_line(&stamp, record.level(), record.target(), &message);
+    buf.write_all(line.as_bytes())
+}
+
+/// 拼一行日志；多行消息的后续行缩进 4 空格，与 `env_logger` 默认格式一致。
+fn format_line(stamp: &str, level: log::Level, target: &str, message: &str) -> String {
+    let mut out = String::with_capacity(stamp.len() + target.len() + message.len() + 16);
+    let mut lines = message.split('\n');
+    let head = lines.next().unwrap_or_default();
+    let _ = writeln!(out, "[{stamp} {level:<5} {target}] {head}");
+    for line in lines {
+        let _ = writeln!(out, "    {line}");
+    }
+    out
+}
+
+/// 当前本地时间戳，形如 `2026-11-16T14:33:37.123+08:00`。
+fn local_stamp(now: SystemTime) -> String {
+    format_stamp(&DateTime::<Local>::from(now).fixed_offset())
+}
+
+/// 按给定偏移渲染时间戳。偏移决定日期与时钟，夏令时由系统时区换算后落到固定偏移上。
+fn format_stamp(dt: &DateTime<FixedOffset>) -> String {
+    dt.format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string()
+}
+
+/// 崩溃报告里的时间：本地时间 + 偏移，精确到秒。
+fn local_display(now: SystemTime) -> String {
+    DateTime::<Local>::from(now)
+        .format("%Y-%m-%d %H:%M:%S %:z")
+        .to_string()
 }
 
 /// 同时写文件和 stderr。文件层失败不向调用方传播，避免日志本身导致崩溃。
@@ -220,13 +324,13 @@ fn panic_report(info: &std::panic::PanicHookInfo<'_>) -> String {
 
     format!(
         "image-view {} 发生崩溃\n\
-         时间(UTC): {}\n\
+         时间(本地): {}\n\
          位置: {location}\n\
          消息: {message}\n\
          系统: {} {}\n\
          \nbacktrace:\n{}",
         env!("CARGO_PKG_VERSION"),
-        utc_timestamp(SystemTime::now()),
+        local_display(SystemTime::now()),
         std::env::consts::OS,
         std::env::consts::ARCH,
         std::backtrace::Backtrace::force_capture()
@@ -285,42 +389,10 @@ fn prune_crashes(dir: &Path, keep: usize) {
     }
 }
 
-/// `YYYYMMDD-HHMMSS`（UTC），不引入日期库。
-fn utc_timestamp(now: SystemTime) -> String {
-    let seconds = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    let days = (seconds / 86_400) as i64;
-    let remainder = seconds % 86_400;
-    let (year, month, day) = civil_from_days(days);
-    let hour = remainder / 3_600;
-    let minute = (remainder % 3_600) / 60;
-    let second = remainder % 60;
-
-    format!("{year:04}{month:02}{day:02}-{hour:02}{minute:02}{second:02}")
-}
-
-/// Howard Hinnant 的 `civil_from_days`：1970-01-01 起的天数 → 年月日。
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let day_of_era = z - era * 146_097;
-    let year_of_era =
-        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let year = year_of_era + era * 400;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let month_prime = (5 * day_of_year + 2) / 153;
-    let day = (day_of_year - (153 * month_prime + 2) / 5 + 1) as u32;
-    let month = if month_prime < 10 {
-        month_prime + 3
-    } else {
-        month_prime - 9
-    } as u32;
-
-    (if month <= 2 { year + 1 } else { year }, month, day)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     fn temp_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -332,18 +404,104 @@ mod tests {
         dir
     }
 
+    #[cfg(not(target_os = "macos"))]
     #[test]
-    fn utc_timestamp_matches_known_values() {
+    fn install_log_dir_prefers_executable_parent() {
+        let base = temp_dir("install");
+        let exe = base.join("image-view.exe");
+        fs::write(&exe, b"MZ").expect("write fake exe");
+
+        let dir = install_log_dir_from(&exe).expect("安装目录可写时应返回 logs 目录");
+        assert_eq!(dir, base.join(LOG_DIR_NAME), "日志目录应与可执行文件同级");
+        assert!(dir.is_dir(), "应创建 logs 目录");
+        assert!(!dir.join(".write-probe").exists(), "可写性探针文件应被清理");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn install_log_dir_rejects_unwritable_location() {
+        let base = temp_dir("install-blocked");
+        let blocker = base.join("blocker");
+        fs::write(&blocker, b"not a directory").expect("write blocking file");
+
+        assert!(
+            install_log_dir_from(&blocker.join("image-view.exe")).is_none(),
+            "父路径不可创建目录时应判定为不可写"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn stamps_are_rendered_in_the_given_offset() {
+        let instant = UNIX_EPOCH + std::time::Duration::from_millis(1_700_000_000_007);
+
         assert_eq!(
-            utc_timestamp(UNIX_EPOCH),
-            "19700101-000000",
-            "Unix 纪元应为 1970-01-01"
+            format_stamp(&in_offset(instant, 8 * 3_600)),
+            "2023-11-15T06:13:20.007+08:00",
+            "东八区应比 UTC 早 8 小时"
         );
         assert_eq!(
-            utc_timestamp(UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
-            "20231114-221320",
-            "1700000000 应换算为 2023-11-14 22:13:20 UTC"
+            format_stamp(&in_offset(instant, -5 * 3_600)),
+            "2023-11-14T17:13:20.007-05:00",
+            "西五区应比 UTC 晚 5 小时"
         );
+        assert_eq!(
+            format_stamp(&in_offset(instant, 0)),
+            "2023-11-14T22:13:20.007+00:00",
+            "零偏移应等于 UTC"
+        );
+    }
+
+    #[test]
+    fn stamps_keep_milliseconds_and_handle_the_epoch() {
+        assert_eq!(
+            format_stamp(&in_offset(UNIX_EPOCH, 0)),
+            "1970-01-01T00:00:00.000+00:00",
+            "Unix 纪元应渲染为 1970-01-01"
+        );
+    }
+
+    #[test]
+    fn local_stamp_uses_local_offset() {
+        let stamp = local_stamp(SystemTime::now());
+        // 具体时区依运行环境而定，这里只校验结构与偏移写法。
+        assert_eq!(
+            stamp.len(),
+            29,
+            "`YYYY-MM-DDTHH:MM:SS.mmm+HH:MM` 共 29 字符"
+        );
+        assert_eq!(&stamp[10..11], "T", "日期与时间之间用 `T` 分隔");
+        assert!(
+            stamp.ends_with(":00") || stamp.ends_with(":30") || stamp.ends_with(":45"),
+            "偏移的分钟部分应为 00 / 30 / 45：{stamp}"
+        );
+    }
+
+    #[test]
+    fn log_lines_keep_the_default_layout() {
+        assert_eq!(
+            format_line(
+                "2026-11-16T14:33:37.123+08:00",
+                log::Level::Info,
+                "image_view",
+                "启动"
+            ),
+            "[2026-11-16T14:33:37.123+08:00 INFO  image_view] 启动\n",
+            "级别应左对齐补齐 5 列，消息后换行"
+        );
+        assert_eq!(
+            format_line("S", log::Level::Error, "t", "第一行\n第二行"),
+            "[S ERROR t] 第一行\n    第二行\n",
+            "多行消息的后续行应缩进 4 空格"
+        );
+    }
+
+    fn in_offset(instant: SystemTime, seconds_east: i32) -> DateTime<FixedOffset> {
+        let offset = FixedOffset::east_opt(seconds_east).expect("合法偏移");
+        DateTime::<Utc>::from(instant).with_timezone(&offset)
     }
 
     #[test]

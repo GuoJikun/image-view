@@ -1,32 +1,39 @@
 # 图片查看器（image-view）
 
-一个轻量的 Rust 桌面图片查看器，基于 **eframe/egui 0.37**。目标是把「打开图片、看清细节」这件事做快、做稳。
+一个轻量的 Rust 桌面图片查看器，基于 **Tauri 2 + Vue 3**。目标是把「打开图片、看清细节」这件事做快、做稳。
 
 ## 功能
 
-- 通过文件对话框（Ctrl+O）、命令行参数或拖拽打开图片
-- 「适配窗口」与「100%」（1 图像像素 = 1 物理屏幕像素）
-- 自动按 EXIF 方向校正（JPEG/TIFF/WebP），HEIC/AVIF 应用容器内的旋转/镜像属性；`R` / `Shift+R` 顺时针 / 逆时针旋转 90°
-- 读取 JPEG/TIFF/PNG/WebP/HEIC/AVIF 内嵌 ICC profile 并转换到 sRGB；16-bit PNG/TIFF 在转换与缩放阶段保持精度，最终以 8-bit 纹理显示
-- 以光标为锚点的滚轮 / 触控板缩放，鼠标拖拽平移，双击在「适配」与「100%」之间切换
-- 同一目录内上一张 / 下一张（按文件名自然排序，不循环），可切换按修改时间排序
-- 底部缩略图条（可一键显示/隐藏）：懒加载 + 虚拟滚动，点击跳转，方向键/点击后自动居中当前项；缩略图使用独立内存 LRU（512 张、最长边 128 px）与磁盘缓存（`%LOCALAPPDATA%\image-view\thumbs`，上限 256 MB）
-- 记住窗口位置/大小/最大化、上次目录与图片、排序方式、主题与缩略图条开关；无参数启动时恢复上次会话
-- `Delete` 删除到系统回收站，`Ctrl+Shift+C` 复制路径，`⋯` 菜单或右键菜单可在资源管理器中定位
-- 文件日志与崩溃转储落盘（`%LOCALAPPDATA%\image-view\logs`），`⋯ → 打开日志文件夹`可直接定位
-- 幻灯片：按 `Space` 每 3 秒自动前进，到最后一张自动停止
-- 相邻图片预加载 + 最近使用（LRU）主图纹理缓存，最多 3 张，回翻立即显示；缩略图预取当前项前后各 3 张
-- 主图与缩略图纹理使用 mipmap + LINEAR：缩小查看更平滑，100% 附近仍保持清晰
-- 26 px 单行状态栏：原图尺寸/显示尺寸与位深、格式、序号、加载与降采样提示；可在 `⋯` 菜单开启色彩转换标记
-- 52 px 自绘工具栏：图标按钮、`⋯` 溢出菜单、可切换的 88 px 缩略图条；空状态与内联错误横幅
-- 后台单线程解码，打开请求优先于预加载；快速翻页时只保留最新请求，旧结果自动丢弃；缩略图使用独立后台线程，避免阻塞主图
-- 大图安全阈值：单边 8192、总像素 40MP 自动等比降采样；超过 250MP 的原图直接拒绝解码；预加载只处理 30MP 以下的图片
-- 界面支持简体中文 / English（可跟随系统），在 `⋯ → 语言` 中切换并立即生效；主题可选跟随系统 / 浅色 / 深色，画布在两套主题下都保持深色，保证图片显示时始终有最大对比度
-- 自动更新：`⋯ → 检查更新…` 读取 GitHub Releases 的 `update.json`，下载后校验 SHA-256 再启动静默安装；启动时检查默认关闭，可手动开启
+**打开与浏览**
+
+- 文件对话框（`Ctrl+O`）、命令行参数或拖拽打开；同目录上一张 / 下一张，默认按文件名自然排序，也可按修改时间
+- 底部缩略图条（可一键隐藏），点击即跳转，方向键切换时自动居中；相邻图片后台预加载，回翻立即可见
+
+**查看**
+
+- 适配窗口与 100%（1 图像像素 = 1 物理屏幕像素）；以光标为锚点缩放、拖拽平移、双击切换
+- 按 EXIF 方向自动校正，`R` / `Shift+R` 顺时针 / 逆时针旋转 90°
+- 幻灯片（`Space`，每 3 秒）与 APNG / GIF / WebP 动画播放，`Space` 暂停或继续
+- 超大图自动等比降采样并在状态栏提示，极端尺寸直接拒绝打开，不会卡住界面
+
+**格式与色彩**
+
+- 18 种常见格式，其中 APNG / GIF / WebP 支持多帧动画，HEIC / AVIF / SVG / JPEG XL 为纯 Rust 解码，详见下方「支持的格式」
+- 读取内嵌 ICC profile 转换到显示目标空间：广色域屏且引擎支持 `display-p3` 画布时转到 Display P3，其余情况转 sRGB；16-bit 图像在转换与缩放阶段保持精度；状态栏显示位深、格式与色彩转换标记
+
+**界面与设置**
+
+- 简体中文 / English（可跟随系统）切换即时生效；主题可选跟随系统 / 浅色 / 深色，画布在两套主题下都保持深色
+- 语言、主题、缩略图条与「启动时检查更新」等偏好，连同窗口位置、上次打开的目录与图片一并保留
+
+**桌面集成与维护**
+
+- `Delete` 删除到系统回收站，`Ctrl+Shift+C` 复制路径，可在文件管理器中定位
+- 日志与崩溃转储随安装目录存放，可从「帮助」直接打开；「检查更新…」读取 GitHub Releases，校验 SHA-256 后静默安装，启动时检查默认关闭
 
 ## 版本与路线
 
-当前版本为 **v1.3.0（开发中）**。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器，渲染后端为 glow。`1.2.0` 增加 Debian/Ubuntu 打包，`1.3.0` 增加 macOS（Apple Silicon）打包；图库/搜索/对比（M6）与 GIF/WebP 动画（M7）将在后续版本提供。
+当前版本为 **v1.5.0**。GUI 采用 Tauri 2 + Vue 3 架构，业务逻辑由 workspace crates 共享。`1.0.0` 汇总了 P0 查看基线、P1-M1（桌面集成与持久化）、P1-M2（ICC 色彩管理与 16-bit）、P1-M3（HEIC / AVIF）、P1-M4（缩略图条与渲染质量）、P1-M5（发布工程：安装器、文件关联、崩溃日志、版本规范）、界面改版（版式 A）、P1-M8（自动更新）与 P1-M9（中/英多语言），默认构建包含 HEIC/AVIF/SVG 解码器。`1.2.0` 增加 Linux（deb / rpm / appimage）与 macOS 打包、Tauri 迁移；`1.3.0` 统一安装与运行标识（Windows 安装目录改为 `%LOCALAPPDATA%\image-view`，从 1.2.0 升级需先卸载旧版），日志改为随安装目录存放；`1.4.0` 补齐 Tauri 迁移期间丢失的桌面集成能力（窗口与会话记忆、缩略图磁盘缓存、相邻图片预加载、图片格式「打开方式」注册），缩略图条改用自绘悬浮滚动条；`1.4.1` 修复更新说明显示为纯文本的问题；`1.5.0` 补齐 P1-M7（GIF / WebP 动画逐帧播放），界面偏好统一存进 `settings.ron`，并让 macOS 原生菜单显示勾选状态；图库/搜索/对比（M6）将在后续版本提供。
 
 - 阶段划分与进度：[docs/ROADMAP.md](docs/ROADMAP.md)
 - v1.0 计划：[docs/PLAN-P1.md](docs/PLAN-P1.md)
@@ -48,83 +55,94 @@ cargo run -p image-view-iced -- "D:\photos"    # 打开目录中第一张
 
 ## 安装与卸载
 
-### Windows（10/11 x64）
+### Windows（10/11 x64 / arm64）
 
-Windows 10/11 x64 用 cargo-packager 与 NSIS 生成安装包：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1
-```
-
-产物位于 `apps\eframe-app\dist\`：`image-view_<version>_x64-setup.exe`、`update.json` 与 `SHA256SUMS.txt`。把安装包和 `update.json` 一起上传到 GitHub Release，应用即可通过 `releases/latest/download/update.json` 发现新版本。
-
-推送版本标签会触发 GitHub Actions 发布（`.github/workflows/release.yml`）：
+用 Tauri 与 NSIS 生成安装包：
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+cd app
+pnpm install
+pnpm tauri build
 ```
 
-工作流只接受以 `v` 开头且与 `Cargo.toml` / `apps/eframe-app/Packager.toml` 版本一致的标签（例如 `v1.0.0`），随后构建安装包、`update.json` 与校验文件，并自动创建 GitHub Release。
+产物位于 `target\release\bundle\nsis\`（workspace 共享根目录的 `target`）。推送版本标签会触发 GitHub Actions 自动构建并发布（`.github/workflows/release.yml`）：
 
-- **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；创建开始菜单快捷方式，静默安装还会创建桌面快捷方式。
-- **文件关联**：注册 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG 的“打开方式”条目，并登记 Windows“默认应用”能力项。安装器不会改写任何扩展名的当前默认处理器（Windows 10/11 会阻止并回滚这类静默修改），需要设为默认时请在“设置 → 默认应用”中选择 image-view。
-- **卸载**：从“设置 → 应用”或开始菜单卸载，会删除程序文件、快捷方式、卸载项与文件关联注册。程序目录同时存放用户数据（`logs\` 日志、`thumbs\` 缩略图缓存），卸载默认保留；勾选卸载页的“删除应用数据”会一并清除，设置文件 `%APPDATA%\image-view` 同理由该选项控制。
-- **签名**：安装包与 exe 尚未做代码签名，SmartScreen 可能提示“未知发布者”；校验文件完整性请对照 `SHA256SUMS.txt`。
+```powershell
+git tag v1.5.0
+git push origin v1.5.0
+```
 
-### Linux（Debian/Ubuntu）
+工作流会校验标签与 `Cargo.toml` / `tauri.conf.json` 版本一致（例如 `v1.5.0`），随后在 Windows x64/arm64、macOS arm64/x64、Linux 三平台并行构建，签名更新产物并自动创建 GitHub Release。
 
-`.deb` 必须在 Linux 环境中构建（Windows 版 cargo-packager 不包含 deb 后端）。WSL2 下进入仓库后运行：
+Release 正文取自 `CHANGELOG.md` 中 `## [版本号]` 段落（到下一个 `## [` 为止），并追加三端安装包的选择说明。该段落缺失时工作流会在校验阶段直接失败，因此打标签前需先把这个版本的变更记录补进 `CHANGELOG.md`。
+
+- **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
+- **文件关联**：安装时注册 21 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `ff` / `jxl` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
+- **卸载**：从「设置 → 应用」或开始菜单卸载。
+
+### macOS（arm64 / x64）
+
+在 Apple Silicon Mac 上构建：
 
 ```bash
-bash apps/eframe-app/scripts/build-deb.sh
+cd app
+pnpm install
+pnpm tauri build -- --target aarch64-apple-darwin
 ```
 
-产物为 `apps/eframe-app/dist/image-view_<version>_amd64.deb`。依赖、桌面入口与文件关联位于 `apps/eframe-app/Packager.toml` 的 `[deb]` / `[[fileAssociations]]`，完整步骤见 [docs/BUILD-DEB.md](docs/BUILD-DEB.md)。
+产物为 `.dmg` 安装包。Intel Mac 用 `--target x86_64-apple-darwin`。
 
-### macOS（Apple Silicon）
-
-仅支持 arm64，需在 Apple Silicon Mac 上构建（不提供 Intel / Universal 版本）。在仓库根目录运行：
+### Linux（Debian/Ubuntu/RPM/AppImage）
 
 ```bash
-bash apps/eframe-app/scripts/build-macos.sh
+cd app
+pnpm install
+pnpm tauri build
 ```
 
-产物为 `apps/eframe-app/dist/image-view_<version>_aarch64.dmg`，内含 `image-view.app`。最低系统版本、DMG 窗口布局与文件关联位于 `apps/eframe-app/Packager.toml` 的 `[macos]` / `[dmg]` / `[[fileAssociations]]`；签名、公证与验证步骤见 [docs/BUILD-MACOS.md](docs/BUILD-MACOS.md)。未签名时首次打开需在 Finder 中右键应用选择“打开”；文件关联已注册，但 Finder 双击传入文件的 macOS 事件尚未处理，需从命令行传入路径。
+自动产出 `.deb`、`.rpm` 与 `.AppImage` 三种格式。
 
 ## 自动更新
 
-- 入口在 `⋯ → 检查更新…`；同一菜单的“启动时检查更新”默认关闭，勾选后才会在启动时联网检查。
-- 默认清单地址为 `https://github.com/GuoJikun/image-view/releases/latest/download/update.json`，格式为 `{"version","url","sha256","notes"}`。可用环境变量 `IMAGE_VIEW_UPDATE_MANIFEST` 指向本地文件或测试地址，用 `IMAGE_VIEW_UPDATE_DIR` 覆盖下载目录。
-- 安装包分块下载到 `%LOCALAPPDATA%\image-view\updates`，先写 `.part`；SHA-256 与清单一致后才会重命名并允许安装。安装器以 `/S` 静默运行，应用随即退出，不会自动重新启动。
-- 无网络、清单损坏或哈希不匹配时只影响更新窗口，不影响正常看图。
+- 入口在「帮助 → 检查更新…」；同一菜单的"启动时检查更新"默认关闭，勾选后才会在启动时联网检查。
+- 基于 Tauri 官方 `tauri-plugin-updater`，更新清单地址为 `https://github.com/GuoJikun/image-view/releases/latest/download/latest.json`。
+- 更新包使用 minisign 签名校验，下载后自动安装；支持下载进度显示与取消。
 
 ## 运行
 
-需要 Rust 1.95+（edition 2024）。
+需要 Rust 1.95+（edition 2024）、Node.js 22+ 与 pnpm。
 
 ```powershell
-cargo run --release
-cargo run --release -- "D:\photos\a.jpg"
-cargo run --release -- "D:\photos"      # 打开目录中第一张图片
+cd app
+pnpm install
+pnpm tauri dev          # 开发模式（自动启动 Vite + 热更新）
+pnpm tauri build        # 构建 release + 安装包
 ```
 
-构建产物位于 `target\release\image-view.exe`，可自行复制到任意位置使用。
+构建产物位于 `target\release\`（workspace 共享根目录的 `target`）。
 
-HEIC/AVIF 与 SVG 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
+前端单独构建：
 
 ```powershell
-cargo build --release --no-default-features                     # 不含 HEIC/AVIF/SVG
+cd app
+pnpm build              # vue-tsc --noEmit && vite build
+```
+
+HEIC/AVIF、SVG 与 JPEG XL 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
+
+```powershell
+cargo build --release --no-default-features                     # 不含 HEIC/AVIF/SVG/JXL
 cargo build --release --no-default-features --features avif     # 仅 AVIF
 cargo build --release --no-default-features --features heic     # 仅 HEIC/HEIF
 cargo build --release --no-default-features --features svg      # 仅 SVG（resvg 光栅化）
+cargo build --release --no-default-features --features jxl      # 仅 JPEG XL（jxl-oxide）
 ```
 
 未包含对应解码器的构建打开这类文件时，会显示“解码器未包含在此构建中”的明确提示，不会崩溃。
 
 命令行参数：
 
-```
+```sh
 image-view [PATH]
 
   PATH            要打开的图片文件，或目录（打开其中第一张）
@@ -132,11 +150,11 @@ image-view [PATH]
   -V, --version   显示版本
 ```
 
-日志默认写入 `%LOCALAPPDATA%\image-view\logs\image-view.log`（可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含 backtrace，最多 10 份），可用“文件 → 打开日志文件夹”直接定位。
+日志默认写入安装目录的 `logs\image-view.log`（Windows 按用户安装即 `%LOCALAPPDATA%\image-view\logs\image-view.log`；目录不可写时回退到用户数据目录，macOS 固定为 `~/Library/Logs/image-view`；可用 `IMAGE_VIEW_LOG_DIR` 覆盖），同时输出到 stderr；每行格式为 `[<时间> <级别> <target>] <消息>`，时间按**本地时区**渲染并带 UTC 偏移（如 `2026-11-16T14:33:37.123+08:00`）；单文件超过 4 MiB 自动轮转，保留 3 份历史。可通过环境变量 `RUST_LOG` 控制级别；`RUST_LOG=image_view=debug` 可查看预加载、缓存命中等细节。崩溃时会在同目录生成 `crash-*.log`（含本地时间、backtrace，最多 10 份），可用“帮助 → 打开日志文件夹”直接定位。
 
 ## 隐私
 
-应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机 `%LOCALAPPDATA%\image-view\logs`。自动更新默认不在启动时检查；只有点击 `⋯ → 检查更新…` 或勾选“启动时检查更新”后，才会访问 GitHub Releases 读取 `update.json`，且不会发送任何使用数据。
+应用不包含遥测、统计或自动联网上报；日志与崩溃转储只写入本机安装目录的 `logs\`（目录不可写时回退到用户数据目录）。自动更新默认不在启动时检查；只有点击「帮助 → 检查更新…」或勾选“启动时检查更新”后，才会访问 GitHub Releases 读取 `update.json`，且不会发送任何使用数据。
 
 ## 快捷键
 
@@ -146,7 +164,7 @@ image-view [PATH]
 | `←` / `→` | 上一张 / 下一张（缩略图条同步居中） |
 | `Ctrl+Shift+C` | 复制当前图片路径 |
 | `Delete` | 移到回收站 |
-| `Space` | 开始 / 停止幻灯片（3 秒间隔） |
+| `Space` | 播放 / 暂停动画；当前图片不是动图时开始 / 停止幻灯片（3 秒间隔） |
 | `+` / `-`（或滚轮） | 放大 / 缩小 |
 | `0` | 适配窗口 |
 | `1` | 100% |
@@ -161,117 +179,83 @@ image-view [PATH]
 
 ## 支持的格式
 
-PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG。
+PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、farbfeld（`.ff`）、JPEG XL、AVIF、HEIC/HEIF、SVG。
+
+APNG、GIF 与 WebP 支持多帧动画播放（含 alpha 与循环次数）；其余格式按静态图显示。
+
+farbfeld 是 16-bit RGBA 无损格式，由 `image` 的通用解码路径按内容识别（不依赖扩展名），位深标记与 ICC 处理和其他 16-bit 图一致（该格式本身不带 ICC）。
 
 HEIC/AVIF 默认启用，使用纯 Rust 解码器（`imgalifier-heif` / `imgalifier-avif`），不依赖 libheif 或系统 DLL。`.heif` 扩展名按 HEIC 处理。
 
+JPEG XL 默认启用，使用纯 Rust 的 `jxl-oxide`（附 `image` 集成与 `lcms2` 特性），支持 8/16-bit 与浮点源图、alpha 与内嵌 ICC；CMYK 文件由解码器经 LCMS 转为 sRGB。
+
 SVG 默认启用，使用 `resvg`（usvg + tiny-skia）光栅化，同样为纯 Rust、无系统 DLL：先解析出 `width`/`height`（缺失时回退 `viewBox`，两者都没有时按规范用 300×150）并做 250 MP 原图上限检查，再直接渲染到目标尺寸——矢量缩放即渲染，不会先画成位图再重采样。`.svgz`（gzip 压缩）暂不支持。
 
-JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
+JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到显示目标空间；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
+
+目标空间只有两档，因为画布能声明的空间只有两个（`CanvasRenderingContext2DSettings.colorSpace`）：`(color-gamut: p3)` 与 `getContext("2d", { colorSpace: "display-p3" })` 都成立时用 Display P3，否则 sRGB。预览 PNG 会写入对应的 `iCCP` 块——画布空间与标签不一致时浏览器会自行换算，所以即使在 P3 途中切回普通屏，颜色也不会错。
 
 ## 已知限制
 
 - EXIF 方向校正只覆盖 JPEG/TIFF/WebP；HEIC/AVIF 使用容器内的旋转/镜像属性（`irot` / `imir`）。
+- JPEG XL 只解静态图：`jxl-oxide` 的 `image` 集成尚未实现动画解码，`.jxl` 动画按首帧显示；浮点源图（HDR）按 8-bit 显示，不做色调映射。
+- APNG 只支持 8-bit：16-bit APNG 的逐帧合成不在 `image` 解码器覆盖范围内，动画解码会失败，此时按 16-bit 静态首帧显示，并在顶部提示横幅说明原因。
 - HEIC/AVIF 若只带 nclx 色彩原色（如未内嵌 ICC 的 Display P3），暂不进行色域转换；内嵌 ICC 会经 LCMS 转换到 sRGB。iPhone 照片通常内嵌 ICC。
 - HEIC/AVIF 的 10/12-bit 源图由解码器内部转换为 8-bit 纹理；状态栏位深标记只区分通用解码路径的 8/16-bit。
 - HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估；AVIF（AV1）不在此列。
 - SVG 只渲染静态内容：不支持动画、脚本与事件；文字使用系统字体，缺少指定字体时回退到可用字体，嵌入式 Web 字体不加载。
 - SVG 按声明的固有尺寸（`width`/`height`/`viewBox`，逻辑像素）做上限检查，超过 250 MP 会被拒绝打开；`.svgz`（gzip 压缩）不在支持列表内。
 - 旋转仅作用于当前查看，不写回文件，切换图片后重置。
-- 动图只显示第一帧。
+- 动图的帧间隔被钳制到 50~1000 ms（0 或超大 delay 都按此范围播放），因此极快或极慢的自定义时间轴不会与原始文件完全一致。
+- 动图的总帧预算为 6400 万像素 / 1200 帧：超出上限的文件按静态首帧显示，不做逐帧播放，并在顶部提示横幅说明原因。动画帧解码失败时同样会提示。
+- 动图只播放一次解码出的循环次数（取自文件元数据）；动画帧 PNG 逐帧生成，首次播放长动画的前几秒可能有轻微编码开销。
 - 超大图会被降采样后再显示，此时「100%」是相对降采样后的纹理，状态栏会同时标注原图尺寸。
 - 目录扫描不递归，且在打开文件时一次性完成；运行期间新增的文件需重新打开目录才可见。
-- 设置与窗口状态保存在 `%APPDATA%\image-view\data\app.ron`；文件损坏或版本过旧时自动回退默认值。
+- 界面偏好（语言、主题、缩略图条、色彩转换标记、启动时检查更新）与会话（上次目录/图片、排序）都写在 `settings.ron`（Windows：`%APPDATA%\dev.jikun.imageview\settings.ron`），400 ms 防抖并在关闭窗口前同步落盘；1.4.x 及更早存在 WebView 本地存储里的主题/语言/启动检查会在首次启动时自动转存一次，此后本地存储只作首帧缓存（免得启动瞬间闪一下默认配色），不再是持久化位置。
 - 排序按修改时间读取文件元数据；网络盘或权限受限时，无法读取时间的文件排在最后。
 - 删除只支持系统回收站；回收站不可用（如部分网络盘）时会提示错误并保留原文件。
 - 主图纹理缓存最多保留 3 张图片（总像素 ≤ 72M，约 288 MB）；缩略图另有 512 张 LRU，与主图预算分离。
-- 缩略图磁盘缓存位于 `%LOCALAPPDATA%\image-view\thumbs`，按路径、修改时间、文件长度与目标尺寸缓存 QOI；超过 256 MB 时启动阶段删除最旧文件，可安全手动清空。
 - 缩略图最长边为 128 px，适合 2× DPI 与常规缩放；极大目录下缩略图条只绘制视口附近卡片，但目录扫描本身仍是一次性完成。
-- mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。glow（OpenGL）为主要渲染后端，老显卡驱动异常时需回退到旧版本或自行切换后端。
+- mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。
 - 幻灯片到最后一张停止，不循环；手动翻页会重置 3 秒计时。
 - 预加载会跳过超过 30 MP 的图片（仅影响速度，不影响正常打开）。
-- 16-bit 图片以 8-bit 纹理显示（色彩转换阶段仍保留 16-bit 精度）；10-bit/HDR 输出不在当前版本范围内。
+- 16-bit 图片在解码、ICC 转换与 PNG 传输中全程保留 16-bit 精度；显示端由 WebView 解码 PNG 后落到 8-bit Canvas，因此屏幕观感仍是 8-bit。10-bit/HDR 输出不在当前版本范围内。
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
+- Display P3 需要广色域屏与支持该画布空间的引擎：WebView2 与新版本 WKWebView 可用，WebKitGTK 通常回退到 sRGB（颜色仍正确，只是吃不到广色域）。画布空间在首次绘制时固定，换显示器后需要重启才真正生效。
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
-- Windows 10/11 的默认应用由系统 `UserChoice` 保护，安装器无法静默夺取常见扩展名的默认查看器；请在“设置 → 应用 → 默认应用”中确认。
+- Windows 10/11 的默认应用由系统 `UserChoice` 保护：安装器写入扩展名关联后，若用户此前已在系统中选定其它默认应用，系统仍以 `UserChoice` 为准；请在「设置 → 应用 → 默认应用」中确认。
+- 文件关联分两层写入：打包声明（`bundle.fileAssociations`）写 ProgID 与扩展名默认值，`app/src-tauri/installer/hooks.nsh` 写 `OpenWithProgids`、`Applications\<exe>\SupportedTypes` 与 `RegisteredApplications` + `Capabilities` 能力项。前者让双击可用，后者保证本程序始终出现在右键「打开方式」与「设置 → 默认应用」列表中；默认处理器本身仍由系统 `UserChoice` 决定，安装器不会强行改写。
 - 安装向导支持英文 / 简体中文；应用内界面也可在“跟随系统 / 简体中文 / English”之间切换。自动更新只做 SHA-256 校验、没有代码签名；网络受限或需要回滚时，请从发布页手动下载安装包覆盖安装。
-- 日志与崩溃转储会写入 `%LOCALAPPDATA%\image-view\logs`；卸载会一并删除。若需长期保留问题现场，请在卸载前复制该目录。
+- 日志与崩溃转储写入安装目录的 `logs\`（Windows 即 `%LOCALAPPDATA%\image-view\logs`），卸载时随安装目录一并删除。若需长期保留问题现场，请在卸载前复制该目录。
 
 ## 项目结构
 
-```
-Cargo.toml        虚拟 workspace：成员、共享依赖与 release profile
-rust-toolchain.toml  Rust stable 工具链与 rustfmt/clippy 组件
-deny.toml            cargo-deny 依赖审计、许可证与来源配置
-THIRD-PARTY-LICENSES.md  自动生成的第三方依赖许可证与版权声明
-apps/
-  eframe-app/     唯一的 GUI 可执行包（package 名 `image-view`）
-    src/
-      main.rs     入口：CLI、窗口参数、图标、日志初始化
-      app.rs      应用状态与每帧编排（eframe::App 的 logic / ui）
-      ui.rs       顶部工具栏、分段缩放、溢出菜单、状态栏、错误横幅、帮助窗口
-      theme.rs    浅/深色调色板、主题设置与 egui 样式安装
-      icons.rs    工具栏与空状态使用的矢量图标绘制
-      viewer.rs   缩放/平移视图状态与画布绘制
-      document.rs 当前图片与 GPU 纹理
-      cache.rs    `iv-cache` 的纹理缓存适配
-      thumbs.rs   缩略图条、虚拟滚动、内存 LRU、磁盘缓存与后台缩略图解码
-      i18n.rs     中/英资源表、语言检测与切换
-      errors.rs   核心错误到本地化文案的映射
-      update.rs   更新清单检查、后台下载、SHA-256 校验与安装器启动
-      titlebar.rs Linux 无边框标题栏
-    build.rs      在 Windows MSVC 下把 assets/app.res 链接进 exe
-    examples/
-      gen_fixtures.rs    生成手工测试用的图片夹具（开发用）
-      color_fixtures.rs  生成 AdobeRGB / Display P3 / sRGB 色彩验收夹具
-      thumb_fixtures.rs  生成缩略图条 1000 / 3000 张目录验收夹具
-      gen_third_party_licenses.rs  从 Cargo.lock 重新生成 THIRD-PARTY-LICENSES.md
-    installer/
-      nsis/
-        image-view.nsi   NSIS 安装器模板（按用户安装、文件关联注册、卸载清理）
-    Packager.toml       cargo-packager 打包配置（NSIS / deb / dmg、依赖与文件关联）
-    scripts/
-      build-release.ps1  构建 release exe、安装包、update.json 与 SHA256
-      build-deb.sh       在 Linux/WSL2 中构建 .deb
-      build-macos.sh     在 Apple Silicon Mac 上构建 arm64 .dmg
-crates/
-  iv-domain/       排序、语言、主题与支持的扩展名
-  iv-files/        目录扫描与自然/时间排序
-  iv-application/  目录导航状态（上一张/下一张/选中）
-  iv-metadata/     ICC profile 解析、sRGB 转换与 16-bit 精度保持
-  iv-image-decode/ 后台解码线程、优先级队列、预加载、降采样、格式分派与缩略图解码
-  iv-image-render/ 缩放/平移视图数学（不依赖 egui）
-  iv-cache/        通用 LRU 与像素预算缓存
-  iv-task/         后台请求代号（generation）
-  iv-platform/     回收站删除、资源管理器定位与打开目录
-  iv-infra/        文件日志轮转、设置持久化与存储端口
-  iv-gui-contract/ GUI 动作与工具栏状态
-  iv-library/      图库能力占位（尚未实现）
+```plain
+Cargo.toml          cargo workspace：成员、共享依赖、release profile 与版本号
+app/
+  src/              Vue 3 + TypeScript + Pinia 前端
+  src-tauri/        Rust 适配层：命令、事件、iviewer:// 资源协议、原生菜单、自动更新
+crates/             与 GUI 无关的业务逻辑，按依赖方向分层
+  iv-domain/        排序、语言、主题与支持的扩展名
+  iv-files/         目录扫描与自然/时间排序
+  iv-application/   目录导航状态（上一张/下一张/选中）
+  iv-metadata/      ICC profile 解析、sRGB 转换与 16-bit 精度
+  iv-image-decode/  后台解码、优先级队列、预加载、降采样与缩略图
+  iv-image-render/  缩放/平移视图数学（不依赖 GUI）
+  iv-cache/         通用 LRU 与像素预算缓存
+  iv-task/          后台请求代号（generation）
+  iv-platform/      回收站删除、资源管理器定位与打开目录
+  iv-infra/         日志轮转、设置持久化与存储端口
+  iv-gui-contract/  GUI 动作与工具栏状态
+  iv-library/       图库能力占位（尚未实现）
   iv-image-process/ 图片处理能力占位（尚未实现）
-assets/
-  icon.png      窗口图标（64×64）
-  icon-256.png  deb / macOS 打包用的 256×256 图标
-  icon-512.png  deb / macOS 打包用的 512×512 图标
-  icon-512@2x.png macOS Retina 图标（1024×1024，按 512 pt @2x 命名）
-  icon.ico      多尺寸应用图标（安装包 / exe）
-  app.rc        图标资源定义
-  app.res       编译后的 Windows 资源
-.github/
-  workflows/
-    release.yml      推送 v* 标签时自动构建并发布
-design/
-  gen_ico.py    从 icon-1024.png 生成多尺寸 assets/icon.ico
-docs/
-  ROADMAP.md    阶段进度总览与里程碑
-  PLAN-P0.md    1.0.0 开发基线（P0）设计与验收记录
-  PLAN-P1.md    v1.0 计划（M1~M9，只查看）
-  PLAN-P2.md    v2.x 专业能力、编辑与架构
-  PLAN-P3.md    v3+ 长期方向
-  NSIS-TOOLCHAIN.md  cargo-packager 的 NSIS 工具链预置与排障
-  BUILD-DEB.md       WSL2/Linux 构建 .deb 的依赖、步骤与配置说明
-  BUILD-MACOS.md     Apple Silicon 构建 arm64 .dmg 的步骤与签名说明
-CHANGELOG.md    各发布版本的用户可见变更
+.github/workflows/  check.yml 日常检查、release.yml 推标签时三平台构建发布
+docs/               路线图、分阶段计划与架构说明
+design/             三端 UI 设计规范
+CHANGELOG.md        各版本的用户可见变更
 ```
+
+只列到目录一级。根目录另有 `rust-toolchain.toml`（工具链钉版）、`deny.toml`（cargo-deny 依赖审计）与自动生成的 `THIRD-PARTY-LICENSES.md`。各模块职责与依赖方向见 [`docs/03-tauri-vue-rust-architecture.md`](docs/03-tauri-vue-rust-architecture.md)，壳层与前端的约定见 [`AGENTS.md`](AGENTS.md)。
 
 ## 开发
 
@@ -279,13 +263,17 @@ CHANGELOG.md    各发布版本的用户可见变更
 cargo fmt --all
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
-cargo build --release -p image-view
-powershell -ExecutionPolicy Bypass -File apps\eframe-app\scripts\build-release.ps1   # exe + 安装包 + SHA256
+
+# 前端
+cd app
+pnpm build
+
+# Tauri 开发与构建
+cd app
+pnpm tauri dev
+pnpm tauri build
 ```
 
-`build-release.ps1` 需要已安装 `cargo-packager`（`cargo install cargo-packager --locked`），并已按 [docs/NSIS-TOOLCHAIN.md](docs/NSIS-TOOLCHAIN.md) 预置 NSIS 工具链（`%LOCALAPPDATA%\.cargo-packager`）。发布前还应运行 `cargo fmt --all --check` 与 `cargo test --workspace --no-default-features`。
-
-手工测试夹具可用 `cargo run --release --example gen_fixtures -- <输出目录>` 生成（会写入约 100MP 的 JPEG，注意磁盘空间）。色彩验收夹具用 `cargo run --release --example color_fixtures -- <输出目录>` 生成。缩略图验收夹具用 `cargo run --release --example thumb_fixtures -- <目录> [数量] [宽] [高]` 生成（例如 3000 张 640×480）。
+动画验收夹具用 `cargo run -p iv-image-decode --example animation_fixtures -- target/animation-fixtures` 生成：640×360 / 12 帧 / 80 ms 的常规 GIF、1500 ms 帧间隔且循环 2 次的 GIF、0 ms 帧间隔的 GIF，以及 4 帧无限循环 WebP，覆盖延迟钳制与循环次数两个边界。1.2.0 重写前的大图、色彩与缩略图夹具生成器（`gen_fixtures` / `color_fixtures` / `thumb_fixtures`）已随 eframe 版移除，需要时自行准备素材。
 
 - 设计细节与取舍见 `docs/PLAN-P0.md`。
-- 渲染后端使用 eframe 的 glow（OpenGL）；从 wgpu 切换是为了支持纹理 `mipmap_mode`，同时减小 release 体积。
