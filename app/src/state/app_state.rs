@@ -8,12 +8,20 @@ use iv_application::FolderNav;
 use iv_infra::settings::Settings;
 
 use crate::adapters::storage::FileStorage;
+use crate::i18n::{self, Text};
+use crate::menu::MenuState;
 use crate::message::Message;
 use crate::state::library_state::LibraryState;
 use crate::state::viewer_state::ViewerState;
 
 /// 幻灯片自动前进间隔。
 pub const SLIDESHOW_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// 当前打开的模态弹窗。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dialog {
+    Shortcuts,
+}
 
 pub struct AppState {
     /// Application 层用例状态（当前目录、列表、下标、排序）。
@@ -23,9 +31,12 @@ pub struct AppState {
     pub settings: Settings,
     pub storage: FileStorage,
 
+    /// 系统语言标签；启动时读一次，供「跟随系统」解析语言。
+    pub system_locale: Option<String>,
     /// 文件操作/系统能力的用户可读提示，与解码错误分开。
     pub notice: Option<String>,
-    pub menu_open: bool,
+    pub menu: MenuState,
+    pub dialog: Option<Dialog>,
     pub slideshow: bool,
     pub last_advance: Instant,
     pub scale_factor: f32,
@@ -57,14 +68,18 @@ impl AppState {
         let mut library = LibraryState::default();
         library.thumbs.show = settings.show_thumbnails;
 
+        let system_locale = iv_platform::system_locale();
+
         let mut state = Self {
             nav,
             viewer: ViewerState::new(),
             library,
             settings: settings.clone(),
             storage,
+            system_locale,
             notice: None,
-            menu_open: false,
+            menu: MenuState::default(),
+            dialog: None,
             slideshow: false,
             last_advance: Instant::now(),
             scale_factor: 1.0,
@@ -93,6 +108,11 @@ impl AppState {
     pub fn zoom(&self) -> Option<f32> {
         self.viewer.effective_zoom(self.scale_factor)
     }
+
+    /// 当前界面文案表；语言偏好与系统标签决定中/英文。
+    pub fn text(&self) -> &'static Text {
+        i18n::for_language(self.settings.language, self.system_locale.as_deref())
+    }
 }
 
 #[cfg(test)]
@@ -105,8 +125,11 @@ impl AppState {
             library: LibraryState::default(),
             settings: Settings::default(),
             storage: FileStorage::open_at(config_dir.join("settings.ron")),
+            // 测试固定系统语言，避免用例结果随执行环境变化。
+            system_locale: Some("zh-CN".to_owned()),
             notice: None,
-            menu_open: false,
+            menu: MenuState::default(),
+            dialog: None,
             slideshow: false,
             last_advance: Instant::now(),
             scale_factor: 1.0,

@@ -9,8 +9,10 @@ use iced::Task;
 use iced::keyboard::{self, Key, Modifiers, key::Named};
 use iv_domain::SUPPORTED_EXTENSIONS;
 
+use crate::i18n::Text;
 use crate::message::Message;
 use crate::state::AppState;
+use crate::state::app_state::Dialog;
 use crate::state::app_state::SLIDESHOW_INTERVAL;
 use crate::update::{library, viewer};
 
@@ -47,13 +49,37 @@ pub fn handle_event(state: &mut AppState, event: iced::Event) -> Task<Message> {
 }
 
 fn key_pressed(state: &mut AppState, key: Key, modifiers: Modifiers) -> Task<Message> {
+    // 带修饰键的组合与菜单里标注的快捷键保持一致。
     if modifiers.command() {
         return match &key {
-            Key::Character(text) if text.as_str().eq_ignore_ascii_case("o") => open_dialog(),
             Key::Character(text)
                 if text.as_str().eq_ignore_ascii_case("c") && modifiers.shift() =>
             {
                 library::copy_path(state)
+            }
+            Key::Character(text) if text.as_str().eq_ignore_ascii_case("o") => {
+                open_dialog(state.text())
+            }
+            Key::Character(text) if matches!(text.as_str(), "=" | "+") => {
+                viewer::zoom_by(state, 1.25);
+                Task::none()
+            }
+            Key::Character(text) if matches!(text.as_str(), "-" | "_") => {
+                viewer::zoom_by(state, 0.8);
+                Task::none()
+            }
+            Key::Character(text) if text.as_str() == "0" => {
+                state.viewer.fit();
+                Task::none()
+            }
+            Key::Character(text) if text.as_str() == "1" => {
+                viewer::actual_size(state);
+                Task::none()
+            }
+            Key::Character(text) if text.as_str() == "/" => {
+                state.menu.close();
+                state.dialog = Some(Dialog::Shortcuts);
+                Task::none()
             }
             _ => Task::none(),
         };
@@ -67,8 +93,14 @@ fn key_pressed(state: &mut AppState, key: Key, modifiers: Modifiers) -> Task<Mes
         Key::Named(Named::Delete) => library::delete_current(state),
         Key::Named(Named::F11) => toggle_fullscreen(state),
         Key::Named(Named::Escape) => {
-            state.menu_open = false;
-            state.notice = None;
+            // 逐层退出：菜单 → 弹窗 → 提示条。
+            if state.menu.is_open() {
+                state.menu.close();
+            } else if state.dialog.is_some() {
+                state.dialog = None;
+            } else {
+                state.notice = None;
+            }
             Task::none()
         }
         Key::Named(Named::Space) => {
@@ -110,12 +142,14 @@ fn key_pressed(state: &mut AppState, key: Key, modifiers: Modifiers) -> Task<Mes
     }
 }
 
-pub fn open_dialog() -> Task<Message> {
+pub fn open_dialog(t: &Text) -> Task<Message> {
+    let title = t.menu_open;
+    let filter = t.dialog_images;
     Task::perform(
-        async {
+        async move {
             rfd::AsyncFileDialog::new()
-                .set_title("打开图片")
-                .add_filter("图片", SUPPORTED_EXTENSIONS)
+                .set_title(title)
+                .add_filter(filter, SUPPORTED_EXTENSIONS)
                 .pick_file()
                 .await
                 .map(|handle| handle.path().to_path_buf())
@@ -143,6 +177,8 @@ pub fn apply_window_mode(state: &mut AppState, mode: iced::window::Mode) -> Task
         iced::window::Mode::Fullscreen
     };
     state.fullscreen = next == iced::window::Mode::Fullscreen;
+    // 全屏时自绘标题栏（含菜单栏）隐藏，菜单必须收起，否则会浮在画布上。
+    state.menu.close();
     match state.window_id {
         Some(id) => iced::window::set_mode::<Message>(id, next),
         None => Task::none(),
@@ -151,7 +187,8 @@ pub fn apply_window_mode(state: &mut AppState, mode: iced::window::Mode) -> Task
 
 /// 排空主图与缩略图线程的结果；解码结果只接受当前 generation。
 pub fn poll(state: &mut AppState) -> Task<Message> {
-    if state.viewer.poll()
+    let text = state.text();
+    if state.viewer.poll(text)
         && let Some(image) = state.viewer.image.clone()
     {
         state.library.meta.absorb(&image);

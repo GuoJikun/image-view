@@ -34,14 +34,15 @@ pub fn subscription(_state: &AppState) -> Subscription<Message> {
 }
 
 pub fn title(state: &AppState) -> String {
+    let app_name = state.text().app_name;
     match state.current_path() {
         Some(path) => format!(
-            "{} — image-view (Iced POC)",
+            "{} — {app_name}",
             path.file_name()
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.display().to_string())
         ),
-        None => "image-view (Iced POC)".to_owned(),
+        None => app_name.to_owned(),
     }
 }
 

@@ -5,8 +5,8 @@
 
 use std::path::PathBuf;
 
+use crate::menu::{Action, Hover};
 use emath::Vec2;
-use iv_domain::SortOrder;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -19,8 +19,6 @@ pub enum Message {
 
     Navigate(isize),
     Select(usize),
-    FirstImage,
-    LastImage,
 
     ZoomAt {
         /// 相对画布中心的逻辑点偏移。
@@ -30,9 +28,7 @@ pub enum Message {
     ZoomBy(f32),
     PanBy(Vec2),
     Fit,
-    ActualSize,
     ToggleActualSize,
-    Rotate(i8),
 
     CanvasResized(iced::Size),
     ThumbScrolled {
@@ -42,14 +38,36 @@ pub enum Message {
 
     ToggleThumbnails,
     ToggleMetadata,
-    ToggleMenu,
     ToggleSlideshow,
-    SetSort(SortOrder),
+
+    // ---- 菜单栏 ----
+    /// 点击分组：展开 / 收起。
+    MenuGroupClicked(usize),
+    /// 鼠标移到另一个分组上：菜单展开时切换分组。
+    MenuGroupHovered(usize),
+    /// 鼠标离开分组标题。
+    MenuGroupLeft(usize),
+    /// 直接展开某个分组（工具栏的排序按钮用）。
+    MenuOpened {
+        group: usize,
+        sub: Option<usize>,
+    },
+    /// 展开 / 收起子菜单。
+    MenuSubmenuToggled(usize),
+    /// 进入某一行：设置悬停高亮。
+    MenuRowHovered(Hover),
+    /// 离开某一行：只清掉自己那一行的高亮，避免把刚进入的新行清掉。
+    MenuRowLeft(Hover),
+    MenuClose,
+    MenuAction(Action),
+
+    // ---- 弹窗 ----
+    CloseDialog,
+    /// 无副作用的占位消息：用于「弹窗内点击不穿透到遮罩」。
+    Noop,
 
     Reveal,
-    DeleteCurrent,
     CopyPath,
-    ToggleFullscreen,
     ApplyWindowMode(iced::window::Mode),
 
     /// 自绘标题栏（Win/Linux）：拖动 / 双击最大化 / caption 按钮。

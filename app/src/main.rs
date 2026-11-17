@@ -7,6 +7,8 @@
 
 mod adapters;
 mod app;
+mod i18n;
+mod menu;
 mod message;
 mod state;
 mod theme;

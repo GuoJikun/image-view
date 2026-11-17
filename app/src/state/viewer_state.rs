@@ -134,7 +134,7 @@ impl ViewerState {
     }
 
     /// 排空解码线程；返回是否有当前图片的结果被接受。
-    pub fn poll(&mut self) -> bool {
+    pub fn poll(&mut self, t: &crate::i18n::Text) -> bool {
         let mut changed = false;
 
         while let Some(response) = self.preview.try_recv() {
@@ -153,7 +153,7 @@ impl ViewerState {
                 }
                 Err(error) => {
                     self.image = None;
-                    self.error = Some(errors::load_error_text(&error));
+                    self.error = Some(errors::load_error_text(&error, t));
                 }
             }
             self.reset_view();

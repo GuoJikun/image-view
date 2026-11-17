@@ -19,7 +19,7 @@ pub fn open_path(state: &mut AppState, path: PathBuf) -> Task<Message> {
         match state.nav.open_dir(&path) {
             Some(first) => first,
             None => {
-                state.notice = Some(format!("目录中没有可显示的图片：{}", path.display()));
+                state.notice = Some(state.text().dir_empty_notice(&path.display().to_string()));
                 return Task::none();
             }
         }
@@ -27,7 +27,11 @@ pub fn open_path(state: &mut AppState, path: PathBuf) -> Task<Message> {
         state.nav.set_file(&path);
         path
     } else {
-        state.notice = Some(format!("路径不存在或无法读取：{}", path.display()));
+        state.notice = Some(
+            state
+                .text()
+                .path_missing_notice(&path.display().to_string()),
+        );
         return Task::none();
     };
 
@@ -62,7 +66,7 @@ pub fn last(state: &mut AppState) -> Task<Message> {
 
 pub fn set_sort(state: &mut AppState, order: SortOrder) -> Task<Message> {
     state.nav.set_sort(order);
-    state.menu_open = false;
+    state.menu.close();
     persist(state);
     request_visible_thumbnails(state);
     center_thumbnails(state)
@@ -84,7 +88,10 @@ fn show_current(state: &mut AppState) {
     };
 
     state.viewer.show(&path);
-    state.library.meta.load(&path);
+    state
+        .library
+        .meta
+        .load(&path, state.text().metadata_unknown);
     if let Some(image) = state.viewer.image.clone() {
         state.library.meta.absorb(&image);
     }
@@ -141,13 +148,13 @@ pub fn delete_current(state: &mut AppState) -> Task<Message> {
     };
 
     if let Err(error) = iv_platform::delete_to_trash(&path) {
-        state.notice = Some(errors::file_op_error_text(&error));
+        state.notice = Some(errors::file_op_error_text(&error, state.text()));
         return Task::none();
     }
 
     state.viewer.forget(&path);
     state.library.thumbs.remove(&path);
-    state.notice = Some(format!("已移到回收站：{}", file_name(&path)));
+    state.notice = Some(state.text().trashed_notice(&file_name(&path)));
 
     if state.nav.remove_current().is_some() {
         return go_to_current(state);
@@ -164,7 +171,7 @@ pub fn reveal(state: &mut AppState) {
         return;
     };
     if let Err(error) = iv_platform::reveal_in_file_manager(&path) {
-        state.notice = Some(errors::file_op_error_text(&error));
+        state.notice = Some(errors::file_op_error_text(&error, state.text()));
     }
 }
 

@@ -6,6 +6,7 @@
 use iced::widget::{button, canvas, center, column, container, row, sensor, stack, text};
 use iced::{Color, Element, Fill};
 
+use crate::adapters::errors;
 use crate::message::Message;
 use crate::state::AppState;
 use crate::state::library_state::format_label;
@@ -124,12 +125,14 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             state.library.meta.show,
             &t,
         ),
-        button(text("排序").size(12))
+        button(text(state.text().toolbar_sort).size(12))
             .style(theme::text_button)
-            .on_press(Message::ToggleMenu),
+            .on_press(Message::MenuOpened {
+                group: crate::menu::GROUP_VIEW,
+                sub: Some(crate::menu::SORT_ENTRY),
+            }),
         separator(&t),
         capsule_zoom(&zoom_label, has_image),
-        tool_button(Icon::More, Message::ToggleMenu, true, state.menu_open, &t),
     ]
     .spacing(6)
     .align_y(iced::Center);
@@ -221,15 +224,22 @@ pub fn canvas_area(state: &AppState) -> Element<'_, Message> {
     let mut layers: Vec<Element<'_, Message>> = vec![canvas(model).width(Fill).height(Fill).into()];
 
     if state.viewer.image.is_none() && !state.viewer.loading() && state.viewer.error.is_none() {
-        layers.push(empty_state());
+        layers.push(empty_state(state));
     } else if state.viewer.loading() {
-        layers.push(center(text("正在加载…").size(13).color(fixed_color(0xF5F5F7))).into());
+        layers.push(
+            center(
+                text(state.text().status_loading)
+                    .size(13)
+                    .color(fixed_color(0xF5F5F7)),
+            )
+            .into(),
+        );
     }
 
     // 拖放反馈（体验清单 1）：半透明蒙层 + 强调色内描边 + 居中提示。
     if state.drag_hover {
         let accent = Palette::from(&theme_of(state)).accent;
-        let inner = container(text("松开以打开").size(15).color(Color::WHITE))
+        let inner = container(text(state.text().empty_drag).size(15).color(Color::WHITE))
             .padding(20)
             .style(move |_t: &iced::Theme| container::Style {
                 background: Some(iced::Background::Color(Palette::from(_t).control)),
@@ -263,14 +273,14 @@ pub fn canvas_area(state: &AppState) -> Element<'_, Message> {
 }
 
 /// 空状态（规范 4.6）：图标 → 标题 → 说明 → 主按钮，整体居中偏上。
-fn empty_state() -> Element<'static, Message> {
+fn empty_state(state: &AppState) -> Element<'_, Message> {
+    let t = state.text();
+    let hint = t.empty_hint_with(&crate::menu::accel(&["mod", "O"]));
     let content = column![
         icons::view(Icon::Open, 60.0, iced::Color::from_rgb(0.45, 0.45, 0.48)),
-        text("还没有打开图片").size(15).color(fixed_color(0xF5F5F7)),
-        text("从文件打开，或把图片拖进窗口（Ctrl+O）")
-            .size(12)
-            .color(fixed_color(0xA1A1A6)),
-        button(text("打开图片").size(13))
+        text(t.empty_title).size(15).color(fixed_color(0xF5F5F7)),
+        text(hint).size(12).color(fixed_color(0xA1A1A6)),
+        button(text(t.empty_open).size(13))
             .style(theme::primary_button)
             .padding([6, 16])
             .height(28)
@@ -306,7 +316,7 @@ pub fn status_bar(state: &AppState) -> Element<'_, Message> {
                 )
             };
             let mut parts = vec![
-                text(format_label(&image.path))
+                text(format_label(&image.path, state.text().metadata_unknown))
                     .size(11)
                     .color(p.text2)
                     .into(),
@@ -321,24 +331,44 @@ pub fn status_bar(state: &AppState) -> Element<'_, Message> {
             if source != decoded {
                 parts.push(text("·").size(11).color(p.text3).into());
                 parts.push(
-                    text("已降采样")
+                    text(state.text().status_downscaled)
                         .size(11)
                         .color(fixed_color(0xE6A032))
                         .into(),
                 );
             }
+            // 色彩转换标记：菜单里的「显示色彩转换标记」控制是否呈现。
+            if state.settings.show_color_status
+                && let Some(label) = errors::color_label(&image.color, state.text())
+            {
+                parts.push(text("·").size(11).color(p.text3).into());
+                parts.push(text(label).size(11).color(p.text2).into());
+            }
             row(parts).spacing(6).align_y(iced::Center).into()
         }
-        None => text("未打开图片").size(11).color(p.text2).into(),
+        None => text(state.text().status_no_image)
+            .size(11)
+            .color(p.text2)
+            .into(),
     };
 
     let right: Element<'_, Message> = {
         let mut parts: Vec<Element<'_, Message>> = Vec::new();
         if state.slideshow {
-            parts.push(text("幻灯片中").size(11).color(p.success).into());
+            parts.push(
+                text(state.text().status_slideshow)
+                    .size(11)
+                    .color(p.success)
+                    .into(),
+            );
         }
         if state.library.thumbs.pending() {
-            parts.push(text("缩略图生成中…").size(11).color(p.text3).into());
+            parts.push(
+                text(state.text().status_thumbnails)
+                    .size(11)
+                    .color(p.text3)
+                    .into(),
+            );
         }
         let position = state
             .nav
@@ -368,7 +398,7 @@ pub fn banner(state: &AppState) -> Option<Element<'_, Message>> {
         container(
             row![
                 text(message).size(11.5).width(Fill),
-                button(text("关闭").size(11))
+                button(text(state.text().banner_dismiss).size(11))
                     .style(theme::text_button)
                     .on_press(Message::Dismiss),
             ]

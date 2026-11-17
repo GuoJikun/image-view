@@ -21,5 +21,5 @@ pub fn metadata(state: &AppState) -> Option<Element<'_, Message>> {
     if !state.library.meta.show {
         return None;
     }
-    Some(metadata_panel::view(&state.library.meta))
+    Some(metadata_panel::view(&state.library.meta, state.text()))
 }

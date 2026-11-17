@@ -109,6 +109,10 @@ fn theme_is_dark(theme: &Theme) -> bool {
 pub const CANVAS_BACKGROUND: Color = rgb(0x16171A);
 pub const RADIUS_CONTROL: f32 = 6.0;
 pub const RADIUS_TILE: f32 = 8.0;
+/// 菜单 / 下拉面板圆角（规范 4.5）。
+pub const RADIUS_MENU: f32 = 6.0;
+/// 弹窗圆角（规范 4.8）。
+pub const RADIUS_DIALOG: f32 = 10.0;
 pub const HAIRLINE: f32 = 1.0;
 
 fn radius(value: f32) -> Radius {
@@ -308,6 +312,94 @@ pub fn text_button(theme: &Theme, status: button::Status) -> button::Style {
 pub fn icon_svg(theme: &Theme, color: Color) -> svg::Style {
     let _ = Palette::from(theme);
     svg::Style { color: Some(color) }
+}
+
+// ---------- 菜单与弹窗 ----------
+
+/// 菜单栏文本项：展开时 `accent-soft` 底 + `accent` 文字，悬停用 `hover` 底。
+///
+/// 用 `container` 而不是 `button`：按钮会把悬停光标固定成手型，而菜单栏标题按
+/// 原生习惯要保持箭头（光标由 `view/menu.rs` 的 `mouse_area` 声明为 `Idle`）。
+pub fn menu_bar_item(theme: &Theme, hovered: bool, open: bool) -> container::Style {
+    let p = Palette::from(theme);
+    container::Style {
+        background: if open {
+            Some(Background::Color(p.accent_soft))
+        } else if hovered {
+            Some(Background::Color(p.hover))
+        } else {
+            None
+        },
+        text_color: Some(if open { p.accent } else { p.text }),
+        border: Border::default().rounded(4.0),
+        ..Default::default()
+    }
+}
+
+/// 下拉面板：`control` 底 + 1px 发丝线 + popover 投影。
+pub fn menu_panel(theme: &Theme) -> container::Style {
+    let p = Palette::from(theme);
+    container::Style {
+        background: Some(Background::Color(p.control)),
+        text_color: Some(p.text),
+        border: Border {
+            color: p.hairline,
+            width: HAIRLINE,
+            radius: radius(RADIUS_MENU),
+        },
+        shadow: shadow_popover(theme_is_dark(theme)),
+        ..Default::default()
+    }
+}
+
+/// 菜单行：悬停整行用 `accent` 填充（文字色由调用方按白色处理）。
+pub fn menu_row(theme: &Theme, hovered: bool) -> container::Style {
+    let p = Palette::from(theme);
+    container::Style {
+        background: hovered.then_some(Background::Color(p.accent)),
+        text_color: Some(if hovered { Color::WHITE } else { p.text }),
+        border: Border::default().rounded(4.0),
+        ..Default::default()
+    }
+}
+
+/// 弹窗底板：圆角 10 + popover 投影（规范 4.8）。
+pub fn dialog(theme: &Theme) -> container::Style {
+    let p = Palette::from(theme);
+    container::Style {
+        background: Some(Background::Color(p.control)),
+        text_color: Some(p.text),
+        border: Border {
+            color: p.hairline,
+            width: HAIRLINE,
+            radius: radius(RADIUS_DIALOG),
+        },
+        shadow: shadow_popover(true),
+        ..Default::default()
+    }
+}
+
+/// 弹窗遮罩。
+pub fn dialog_backdrop(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(rgba(0x000000, 0.28))),
+        ..Default::default()
+    }
+}
+
+/// 快捷键键帽（规范 4.8：track 底 + 1px 描边）。
+pub fn keycap(theme: &Theme) -> container::Style {
+    let p = Palette::from(theme);
+    container::Style {
+        background: Some(Background::Color(p.track)),
+        text_color: Some(p.text2),
+        border: Border {
+            color: p.hairline,
+            width: HAIRLINE,
+            radius: radius(4.0),
+        },
+        ..Default::default()
+    }
 }
 
 // ---------- 投影 ----------

@@ -4,6 +4,7 @@
 //! 结果通过 `Message::Poll` 回到状态。
 
 pub mod library;
+pub mod menu;
 pub mod task;
 pub mod viewer;
 
@@ -31,16 +32,8 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             state.viewer.fit();
             Task::none()
         }
-        Message::ActualSize => {
-            viewer::actual_size(state);
-            Task::none()
-        }
         Message::ToggleActualSize => {
             viewer::toggle_actual_size(state);
-            Task::none()
-        }
-        Message::Rotate(steps) => {
-            state.viewer.rotate(steps);
             Task::none()
         }
         Message::CanvasResized(size) => {
@@ -50,9 +43,6 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
         // ---- 图库与导航 ----
         Message::Navigate(delta) => library::navigate(state, delta),
         Message::Select(index) => library::select(state, index),
-        Message::FirstImage => library::first(state),
-        Message::LastImage => library::last(state),
-        Message::SetSort(order) => library::set_sort(state, order),
         Message::ThumbScrolled {
             offset_x,
             viewport_w,
@@ -68,15 +58,88 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             state.library.meta.show = !state.library.meta.show;
             Task::none()
         }
-        Message::ToggleMenu => {
-            state.menu_open = !state.menu_open;
+        Message::MenuGroupClicked(index) => {
+            // 悬停切换过来的分组，第一次点击只「落定」，再点才收起。
+            if state.menu.open == Some(index) && !state.menu.hover_opened {
+                state.menu.close();
+            } else if state.menu.open == Some(index) {
+                state.menu.hover_opened = false;
+            } else {
+                state.menu.open = Some(index);
+                state.menu.sub = None;
+                state.menu.hover = None;
+                state.menu.hover_opened = false;
+            }
             Task::none()
         }
+        Message::MenuGroupHovered(index) => {
+            // 标题只做底色反馈，光标保持箭头（见 `view/menu.rs`）。
+            state.menu.bar_hover = Some(index);
+            // 只有菜单已展开时，悬停其它分组才切换（与 macOS 菜单栏行为一致）。
+            if state.menu.is_open() && state.menu.open != Some(index) {
+                state.menu.open = Some(index);
+                state.menu.sub = None;
+                state.menu.hover = None;
+                state.menu.hover_opened = true;
+            }
+            Task::none()
+        }
+        Message::MenuGroupLeft(index) => {
+            // 离开事件可能晚于下一个标题的进入事件，只清自己这一项。
+            if state.menu.bar_hover == Some(index) {
+                state.menu.bar_hover = None;
+            }
+            Task::none()
+        }
+        Message::MenuOpened { group, sub } => {
+            state.menu.open = Some(group);
+            state.menu.sub = sub;
+            state.menu.hover = None;
+            state.menu.hover_opened = false;
+            Task::none()
+        }
+        Message::MenuSubmenuToggled(index) => {
+            state.menu.sub = if state.menu.sub == Some(index) {
+                None
+            } else {
+                Some(index)
+            };
+            state.menu.hover = None;
+            Task::none()
+        }
+        Message::MenuRowHovered(hover) => {
+            // 悬停到父面板的其它行时收起子菜单（与原生菜单一致）。
+            if hover.child.is_none() && state.menu.sub != Some(hover.entry) {
+                state.menu.sub = None;
+            }
+            state.menu.hover = Some(hover);
+            Task::none()
+        }
+        Message::MenuRowLeft(hover) => {
+            // 离开事件可能晚于下一行的进入事件到达，因此只清自己这一行。
+            if state.menu.hover == Some(hover) {
+                state.menu.hover = None;
+            }
+            Task::none()
+        }
+        Message::MenuClose => {
+            state.menu.close();
+            Task::none()
+        }
+        Message::MenuAction(action) => {
+            let task = menu::apply(state, action);
+            state.menu.close();
+            task
+        }
+        Message::CloseDialog => {
+            state.dialog = None;
+            Task::none()
+        }
+        Message::Noop => Task::none(),
         Message::ToggleSlideshow => {
             task::toggle_slideshow(state);
             Task::none()
         }
-        Message::DeleteCurrent => library::delete_current(state),
         Message::Reveal => {
             library::reveal(state);
             Task::none()
@@ -84,7 +147,7 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
         Message::CopyPath => library::copy_path(state),
 
         // ---- 异步结果与系统事件 ----
-        Message::OpenDialog => task::open_dialog(),
+        Message::OpenDialog => task::open_dialog(state.text()),
         Message::DialogPicked(path) => match path {
             Some(path) => library::open_path(state, path),
             None => Task::none(),
@@ -94,7 +157,6 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             state.window_id = Some(id);
             Task::none()
         }
-        Message::ToggleFullscreen => task::toggle_fullscreen(state),
         Message::ApplyWindowMode(mode) => task::apply_window_mode(state, mode),
         Message::DragWindow => match state.window_id {
             Some(id) => iced::window::drag(id),
@@ -116,7 +178,8 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
         Message::Dismiss => {
             state.notice = None;
             state.viewer.error = None;
-            state.menu_open = false;
+            state.dialog = None;
+            state.menu.close();
             Task::none()
         }
     }

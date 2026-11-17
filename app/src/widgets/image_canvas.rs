@@ -160,13 +160,23 @@ impl canvas::Program<Message> for ImageCanvas<'_> {
     fn mouse_interaction(
         &self,
         state: &Self::State,
-        _bounds: Rectangle,
-        _cursor: mouse::Cursor,
+        bounds: Rectangle,
+        cursor: mouse::Cursor,
     ) -> mouse::Interaction {
+        // 拖动中即使移出画布也保持四向箭头，避免拖到边缘时光标跳回普通箭头。
         if state.drag_from.is_some() {
-            mouse::Interaction::Grabbing
-        } else if self.image.is_some() {
-            mouse::Interaction::Grab
+            return mouse::Interaction::Grabbing;
+        }
+
+        // 画布内保持普通箭头：Windows 上 `Grab` / `Grabbing` 只能映射成 `IDC_SIZEALL`
+        // （四向箭头），与工具栏按钮的手型混在一起容易被当成错位资源。可拖动这件事
+        // 由按下后的光标变化表达，悬停时不预告。
+        //
+        // 范围外必须交还光标（`None`）：Iced 的 `canvas` 不替 `Program` 判断鼠标范围，
+        // 而 `column` / `row` 用 `max()` 合并子控件光标，画布一旦越界返回非 `None`
+        // 就会把整个窗口的光标按住。
+        if cursor.is_over(bounds) {
+            mouse::Interaction::Idle
         } else {
             mouse::Interaction::None
         }
@@ -176,6 +186,7 @@ impl canvas::Program<Message> for ImageCanvas<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use iced::widget::canvas::Program;
     use iced::widget::image::Handle;
 
     fn fixture() -> LoadedImage {
@@ -217,5 +228,84 @@ mod tests {
             background: Color::BLACK,
         };
         assert!(canvas.image_rect(Size::new(100.0, 100.0)).is_none());
+    }
+
+    fn interaction_at(
+        canvas: &ImageCanvas<'_>,
+        state: &CanvasInteraction,
+        x: f32,
+        y: f32,
+    ) -> mouse::Interaction {
+        canvas.mouse_interaction(
+            state,
+            Rectangle::new(Point::ORIGIN, Size::new(400.0, 300.0)),
+            mouse::Cursor::Available(Point::new(x, y)),
+        )
+    }
+
+    /// 画布内保持普通箭头：四向箭头只在按下拖动时出现。
+    #[test]
+    fn cursor_inside_bounds_keeps_arrow() {
+        let image = fixture();
+        let canvas = ImageCanvas {
+            image: Some(&image),
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+            rotation: 0,
+            background: Color::BLACK,
+        };
+
+        assert_eq!(
+            interaction_at(&canvas, &CanvasInteraction::default(), 200.0, 150.0),
+            mouse::Interaction::Idle
+        );
+    }
+
+    /// 画布之外必须交还光标，否则画布的交互会盖掉工具栏按钮的手型。
+    #[test]
+    fn cursor_outside_bounds_yields_no_interaction() {
+        let image = fixture();
+        let canvas = ImageCanvas {
+            image: Some(&image),
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+            rotation: 0,
+            background: Color::BLACK,
+        };
+
+        assert_eq!(
+            interaction_at(&canvas, &CanvasInteraction::default(), 900.0, 150.0),
+            mouse::Interaction::None
+        );
+        assert_eq!(
+            interaction_at(&canvas, &CanvasInteraction::default(), -1.0, 150.0),
+            mouse::Interaction::None
+        );
+    }
+
+    /// 拖动中即使移出画布仍保持四向箭头。
+    #[test]
+    fn dragging_keeps_grabbing_outside_bounds() {
+        let image = fixture();
+        let canvas = ImageCanvas {
+            image: Some(&image),
+            zoom: 1.0,
+            pan: Vec2::ZERO,
+            rotation: 0,
+            background: Color::BLACK,
+        };
+        let state = CanvasInteraction {
+            drag_from: Some(Point::new(10.0, 10.0)),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            interaction_at(&canvas, &state, 200.0, 150.0),
+            mouse::Interaction::Grabbing
+        );
+        assert_eq!(
+            interaction_at(&canvas, &state, 900.0, 900.0),
+            mouse::Interaction::Grabbing
+        );
     }
 }

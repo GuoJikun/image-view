@@ -5,11 +5,11 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use iced::widget::image::Handle;
+use iv_metadata::ColorInfo;
 
-use crate::adapters::errors;
 use crate::adapters::preview::ThumbnailService;
 use crate::state::viewer_state::LoadedImage;
 
@@ -96,15 +96,16 @@ pub struct MetaInfo {
     pub source_size: Option<[u32; 2]>,
     pub decoded_size: Option<[u32; 2]>,
     pub depth: Option<u8>,
-    pub color: Option<String>,
+    /// 保留结构化色彩信息，展示时再按界面语言组句。
+    pub color: Option<ColorInfo>,
 }
 
 impl MetaInfo {
-    pub fn from_path(path: &Path) -> Self {
+    pub fn from_path(path: &Path, unknown: &str) -> Self {
         let metadata = std::fs::metadata(path).ok();
         Self {
             path: path.to_path_buf(),
-            format: format_label(path),
+            format: format_label(path, unknown),
             file_size: metadata.as_ref().map(std::fs::Metadata::len),
             modified: metadata.and_then(|metadata| metadata.modified().ok()),
             source_size: None,
@@ -118,7 +119,7 @@ impl MetaInfo {
         self.source_size = Some(image.source_size);
         self.decoded_size = Some(image.pixel_size);
         self.depth = Some(image.depth);
-        self.color = errors::color_label(&image.color);
+        self.color = Some(image.color.clone());
     }
 }
 
@@ -129,8 +130,8 @@ pub struct MetadataState {
 }
 
 impl MetadataState {
-    pub fn load(&mut self, path: &Path) {
-        self.info = Some(MetaInfo::from_path(path));
+    pub fn load(&mut self, path: &Path, unknown: &str) {
+        self.info = Some(MetaInfo::from_path(path, unknown));
     }
 
     pub fn absorb(&mut self, image: &LoadedImage) {
@@ -184,11 +185,12 @@ impl LibraryState {
     }
 }
 
-pub fn format_label(path: &Path) -> String {
+/// 从扩展名推断格式标签；没有扩展名时用文案表里的「未知」。
+pub fn format_label(path: &Path, unknown: &str) -> String {
     path.extension()
         .and_then(|extension| extension.to_str())
         .map(|extension| extension.to_ascii_uppercase())
-        .unwrap_or_else(|| "未知".to_owned())
+        .unwrap_or_else(|| unknown.to_owned())
 }
 
 pub fn format_size(bytes: u64) -> String {
@@ -206,30 +208,6 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
-/// 相对修改时间；不引入额外时区依赖。
-pub fn format_age(modified: Option<SystemTime>) -> String {
-    let Some(modified) = modified else {
-        return "未知".to_owned();
-    };
-    let elapsed = SystemTime::now()
-        .duration_since(modified)
-        .unwrap_or(Duration::ZERO);
-    let seconds = elapsed.as_secs();
-    if seconds < 60 {
-        "刚刚".to_owned()
-    } else if seconds < 3600 {
-        format!("{} 分钟前", seconds / 60)
-    } else if seconds < 86_400 {
-        format!("{} 小时前", seconds / 3600)
-    } else if seconds < 86_400 * 30 {
-        format!("{} 天前", seconds / 86_400)
-    } else if seconds < 86_400 * 365 {
-        format!("{} 个月前", seconds / (86_400 * 30))
-    } else {
-        format!("{} 年前", seconds / (86_400 * 365))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,21 +221,9 @@ mod tests {
     }
 
     #[test]
-    fn relative_time_covers_recent_ranges() {
-        let now = SystemTime::now();
-        assert_eq!(format_age(Some(now - Duration::from_secs(5))), "刚刚");
-        assert_eq!(format_age(Some(now - Duration::from_secs(120))), "2 分钟前");
-        assert_eq!(
-            format_age(Some(now - Duration::from_secs(7200))),
-            "2 小时前"
-        );
-        assert_eq!(format_age(None), "未知");
-    }
-
-    #[test]
     fn format_label_is_uppercase() {
-        assert_eq!(format_label(Path::new("a.PnG")), "PNG");
-        assert_eq!(format_label(Path::new("no-extension")), "未知");
+        assert_eq!(format_label(Path::new("a.PnG"), "未知"), "PNG");
+        assert_eq!(format_label(Path::new("no-extension"), "未知"), "未知");
     }
 
     #[test]

@@ -1,6 +1,7 @@
-//! 自绘标题栏（Windows / Linux）：28px，文件名居中，右侧 caption 按钮。
+//! 自绘标题栏（Windows / Linux）：28px，左侧菜单栏、文件名居中、右侧 caption 按钮。
 //!
-//! macOS 不编译此模块——那里用系统原生标题栏（`main.rs` 保留 decorations）。
+//! macOS 不编译此模块——那里用系统原生标题栏（`main.rs` 保留 decorations），
+//! 菜单栏单独占窗口顶部一行（见 `view/mod.rs`）。
 
 use iced::widget::{button, container, mouse_area, row, text};
 use iced::{Alignment, Element, Fill};
@@ -15,7 +16,7 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     let filename = state
         .current_path()
         .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "图片查看器".to_owned());
+        .unwrap_or_else(|| state.text().app_name.to_owned());
 
     let title = text(filename)
         .size(13)
@@ -34,7 +35,8 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     ]
     .spacing(0);
 
-    let bar = row![draggable, buttons]
+    // 菜单栏占左侧（规范 4.5），标题吃满剩余宽度并居中，caption 按钮贴右。
+    let bar = row![crate::view::menu::bar(state), draggable, buttons]
         .spacing(8)
         .align_y(iced::Center)
         .padding([0, 12]);
