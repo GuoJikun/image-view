@@ -26,6 +26,12 @@ fn fixed_color(hex: u32) -> Color {
 const TOOL_BUTTON: f32 = 30.0;
 /// 规范 4.1 的图标边长。
 const TOOL_ICON: f32 = 17.0;
+/// 翻页箭头与菜单子项共用同一份 `CHEVRON` 几何（24 viewBox / 2.0 线宽），但箭头在
+/// viewBox 里只占 12/24，按 17px 渲染后实际只有 8px 高、1.4px 描边，比相邻的文件夹
+/// 图标弱一截。给到 20px 后约 10px 高、1.7px 描边，与菜单里的箭头观感一致。
+const TOOL_ARROW: f32 = 20.0;
+/// 播放 / 停止：三角与方块只占 viewBox 的一半，17px 下又小又虚，放大 2px。
+const TOOL_MEDIA: f32 = 19.0;
 
 fn tool_button(
     icon: Icon,
@@ -34,20 +40,32 @@ fn tool_button(
     active: bool,
     theme_ref: &iced::Theme,
 ) -> Element<'static, Message> {
+    tool(icon, TOOL_ICON, message, enabled, active, theme_ref)
+}
+
+fn tool(
+    icon: Icon,
+    size: f32,
+    message: Message,
+    enabled: bool,
+    active: bool,
+    theme_ref: &iced::Theme,
+) -> Element<'static, Message> {
+    let palette = Palette::from(theme_ref);
     let color = if active {
-        Palette::from(theme_ref).accent
+        palette.accent
     } else if enabled {
-        Palette::from(theme_ref).icon
+        palette.icon
     } else {
-        Palette::from(theme_ref).text3
+        palette.text3
     };
-    let content = icons::view(icon, TOOL_ICON, color);
+    let content = icons::view(icon, size, color);
     // `button` 会把内容区的 min/max 都收紧成按钮尺寸，内部固定尺寸的 SVG 会被
     // `Limits::resolve` 拉到按钮大小；用 padding 把内容区收回到图标边长。
     let mut btn = button(content)
         .width(TOOL_BUTTON)
         .height(TOOL_BUTTON)
-        .padding((TOOL_BUTTON - TOOL_ICON) / 2.0)
+        .padding((TOOL_BUTTON - size) / 2.0)
         .style(move |t, status| theme::icon_button(t, status, active));
     if enabled {
         btn = btn.on_press(message);
@@ -75,15 +93,17 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     let left = row![
         tool_button(Icon::Open, Message::OpenDialog, true, false, &t),
         separator(&t),
-        tool_button(
+        tool(
             Icon::Prev,
+            TOOL_ARROW,
             Message::Navigate(-1),
             state.nav.can_prev(),
             false,
             &t,
         ),
-        tool_button(
+        tool(
             Icon::Next,
+            TOOL_ARROW,
             Message::Navigate(1),
             state.nav.can_next(),
             false,
@@ -107,12 +127,13 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             state.library.thumbs.show,
             &t,
         ),
-        tool_button(
+        tool(
             if state.slideshow {
                 Icon::Stop
             } else {
                 Icon::Play
             },
+            TOOL_MEDIA,
             Message::ToggleSlideshow,
             true,
             state.slideshow,
