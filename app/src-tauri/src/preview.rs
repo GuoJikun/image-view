@@ -15,8 +15,9 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, mpsc};
 use std::thread;
 use std::time::{Instant, UNIX_EPOCH};
 
-use image::ImageEncoder as _;
-use iv_image_decode::{Caps, DecodedAnimation, LoadError, Purpose, decode_animation, decode_image};
+use iv_image_decode::{
+    Caps, DecodedAnimation, LoadError, Pixels, Purpose, decode_animation, decode_image,
+};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
@@ -61,7 +62,7 @@ pub struct PreviewEntry {
     pub revision: u64,
     pub width: u32,
     pub height: u32,
-    pub rgba: Arc<[u8]>,
+    rgba: Pixels,
     png: OnceLock<Arc<[u8]>>,
     /// 动画帧；静态图与「尚未解码完/超预算」的动画都是 `None`。
     animation: Mutex<Option<Arc<Animation>>>,
@@ -77,7 +78,7 @@ pub struct PreviewEntry {
 
 /// 动画的一帧：RGBA 在协议首次请求时编码为 PNG 并缓存。
 struct AnimationFrameEntry {
-    rgba: Arc<[u8]>,
+    rgba: Pixels,
     png: OnceLock<Arc<[u8]>>,
 }
 
@@ -101,7 +102,7 @@ impl Animation {
                 .frames
                 .into_iter()
                 .map(|frame| AnimationFrameEntry {
-                    rgba: Arc::from(frame.rgba),
+                    rgba: frame.rgba,
                     png: OnceLock::new(),
                 })
                 .collect(),
@@ -125,15 +126,21 @@ impl Animation {
     }
 }
 
-/// RGBA → PNG；失败时返回空字节，由调用方转成 500 / 404。
-fn encode_png(rgba: &[u8], width: u32, height: u32, context: &str) -> Arc<[u8]> {
+/// RGBA → PNG，位深跟随 `Pixels` 变体；失败时返回空字节，由调用方转成 500 / 404。
+fn encode_png(pixels: &Pixels, width: u32, height: u32, context: &str) -> Arc<[u8]> {
+    use image::ImageEncoder as _;
+
+    let color_type = match pixels {
+        Pixels::Rgba8(_) => image::ExtendedColorType::Rgba8,
+        Pixels::Rgba16(_) => image::ExtendedColorType::Rgba16,
+    };
     let mut bytes = Vec::new();
     let encoder = image::codecs::png::PngEncoder::new_with_quality(
         &mut bytes,
         image::codecs::png::CompressionType::Fast,
         image::codecs::png::FilterType::Adaptive,
     );
-    match encoder.write_image(rgba, width, height, image::ExtendedColorType::Rgba8) {
+    match encoder.write_image(pixels.as_bytes(), width, height, color_type) {
         Ok(()) => Arc::from(bytes),
         Err(error) => {
             log::error!(
@@ -693,7 +700,7 @@ fn decode_entry(job: &Job, purpose: Purpose) -> Result<Arc<PreviewEntry>, LoadEr
         revision: job.revision,
         width: decoded.size[0] as u32,
         height: decoded.size[1] as u32,
-        rgba: Arc::from(decoded.rgba),
+        rgba: decoded.rgba,
         png: OnceLock::new(),
         animation: Mutex::new(None),
         file_size: stamp.len,
@@ -789,7 +796,7 @@ mod tests {
             revision,
             width: 1,
             height: 1,
-            rgba: Arc::from(&[0u8, 0, 0, 255][..]),
+            rgba: Pixels::Rgba8(vec![0, 0, 0, 255]),
             png: OnceLock::new(),
             animation: Mutex::new(None),
             stamp,
@@ -812,7 +819,7 @@ mod tests {
                 .iter()
                 .enumerate()
                 .map(|(index, _)| AnimationFrameEntry {
-                    rgba: Arc::from(&[index as u8, 0, 0, 255][..]),
+                    rgba: Pixels::Rgba8(vec![index as u8, 0, 0, 255]),
                     png: OnceLock::new(),
                 })
                 .collect(),

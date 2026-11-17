@@ -9,6 +9,9 @@ use image::ImageDecoder as _;
 use image::imageops::FilterType;
 use image::metadata::Orientation;
 use iv_metadata::{self as color, ColorInfo};
+
+/// 解码输出的像素缓冲类型；供 GUI 层按位深编码 PNG。
+pub use iv_metadata::Pixels;
 use iv_task::Generation;
 
 /// 解码与纹理上传的安全上限。
@@ -67,16 +70,16 @@ impl Caps {
 pub struct Decoded {
     pub size: [usize; 2],
     pub source_size: [usize; 2],
-    pub rgba: Vec<u8>,
-    /// 源文件位深（8 或 16）；纹理始终为 8-bit。
+    pub rgba: Pixels,
+    /// 源文件位深（8 或 16），与 `rgba` 的变体一致。
     pub source_depth: u8,
     pub color: ColorInfo,
 }
 
-/// 动画的一帧：已转换为 sRGB 的 8-bit RGBA，尺寸与 `DecodedAnimation::size` 一致。
+/// 动画的一帧：已转换为 sRGB 的 RGBA，尺寸与 `DecodedAnimation::size` 一致。
 #[derive(Clone, Debug)]
 pub struct AnimationFrame {
-    pub rgba: Vec<u8>,
+    pub rgba: Pixels,
     /// 帧间隔（毫秒），已钳制到 50~1000。
     pub delay_ms: u32,
 }
@@ -607,7 +610,7 @@ fn animation_pixels(
     caps: &Caps,
     image: image::DynamicImage,
     icc_profile: Option<&[u8]>,
-) -> ([usize; 2], Vec<u8>, ColorInfo) {
+) -> ([usize; 2], Pixels, ColorInfo) {
     let source_size = [image.width() as usize, image.height() as usize];
     let target = target_size(source_size, caps.max_side, caps.max_pixels);
     let image = if target != source_size {
@@ -615,8 +618,8 @@ fn animation_pixels(
     } else {
         image
     };
-    let (rgba, info) = color::to_srgb_rgba8(image, icc_profile);
-    (target, rgba, info)
+    let (pixels, info) = color::to_srgb_rgba(image, icc_profile);
+    (target, pixels, info)
 }
 
 /// 解码前的统一尺寸检查：拒绝解压炸弹，并让预加载只挑小图。
@@ -870,7 +873,7 @@ fn decode_svg(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Loa
     Ok(Decoded {
         size: target,
         source_size,
-        rgba,
+        rgba: Pixels::Rgba8(rgba),
         source_depth: 8,
         color: ColorInfo::default(),
     })
@@ -941,9 +944,9 @@ fn finish(
         image
     };
 
-    // 16-bit 在转换与降采样后仍保持 16-bit，最后统一量化为 8-bit 纹理。
+    // 位深跟随源图：16-bit 在转换与降采样后仍保持 16-bit，不再提前量化。
     let source_depth = color::source_depth(&image);
-    let (rgba, color_info) = color::to_srgb_rgba8(image, icc_profile.as_deref());
+    let (pixels, color_info) = color::to_srgb_rgba(image, icc_profile.as_deref());
     if color_info.converted {
         log::debug!(
             target: "image_view::loader",
@@ -956,7 +959,7 @@ fn finish(
     Ok(Decoded {
         size: target,
         source_size,
-        rgba,
+        rgba: pixels,
         source_depth,
         color: color_info,
     })
@@ -965,6 +968,16 @@ fn finish(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 把解码结果量化为 8-bit 字节，供 8-bit 源测试的像素断言使用。
+    fn rgba8(decoded: &Decoded) -> Vec<u8> {
+        decoded.rgba.clone().into_rgba8()
+    }
+
+    /// 把动画帧量化为 8-bit 字节。
+    fn frame_rgba8(frame: &AnimationFrame) -> Vec<u8> {
+        frame.rgba.clone().into_rgba8()
+    }
 
     #[test]
     fn target_size_respects_max_side() {
@@ -1046,7 +1059,7 @@ mod tests {
 
         let decoded = decode_thumbnail(&path, 128).expect("decode thumbnail");
         assert_eq!(decoded.size, [128, 64]);
-        assert_eq!(decoded.rgba.len(), decoded.size[0] * decoded.size[1] * 4);
+        assert_eq!(rgba8(&decoded).len(), decoded.size[0] * decoded.size[1] * 4);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1062,7 +1075,7 @@ mod tests {
         assert_eq!(decoded.size, [20, 40]);
 
         // 原图左红右蓝，旋转后应为上红下蓝。
-        let rgba = image::RgbaImage::from_raw(20, 40, decoded.rgba).expect("rgba");
+        let rgba = image::RgbaImage::from_raw(20, 40, rgba8(&decoded)).expect("rgba");
         assert!(rgba.get_pixel(0, 0).0[0] > 200, "top-left should be red");
         assert!(
             rgba.get_pixel(0, 39).0[2] > 200,
@@ -1167,9 +1180,9 @@ mod tests {
         assert!(decoded.color.converted);
         assert_eq!(decoded.source_depth, 8);
         assert!(
-            decoded.rgba[0].abs_diff(128) >= 40,
+            rgba8(&decoded)[0].abs_diff(128) >= 40,
             "应转换到约 188，实际 {}",
-            decoded.rgba[0]
+            rgba8(&decoded)[0]
         );
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
@@ -1205,7 +1218,11 @@ mod tests {
         let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode png");
         assert!(decoded.color.converted);
         assert_eq!(decoded.source_depth, 16);
-        assert!(decoded.rgba[0] > 120, "实际 {}", decoded.rgba[0]);
+        assert!(
+            matches!(decoded.rgba, Pixels::Rgba16(_)),
+            "16-bit 源不应在解码阶段量化到 8-bit"
+        );
+        assert!(rgba8(&decoded)[0] > 120, "实际 {}", rgba8(&decoded)[0]);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1238,9 +1255,13 @@ mod tests {
         assert_eq!(decoded.source_size, [2, 2]);
         assert_eq!(decoded.size, [2, 2]);
         assert_eq!(decoded.source_depth, 16);
-        assert_eq!(&decoded.rgba[..4], &[255, 0, 0, 255]);
-        assert_eq!(&decoded.rgba[4..8], &[0, 255, 0, 255]);
-        assert_eq!(decoded.rgba[15], 128);
+        let Pixels::Rgba16(values) = &decoded.rgba else {
+            panic!("farbfeld 是 16-bit 源，解码结果不应量化");
+        };
+        assert_eq!(&values[..4], &[0xffff, 0, 0, 0xffff]);
+        assert_eq!(&values[4..8], &[0, 0xffff, 0, 0xffff]);
+        assert_eq!(&rgba8(&decoded)[..4], &[255, 0, 0, 255]);
+        assert_eq!(rgba8(&decoded)[15], 128);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1370,10 +1391,9 @@ mod tests {
         assert_eq!(decoded.source_size, [3, 3]);
         assert_eq!(decoded.size, [3, 3]);
         assert_eq!(decoded.source_depth, 8);
-        assert_eq!(decoded.rgba.len(), 3 * 3 * 4);
+        assert_eq!(rgba8(&decoded).len(), 3 * 3 * 4);
         assert!(
-            decoded
-                .rgba
+            rgba8(&decoded)
                 .iter()
                 .skip(3)
                 .step_by(4)
@@ -1433,12 +1453,12 @@ mod tests {
         let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode svg");
         assert_eq!(decoded.source_size, [40, 20]);
         assert_eq!(decoded.size, [40, 20]);
-        assert_eq!(decoded.rgba.len(), 40 * 20 * 4);
+        assert_eq!(rgba8(&decoded).len(), 40 * 20 * 4);
         assert_eq!(decoded.source_depth, 8);
 
         // 中心像素应为纯红且不透明（预乘 alpha 已还原）。
         let offset = (10 * 40 + 20) * 4;
-        assert_eq!(&decoded.rgba[offset..offset + 4], &[255, 0, 0, 255]);
+        assert_eq!(&rgba8(&decoded)[offset..offset + 4], &[255, 0, 0, 255]);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1464,7 +1484,7 @@ mod tests {
         assert_eq!(decoded.source_size, [400, 200]);
         assert_eq!(decoded.size, target_size([400, 200], 64, 1024));
         assert!(decoded.size[0] < 400);
-        assert_eq!(decoded.rgba.len(), decoded.size[0] * decoded.size[1] * 4);
+        assert_eq!(rgba8(&decoded).len(), decoded.size[0] * decoded.size[1] * 4);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1530,12 +1550,12 @@ mod tests {
         let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode svg");
         assert_eq!(decoded.source_size, [300, 150]);
         assert_eq!(decoded.size, [300, 150]);
-        assert_eq!(decoded.rgba.len(), 300 * 150 * 4);
+        assert_eq!(rgba8(&decoded).len(), 300 * 150 * 4);
 
         // 内容按原坐标落在左上角，视口其余部分透明。
-        assert_eq!(&decoded.rgba[0..4], &[255, 0, 0, 255]);
+        assert_eq!(&rgba8(&decoded)[0..4], &[255, 0, 0, 255]);
         let empty = (100 * 300 + 200) * 4;
-        assert_eq!(&decoded.rgba[empty..empty + 4], &[0, 0, 0, 0]);
+        assert_eq!(&rgba8(&decoded)[empty..empty + 4], &[0, 0, 0, 0]);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1593,10 +1613,9 @@ mod tests {
 
         assert_eq!(decoded.source_size, [1024, 1024]);
         assert_eq!(decoded.size, [1024, 1024]);
-        assert_eq!(decoded.rgba.len(), 1024 * 1024 * 4);
+        assert_eq!(rgba8(&decoded).len(), 1024 * 1024 * 4);
         assert!(
-            decoded
-                .rgba
+            rgba8(&decoded)
                 .as_chunks::<4>()
                 .0
                 .iter()
@@ -1606,7 +1625,7 @@ mod tests {
 
         // 左上 128×128 纯红色块的中心点，用于确认填充与路径确实参与了栅格化。
         let index = (256 * 1024 + 256) * 4;
-        let pixel = &decoded.rgba[index..index + 4];
+        let pixel = &rgba8(&decoded)[index..index + 4];
         assert!(
             pixel[0] > 200 && pixel[1] < 60 && pixel[2] < 60 && pixel[3] > 200,
             "色块中心应为不透明红色，实际为 {pixel:?}"
@@ -1847,8 +1866,8 @@ mod tests {
         );
         // Netscape 的 n = 2 表示「再重复 2 次」，总播放 3 轮。
         assert_eq!(animation.loops, Some(3));
-        assert_eq!(animation.frames[0].rgba.len(), 4 * 2 * 4);
-        assert_eq!(&animation.frames[0].rgba[0..4], &[255, 0, 0, 255]);
+        assert_eq!(frame_rgba8(&animation.frames[0]).len(), 4 * 2 * 4);
+        assert_eq!(&frame_rgba8(&animation.frames[0])[0..4], &[255, 0, 0, 255]);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1922,7 +1941,7 @@ mod tests {
         );
         assert_eq!(animation.loops, Some(3), "num_plays 即总播放轮数");
         // 首帧属于动画，像素来自第一种颜色。
-        assert_eq!(&animation.frames[0].rgba[..4], &[255, 0, 0, 255]);
+        assert_eq!(&frame_rgba8(&animation.frames[0])[..4], &[255, 0, 0, 255]);
 
         // 静态解码路径仍取首帧（通用 PNG 解码不受影响）。
         let still = decode(&path, &Caps::default(), Purpose::Open).expect("decode still");

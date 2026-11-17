@@ -1,10 +1,64 @@
 //! ICC 色彩管理：把图片内嵌的 profile 转换到 sRGB。
 //!
-//! 显示端始终输出 8-bit RGBA 纹理；16-bit 图片在转换与降采样阶段保持
-//! 16-bit 精度，最后才量化到 8-bit，避免二次量化造成色带。
+//! 转换保留源位深：8-bit 源输出 8-bit RGBA，16-bit 源输出 16-bit RGBA。
+//! 只有调用方明确需要 8-bit 时才调用 `into_rgba8()` 量化，避免二次量化造成色带。
 //! profile 缺失、损坏或色彩空间不受支持时回退原像素，不阻塞显示。
 
 use image::DynamicImage;
+
+/// 色彩转换后的 RGBA 像素，位深跟随源图。
+///
+/// 每个像素 4 个通道（RGBA），通道值按 `u8` 或 `u16` 存储；字节序为本机，
+/// 编码 PNG 时由 image crate 按 `ExtendedColorType` 解释。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pixels {
+    /// 8-bit RGBA，`len()` 为通道数（像素数 × 4）。
+    Rgba8(Vec<u8>),
+    /// 16-bit RGBA，`len()` 为通道数（像素数 × 4）。
+    Rgba16(Vec<u16>),
+}
+
+impl Pixels {
+    /// 每个像素的字节数。
+    pub fn bytes_per_pixel(&self) -> usize {
+        match self {
+            Self::Rgba8(_) => 4,
+            Self::Rgba16(_) => 8,
+        }
+    }
+
+    /// 位深（8 或 16）。
+    pub fn depth(&self) -> u8 {
+        match self {
+            Self::Rgba8(_) => 8,
+            Self::Rgba16(_) => 16,
+        }
+    }
+
+    /// 像素数（通道数 ÷ 4）。
+    pub fn pixel_count(&self) -> usize {
+        match self {
+            Self::Rgba8(values) => values.len() / 4,
+            Self::Rgba16(values) => values.len() / 4,
+        }
+    }
+
+    /// 原始字节视图：16-bit 为本机字节序，供 PNG 编码按 `depth()` 解释。
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Rgba8(values) => values,
+            Self::Rgba16(values) => bytemuck::cast_slice(values),
+        }
+    }
+
+    /// 量化为 8-bit：16-bit 源经四舍五入降位，8-bit 源原样返回。
+    pub fn into_rgba8(self) -> Vec<u8> {
+        match self {
+            Self::Rgba8(values) => values,
+            Self::Rgba16(values) => quantize_rgba16(&bytemuck::cast_vec::<u16, [u16; 4]>(values)),
+        }
+    }
+}
 
 /// 一次色彩转换的结果，供状态栏与调试日志使用。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -41,30 +95,48 @@ pub fn source_depth(image: &DynamicImage) -> u8 {
     }
 }
 
-/// 解码后的统一出口：按需做 ICC → sRGB 转换并输出 8-bit RGBA。
+/// 解码后的统一出口：按需做 ICC → sRGB 转换，位深跟随源图。
 ///
+/// 8-bit 源返回 `Pixels::Rgba8`，16-bit 源返回 `Pixels::Rgba16`，全程不提前量化。
 /// 失败时保留原始像素（`converted = false`），只写 debug 日志。
-pub fn to_srgb_rgba8(image: DynamicImage, icc: Option<&[u8]>) -> (Vec<u8>, ColorInfo) {
+pub fn to_srgb_rgba(image: DynamicImage, icc: Option<&[u8]>) -> (Pixels, ColorInfo) {
+    let depth = source_depth(&image);
     let Some(icc) = icc.filter(|profile| !profile.is_empty()) else {
-        return (image.into_rgba8().into_raw(), ColorInfo::default());
+        return (raw_pixels(image, depth), ColorInfo::default());
     };
 
-    match convert(image, icc) {
-        Ok((rgba, info)) => (rgba, info),
+    match convert(image, icc, depth) {
+        Ok((pixels, info)) => (pixels, info),
         Err((image, reason)) => {
             log::debug!(
                 target: "image_view::color",
                 "ICC 色彩转换失败，按原像素显示：{reason}"
             );
-            (image.into_rgba8().into_raw(), ColorInfo::default())
+            (raw_pixels(image, depth), ColorInfo::default())
         }
+    }
+}
+
+/// 始终量化为 8-bit 的便捷包装；供确实只需要 8-bit 的调用方使用。
+pub fn to_srgb_rgba8(image: DynamicImage, icc: Option<&[u8]>) -> (Vec<u8>, ColorInfo) {
+    let (pixels, info) = to_srgb_rgba(image, icc);
+    (pixels.into_rgba8(), info)
+}
+
+/// 不做色彩转换，按源位深输出原始 RGBA。
+fn raw_pixels(image: DynamicImage, depth: u8) -> Pixels {
+    if depth == 16 {
+        Pixels::Rgba16(image.into_rgba16().into_raw())
+    } else {
+        Pixels::Rgba8(image.into_rgba8().into_raw())
     }
 }
 
 fn convert(
     image: DynamicImage,
     icc: &[u8],
-) -> Result<(Vec<u8>, ColorInfo), (DynamicImage, String)> {
+    depth: u8,
+) -> Result<(Pixels, ColorInfo), (DynamicImage, String)> {
     use lcms2::{InfoType, Locale, Profile, ThreadContext};
 
     // 解码线程是单线程的，但测试可能并行运行；使用私有 context 避免共享 LCMS 全局状态。
@@ -92,10 +164,10 @@ fn convert(
 
     match (source.color_space(), is_gray) {
         (lcms2::ColorSpaceSignature::RgbData, false) => {
-            convert_rgb(&context, &source, &target, image).map(|rgba| (rgba, info))
+            convert_rgb(&context, &source, &target, image, depth).map(|pixels| (pixels, info))
         }
         (lcms2::ColorSpaceSignature::GrayData, true) => {
-            convert_gray(&context, &source, &target, image).map(|rgba| (rgba, info))
+            convert_gray(&context, &source, &target, image, depth).map(|pixels| (pixels, info))
         }
         (signature, gray) => Err((
             image,
@@ -109,11 +181,12 @@ fn convert_rgb(
     source: &lcms2::Profile<lcms2::ThreadContext>,
     target: &lcms2::Profile<lcms2::ThreadContext>,
     image: DynamicImage,
-) -> Result<Vec<u8>, (DynamicImage, String)> {
+    depth: u8,
+) -> Result<Pixels, (DynamicImage, String)> {
     use lcms2::{Flags, Intent, PixelFormat, Transform};
 
-    if source_depth(&image) == 16 {
-        // 16-bit：在 16-bit 空间完成转换与 alpha 复制，最后量化一次。
+    if depth == 16 {
+        // 16-bit：在 16-bit 空间完成转换与 alpha 复制，保留 16-bit 输出。
         let transform =
             match Transform::<[u16; 4], [u16; 4], lcms2::ThreadContext>::new_flags_context(
                 context,
@@ -130,7 +203,7 @@ fn convert_rgb(
         let raw = image.into_rgba16().into_raw();
         let mut pixels: Vec<[u16; 4]> = bytemuck::cast_vec(raw);
         transform.transform_in_place(&mut pixels);
-        Ok(quantize_rgba16(&pixels))
+        Ok(Pixels::Rgba16(bytemuck::cast_vec(pixels)))
     } else {
         let transform = match Transform::<u8, u8, lcms2::ThreadContext>::new_flags_context(
             context,
@@ -146,7 +219,7 @@ fn convert_rgb(
         };
         let mut rgba = image.into_rgba8().into_raw();
         transform.transform_in_place(&mut rgba);
-        Ok(rgba)
+        Ok(Pixels::Rgba8(rgba))
     }
 }
 
@@ -155,10 +228,11 @@ fn convert_gray(
     source: &lcms2::Profile<lcms2::ThreadContext>,
     target: &lcms2::Profile<lcms2::ThreadContext>,
     image: DynamicImage,
-) -> Result<Vec<u8>, (DynamicImage, String)> {
+    depth: u8,
+) -> Result<Pixels, (DynamicImage, String)> {
     use lcms2::{Intent, PixelFormat, Transform};
 
-    if source_depth(&image) == 16 {
+    if depth == 16 {
         let transform = match Transform::<u16, [u16; 3], lcms2::ThreadContext>::new_context(
             context,
             source,
@@ -185,12 +259,12 @@ fn convert_gray(
             .iter()
             .zip(raw.as_chunks::<4>().0.iter().map(|source| source[3]))
         {
-            out.push(quantize_u16(pixel[0]));
-            out.push(quantize_u16(pixel[1]));
-            out.push(quantize_u16(pixel[2]));
-            out.push(quantize_u16(alpha));
+            out.push(pixel[0]);
+            out.push(pixel[1]);
+            out.push(pixel[2]);
+            out.push(alpha);
         }
-        Ok(out)
+        Ok(Pixels::Rgba16(out))
     } else {
         let transform = match Transform::<u8, u8, lcms2::ThreadContext>::new_context(
             context,
@@ -218,7 +292,7 @@ fn convert_gray(
             out.extend_from_slice(pixel);
             out.push(alpha);
         }
-        Ok(out)
+        Ok(Pixels::Rgba8(out))
     }
 }
 
@@ -417,5 +491,58 @@ mod tests {
             DynamicImage::ImageRgb16(ImageBuffer::from_pixel(1, 1, image::Rgb([0u16, 0, 0])));
         assert_eq!(source_depth(&image), 16);
         assert_eq!(source_depth(&DynamicImage::new_rgb8(1, 1)), 8);
+    }
+
+    #[test]
+    fn to_srgb_rgba_preserves_sixteen_bit_without_icc() {
+        let image = DynamicImage::ImageRgba16(ImageBuffer::from_pixel(
+            2,
+            2,
+            image::Rgba([0x1234, 0x5678, 0x9abc, 0xdef0]),
+        ));
+        let (pixels, info) = to_srgb_rgba(image, None);
+
+        assert!(!info.converted);
+        assert_eq!(pixels.depth(), 16);
+        assert_eq!(pixels.bytes_per_pixel(), 8);
+        assert_eq!(pixels.pixel_count(), 4);
+        let values = match pixels {
+            Pixels::Rgba16(values) => values,
+            Pixels::Rgba8(_) => panic!("16-bit 源应输出 Rgba16"),
+        };
+        assert_eq!(&values[..4], &[0x1234, 0x5678, 0x9abc, 0xdef0]);
+    }
+
+    #[test]
+    fn to_srgb_rgba_preserves_sixteen_bit_after_icc_conversion() {
+        // 16-bit 灰阶经线性 profile 转换后仍应是 16-bit，不提前量化到 8-bit。
+        let image = DynamicImage::ImageRgba16(ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([0x8000, 0x8000, 0x8000, 0xffff]),
+        ));
+        let (pixels, info) = to_srgb_rgba(image, Some(&adobe_rgb_icc()));
+
+        assert!(info.converted);
+        assert_eq!(pixels.depth(), 16);
+        let values = match pixels {
+            Pixels::Rgba16(values) => values,
+            Pixels::Rgba8(_) => panic!("ICC 转换应保留 16-bit"),
+        };
+        assert_eq!(values[3], 0xffff, "alpha 应原样保留");
+        assert!(values[0] > 0, "转换后的灰度值应为非零 16-bit 值");
+    }
+
+    #[test]
+    fn into_rgba8_quantizes_sixteen_bit_once() {
+        let image = DynamicImage::ImageRgba16(ImageBuffer::from_pixel(
+            1,
+            1,
+            image::Rgba([0x8080, 0, 0, 0xffff]),
+        ));
+        let (pixels, _) = to_srgb_rgba(image, None);
+        let rgba8 = pixels.into_rgba8();
+        assert_eq!(rgba8[0], 128, "0x8080 应量化为 128");
+        assert_eq!(rgba8[3], 255);
     }
 }

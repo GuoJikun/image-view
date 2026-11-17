@@ -84,6 +84,10 @@ impl ThumbnailService {
         }
 
         let decoded = iv_image_decode::decode_thumbnail(path, size).ok()?;
+        let color_type = match &decoded.rgba {
+            iv_image_decode::Pixels::Rgba8(_) => image::ExtendedColorType::Rgba8,
+            iv_image_decode::Pixels::Rgba16(_) => image::ExtendedColorType::Rgba16,
+        };
         let mut bytes = Vec::new();
         let encoder = image::codecs::png::PngEncoder::new_with_quality(
             &mut bytes,
@@ -93,10 +97,10 @@ impl ThumbnailService {
         use image::ImageEncoder as _;
         encoder
             .write_image(
-                &decoded.rgba,
+                decoded.rgba.as_bytes(),
                 decoded.size[0] as u32,
                 decoded.size[1] as u32,
-                image::ExtendedColorType::Rgba8,
+                color_type,
             )
             .ok()?;
 

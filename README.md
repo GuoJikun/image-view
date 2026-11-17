@@ -204,7 +204,7 @@ JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 p
 - mipmap 会增加约 33% 纹理显存；当前主图与缩略图都启用 mipmap + LINEAR。
 - 幻灯片到最后一张停止，不循环；手动翻页会重置 3 秒计时。
 - 预加载会跳过超过 30 MP 的图片（仅影响速度，不影响正常打开）。
-- 16-bit 图片以 8-bit 纹理显示（色彩转换阶段仍保留 16-bit 精度）；10-bit/HDR 输出不在当前版本范围内。
+- 16-bit 图片在解码、ICC 转换与 PNG 传输中全程保留 16-bit 精度；显示端由 WebView 解码 PNG 后落到 8-bit Canvas，因此屏幕观感仍是 8-bit。10-bit/HDR 输出不在当前版本范围内。
 - ICC 转换不支持 CMYK 专用 profile；profile 损坏或与图像通道不匹配时按原像素显示，具体原因写入 debug 日志。
 - 安装包与 exe 尚未签名，SmartScreen 可能提示“未知发布者”；首版接受该提示，后续版本再补代码签名。
 - Windows 10/11 的默认应用由系统 `UserChoice` 保护：安装器写入扩展名关联后，若用户此前已在系统中选定其它默认应用，系统仍以 `UserChoice` 为准；请在「设置 → 应用 → 默认应用」中确认。
