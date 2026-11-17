@@ -50,6 +50,7 @@
       { "ext": ["hdr"], "name": "ImageView.hdr", "description": "HDR 图片", "mimeType": "image/vnd.radiance", "role": "Viewer", "rank": "Alternate" },
       { "ext": ["exr"], "name": "ImageView.exr", "description": "EXR 图片", "mimeType": "image/x-exr", "role": "Viewer", "rank": "Alternate" },
       { "ext": ["dds"], "name": "ImageView.dds", "description": "DDS 图片", "mimeType": "image/vnd-ms.dds", "role": "Viewer", "rank": "Alternate" },
+      { "ext": ["ff"], "name": "ImageView.ff", "description": "farbfeld 图片", "mimeType": "image/x-farbfeld", "role": "Viewer", "rank": "Alternate" },
       { "ext": ["jxl"], "name": "ImageView.jxl", "description": "JPEG XL 图片", "mimeType": "image/jxl", "role": "Viewer", "rank": "Alternate" },
       { "ext": ["avif"], "name": "ImageView.avif", "description": "AVIF 图片", "mimeType": "image/avif", "role": "Viewer", "rank": "Alternate" },
       { "ext": ["heic"], "name": "ImageView.heic", "description": "HEIC 图片", "mimeType": "image/heic", "role": "Viewer", "rank": "Alternate" },

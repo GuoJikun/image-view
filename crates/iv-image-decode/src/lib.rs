@@ -1211,6 +1211,41 @@ mod tests {
     }
 
     #[test]
+    fn farbfeld_is_decoded_as_16bit() {
+        use image::ImageEncoder as _;
+
+        let dir = temp_dir("farbfeld");
+        let path = dir.join("sample.ff");
+        // 2×2 RGBA16：红、绿、蓝、半透明白。farbfeld 没有 ICC，位深必须保留。
+        let pixels: [[u16; 4]; 4] = [
+            [0xffff, 0, 0, 0xffff],
+            [0, 0xffff, 0, 0xffff],
+            [0, 0, 0xffff, 0xffff],
+            [0xffff, 0xffff, 0xffff, 0x8080],
+        ];
+        let mut data = Vec::with_capacity(pixels.len() * 8);
+        for pixel in pixels {
+            for channel in pixel {
+                data.extend(channel.to_ne_bytes());
+            }
+        }
+        let file = std::fs::File::create(&path).expect("create ff");
+        image::codecs::farbfeld::FarbfeldEncoder::new(std::io::BufWriter::new(file))
+            .write_image(&data, 2, 2, image::ExtendedColorType::Rgba16)
+            .expect("encode farbfeld");
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode ff");
+        assert_eq!(decoded.source_size, [2, 2]);
+        assert_eq!(decoded.size, [2, 2]);
+        assert_eq!(decoded.source_depth, 16);
+        assert_eq!(&decoded.rgba[..4], &[255, 0, 0, 255]);
+        assert_eq!(&decoded.rgba[4..8], &[0, 255, 0, 255]);
+        assert_eq!(decoded.rgba[15], 128);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
     fn oversized_preload_is_skipped_but_open_succeeds() {
         let dir = temp_dir("preload-skip");
         let path = dir.join("small.png");

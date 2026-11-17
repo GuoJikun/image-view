@@ -35,6 +35,7 @@ image = { workspace = true, features = [
     "hdr",
     "exr",
     "dds",
+    "ff",
     "rayon",
 ] }
 log = { workspace = true }

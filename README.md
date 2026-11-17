@@ -18,7 +18,7 @@
 
 **格式与色彩**
 
-- 17 种常见格式，其中 APNG / GIF / WebP 支持多帧动画，HEIC / AVIF / SVG / JPEG XL 为纯 Rust 解码，详见下方「支持的格式」
+- 18 种常见格式，其中 APNG / GIF / WebP 支持多帧动画，HEIC / AVIF / SVG / JPEG XL 为纯 Rust 解码，详见下方「支持的格式」
 - 读取内嵌 ICC profile 转换到 sRGB，16-bit 图像在转换与缩放阶段保持精度；状态栏显示位深、格式与色彩转换标记
 
 **界面与设置**
@@ -64,7 +64,7 @@ git push origin v1.5.0
 Release 正文取自 `CHANGELOG.md` 中 `## [版本号]` 段落（到下一个 `## [` 为止），并追加三端安装包的选择说明。该段落缺失时工作流会在校验阶段直接失败，因此打标签前需先把这个版本的变更记录补进 `CHANGELOG.md`。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
-- **文件关联**：安装时注册 20 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `jxl` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
+- **文件关联**：安装时注册 21 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `ff` / `jxl` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
 - **卸载**：从「设置 → 应用」或开始菜单卸载。
 
 ### macOS（arm64 / x64）
@@ -166,9 +166,11 @@ image-view [PATH]
 
 ## 支持的格式
 
-PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、JPEG XL、AVIF、HEIC/HEIF、SVG。
+PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、farbfeld（`.ff`）、JPEG XL、AVIF、HEIC/HEIF、SVG。
 
 APNG、GIF 与 WebP 支持多帧动画播放（含 alpha 与循环次数）；其余格式按静态图显示。
+
+farbfeld 是 16-bit RGBA 无损格式，由 `image` 的通用解码路径按内容识别（不依赖扩展名），位深标记与 ICC 处理和其他 16-bit 图一致（该格式本身不带 ICC）。
 
 HEIC/AVIF 默认启用，使用纯 Rust 解码器（`imgalifier-heif` / `imgalifier-avif`），不依赖 libheif 或系统 DLL。`.heif` 扩展名按 HEIC 处理。
 
