@@ -77,8 +77,7 @@ text_table! {
     menu_shortcuts,
     menu_logs,
 
-    // 工具栏 / 空状态
-    toolbar_sort,
+    // 空状态
     empty_title,
     empty_hint,
     empty_open,
@@ -183,7 +182,6 @@ pub static ZH: Text = Text {
     menu_shortcuts: "快捷键…",
     menu_logs: "打开日志文件夹",
 
-    toolbar_sort: "排序",
     empty_title: "还没有打开图片",
     empty_hint: "从文件打开，或把图片拖进窗口",
     empty_open: "打开图片",
@@ -282,7 +280,6 @@ pub static EN: Text = Text {
     menu_shortcuts: "Keyboard Shortcuts…",
     menu_logs: "Open Logs Folder",
 
-    toolbar_sort: "Sort",
     empty_title: "No image open",
     empty_hint: "Open a file, or drag an image into the window",
     empty_open: "Open Image",

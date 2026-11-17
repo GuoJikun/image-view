@@ -19,6 +19,8 @@ const OPEN: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 
 // 折算到实际像素后一细一粗，看起来"不是一个实现"。
 const CHEVRON_RIGHT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 6 6 6-6 6"/></svg>"#;
 const CHEVRON_LEFT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></svg>"#;
+// 下拉箭头：与左右箭头同一份 24 viewBox / 2.0 线宽，只改折角方向；工具栏排序用 12px 渲染。
+const CHEVRON_DOWN: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>"#;
 // 播放 / 停止：2.0 线宽 + 更大的图形。三角原先只占 11×13 单位、1.6 线宽，配 17px
 // 渲染后实际 7.8×9.2px、描边 1.1px，比相邻的圆圈 / 四宫格又小又虚；现在占 12.5×15
 // 单位、19px 渲染（`viewer::TOOL_MEDIA`）≈ 9.9×11.9px、描边 1.6px。停止键同步放大。
@@ -43,6 +45,7 @@ pub enum Icon {
     Maximize,
     Close,
     Chevron,
+    ChevronDown,
 }
 
 impl Icon {
@@ -59,6 +62,7 @@ impl Icon {
             Icon::Maximize => MAXIMIZE,
             Icon::Close => CLOSE,
             Icon::Chevron => CHEVRON_RIGHT,
+            Icon::ChevronDown => CHEVRON_DOWN,
         }
     }
 }

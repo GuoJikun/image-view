@@ -119,6 +119,28 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     };
     let has_image = state.viewer.image.is_some();
 
+    // 排序按钮显示当前排序值 + 下拉箭头（与 `main` 的 AppToolbar 一致），
+    // 点击展开菜单栏里的排序子菜单。
+    let sort_label = match state.nav.sort {
+        iv_domain::SortOrder::Name => state.text().menu_sort_name,
+        iv_domain::SortOrder::ModifiedNewest => state.text().menu_sort_modified,
+    };
+    let sort_button = button(
+        row![
+            text(sort_label).size(12),
+            icons::view(Icon::ChevronDown, 12.0, Palette::from(&t).text3),
+        ]
+        .spacing(4)
+        .align_y(iced::Center),
+    )
+    .height(TOOL_BUTTON)
+    .padding([0, 8])
+    .style(theme::text_button)
+    .on_press(Message::MenuOpened {
+        group: crate::menu::GROUP_VIEW,
+        sub: Some(crate::menu::SORT_ENTRY),
+    });
+
     let right = row![
         tool_button(
             Icon::Thumbs,
@@ -146,12 +168,7 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             state.library.meta.show,
             &t,
         ),
-        button(text(state.text().toolbar_sort).size(12))
-            .style(theme::text_button)
-            .on_press(Message::MenuOpened {
-                group: crate::menu::GROUP_VIEW,
-                sub: Some(crate::menu::SORT_ENTRY),
-            }),
+        sort_button,
         separator(&t),
         capsule_zoom(&zoom_label, has_image),
     ]
