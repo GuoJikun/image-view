@@ -125,12 +125,15 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
         iv_domain::SortOrder::Name => state.text().menu_sort_name,
         iv_domain::SortOrder::ModifiedNewest => state.text().menu_sort_modified,
     };
+    // `button` 把内容贴在左上角，内容高度只有文字行高（约 17px）时，按钮 30px 高
+    // 会把多出的空间全留在下方，文字与箭头整体偏上。高度撑满按钮再居中即可。
     let sort_button = button(
         row![
             text(sort_label).size(12),
             icons::view(Icon::ChevronDown, 12.0, Palette::from(&t).text3),
         ]
         .spacing(4)
+        .height(Fill)
         .align_y(iced::Center),
     )
     .height(TOOL_BUTTON)
