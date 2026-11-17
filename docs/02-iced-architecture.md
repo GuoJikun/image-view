@@ -566,8 +566,8 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   panel、danger_banner、primary_button、icon_button、capsule_segment、
   thumb_card、text_button、icon_svg）。工具栏为 30×30 图标按钮 + 1×18 分隔线
   + 118×30 三段式缩放胶囊（−/值块/+，值块点击回适配），图标为内联 SVG
-  （`widgets/icons.rs`，随主题着色）。缩略图卡片 76×72、圆角 8、选中态
-  2px accent 环 + 投影。状态栏 26px 分左右两组，空状态居中图标 + 标题 +
+  （`widgets/icons.rs`，随主题着色）。缩略图卡片 76×56、间距 9、圆角 8、内部只放
+  68×48 的缩略图（不显示文件名），选中态 2px accent 环 + 投影。状态栏 26px 分左右两组，空状态居中图标 + 标题 +
   说明 + 主按钮，错误用 danger-soft 底横幅。标题栏策略：macOS 保持系统原生；
   Windows / Linux 关系统装饰、自绘 28px 标题栏（`view/titlebar.rs`，
   拖动 / 双击最大化 / caption 按钮），全屏时隐藏。

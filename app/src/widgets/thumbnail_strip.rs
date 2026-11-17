@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, image, row, scrollable, space, text};
+use iced::widget::{button, container, image, row, scrollable, space, text};
 use iced::{ContentFit, Element, Fill};
 
 use crate::message::Message;
@@ -13,6 +13,12 @@ use crate::state::library_state::{LibraryState, THUMB_ITEM_WIDTH};
 
 pub const THUMB_SCROLL_ID: &str = "thumbnail-strip";
 pub const STRIP_HEIGHT: f32 = 88.0;
+
+/// 卡片 76×56（规范 4.3），四边留 4 px，内容区刚好 68×48。
+const CARD_WIDTH: f32 = 76.0;
+const CARD_HEIGHT: f32 = 56.0;
+const PREVIEW_WIDTH: f32 = 68.0;
+const PREVIEW_HEIGHT: f32 = 48.0;
 
 pub fn view<'a>(
     library: &'a LibraryState,
@@ -29,36 +35,29 @@ pub fn view<'a>(
     for position in range.clone() {
         let path = &files[position];
         let selected = index == Some(position);
-        let name = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
 
         let preview: Element<'a, Message> = match library.thumbs.handle(path) {
             Some(handle) => image(handle.clone())
-                .width(66.0)
-                .height(44.0)
+                .width(PREVIEW_WIDTH)
+                .height(PREVIEW_HEIGHT)
                 .content_fit(ContentFit::Contain)
                 .into(),
             None => container(text("…").size(20))
-                .width(66.0)
-                .height(44.0)
+                .width(PREVIEW_WIDTH)
+                .height(PREVIEW_HEIGHT)
                 .align_x(iced::Center)
                 .align_y(iced::Center)
                 .into(),
         };
 
-        // 卡片 76×56、圆角 8、选中 2px accent 环 + 投影（规范 4.3）。
-        let card = button(
-            column![preview, text(name).size(10)]
-                .spacing(2)
-                .align_x(iced::Center),
-        )
-        .on_press(Message::Select(position))
-        .padding(4)
-        .width(76.0)
-        .height(72.0)
-        .style(move |theme, status| crate::theme::thumb_card(theme, status, selected));
+        // 卡片 76×56、圆角 8、选中 2px accent 环 + 投影（规范 4.3）；
+        // 只显示缩略图，不显示文件名（标题栏与元数据面板已给出文件名）。
+        let card = button(preview)
+            .on_press(Message::Select(position))
+            .padding(4)
+            .width(CARD_WIDTH)
+            .height(CARD_HEIGHT)
+            .style(move |theme, status| crate::theme::thumb_card(theme, status, selected));
 
         cards.push(
             container(card)

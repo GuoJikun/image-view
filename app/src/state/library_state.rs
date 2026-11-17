@@ -15,8 +15,8 @@ use crate::state::viewer_state::LoadedImage;
 
 const THUMB_CACHE_ENTRIES: usize = 512;
 
-/// 缩略图卡片宽度（含间距），视图层与虚拟化计算共用。
-pub const THUMB_ITEM_WIDTH: f32 = 88.0;
+/// 缩略图条目宽度：卡片 76 + 间距 9（规范 4.3），视图层与虚拟化计算共用。
+pub const THUMB_ITEM_WIDTH: f32 = 85.0;
 
 #[derive(Debug, Default)]
 pub struct ThumbnailState {
