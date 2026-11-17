@@ -346,22 +346,23 @@ pub fn status_bar(state: &AppState) -> Element<'_, Message> {
             let source = image.source_size;
             let decoded = image.pixel_size;
             let size = if source == decoded {
-                format!("{}×{}", source[0], source[1])
+                format!("{} × {}", source[0], source[1])
             } else {
                 format!(
-                    "{}×{} → {}×{}",
+                    "{} × {} → {} × {}",
                     source[0], source[1], decoded[0], decoded[1]
                 )
             };
+            // 顺序与设计规范 4.4 一致：尺寸 · 位深 · 格式 · 色彩标记。
             let mut parts = vec![
-                text(format_label(&image.path, state.text().metadata_unknown))
+                text(size).size(11).color(p.text2).into(),
+                text("·").size(11).color(p.text3).into(),
+                text(format!("{} bit", image.depth))
                     .size(11)
                     .color(p.text2)
                     .into(),
                 text("·").size(11).color(p.text3).into(),
-                text(size).size(11).color(p.text2).into(),
-                text("·").size(11).color(p.text3).into(),
-                text(format!("{} bit", image.depth))
+                text(format_label(&image.path, state.text().metadata_unknown))
                     .size(11)
                     .color(p.text2)
                     .into(),
