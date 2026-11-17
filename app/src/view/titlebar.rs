@@ -1,4 +1,4 @@
-//! 自绘标题栏（Windows / Linux）：28px，左侧菜单栏、文件名居中、右侧 caption 按钮。
+//! 自绘标题栏（Windows / Linux）：28px，左侧菜单栏、标题（文件名 — 应用名）居中、右侧 caption 按钮。
 //!
 //! macOS 不编译此模块——那里用系统原生标题栏（`main.rs` 保留 decorations），
 //! 菜单栏单独占窗口顶部一行（见 `view/mod.rs`）。
@@ -13,12 +13,10 @@ use crate::widgets::icons::{self, Icon};
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
     let t = crate::view::viewer::theme_of(state);
-    let filename = state
-        .current_path()
-        .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| state.text().app_name.to_owned());
 
-    let title = text(filename)
+    // 与系统窗口标题同一份文案（`app::title`）：有文件时是「文件名 — 应用名」，
+    // 空状态只有应用名，避免自绘标题栏与任务栏标题不一致。
+    let title = text(crate::app::title(state))
         .size(13)
         .width(Fill)
         .align_x(Alignment::Center);

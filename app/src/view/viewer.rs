@@ -112,7 +112,7 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     ]
     .spacing(6);
 
-    // 右：缩略图 / 幻灯片 / 信息 / 排序 | 胶囊缩放 | ⋯
+    // 右：缩略图 / 幻灯片 / 排序 | 胶囊缩放（元数据面板等次级操作只在菜单里，与 main 一致）
     let zoom_label = match state.zoom() {
         Some(value) => format!("{:.0}%", value * 100.0),
         None => "—".to_owned(),
@@ -159,13 +159,6 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             Message::ToggleSlideshow,
             true,
             state.slideshow,
-            &t,
-        ),
-        tool_button(
-            Icon::Info,
-            Message::ToggleMetadata,
-            true,
-            state.library.meta.show,
             &t,
         ),
         sort_button,

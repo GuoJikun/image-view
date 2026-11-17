@@ -45,7 +45,6 @@ pub enum Message {
     },
 
     ToggleThumbnails,
-    ToggleMetadata,
     ToggleSlideshow,
 
     // ---- 菜单栏 ----

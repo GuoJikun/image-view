@@ -54,10 +54,6 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             library::toggle_thumbnails(state);
             Task::none()
         }
-        Message::ToggleMetadata => {
-            state.library.meta.show = !state.library.meta.show;
-            Task::none()
-        }
         Message::MenuGroupClicked(index) => {
             // 悬停切换过来的分组，第一次点击只「落定」，再点才收起。
             if state.menu.open == Some(index) && !state.menu.hover_opened {
