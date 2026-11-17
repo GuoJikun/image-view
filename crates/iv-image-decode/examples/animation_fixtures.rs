@@ -6,6 +6,12 @@
 //!
 //! 覆盖三处边界：正常循环、超大 delay（应钳制到 1000 ms）、0 delay（应钳制到 50 ms），
 //! 以及一个多帧 WebP（image crate 只能编码单帧，容器由本示例拼装）与一个多帧 APNG。
+//!
+//! 另生成两个「降级」样本，用默认 `Caps` 就能触发顶部提示横幅，供目视确认：
+//! - `degrade-16bit-apng.png`：16-bit APNG，触发「暂不支持动画」（按 16-bit 静态首帧显示）。
+//! - `degrade-over-budget.gif`：超过 1200 帧预算，触发「超出内存预算」（按静态首帧显示）。
+//!
+//! 生成后会调用 `decode_animation` 自检，确认两个样本确实被归类为对应降级原因。
 
 use std::path::{Path, PathBuf};
 
@@ -30,7 +36,104 @@ fn main() {
     // 320×180 / 4 帧 APNG：不同 delay，循环 3 轮。
     write_animated_png(&dir.join("anim-4f.png"), 320, 180, &[60, 90, 120, 200], 3);
 
+    // 降级样本：使用默认 Caps 即可触发顶部提示横幅。
+    let p16 = dir.join("degrade-16bit-apng.png");
+    write_16bit_apng(&p16);
+    let pbudget = dir.join("degrade-over-budget.gif");
+    write_over_budget_gif(&pbudget);
+    verify_degraded(&p16, "unsupported16Bit");
+    verify_degraded(&pbudget, "overBudget");
+
     println!("已生成动画夹具：{}", dir.display());
+}
+
+/// 用默认 `Caps` 解码样本，断言它被归类为预期的降级原因。
+fn verify_degraded(path: &Path, expected: &str) {
+    use iv_image_decode::{AnimationOutcome, Caps, DegradeReason, decode_animation};
+
+    let outcome = decode_animation(path, &Caps::default()).expect("解码降级样本");
+    let actual = match outcome {
+        AnimationOutcome::Degraded(reason) => match reason {
+            DegradeReason::OverBudget { .. } => "overBudget",
+            DegradeReason::Unsupported16Bit => "unsupported16Bit",
+            DegradeReason::DecodeFailed { .. } => "decodeFailed",
+        },
+        AnimationOutcome::Ready(_) => "ready",
+        AnimationOutcome::NotAnimated => "notAnimated",
+    };
+    assert_eq!(
+        actual,
+        expected,
+        "{} 应归类为 {expected}，实际 {actual}",
+        path.display()
+    );
+    println!("  降级样本 {} → {actual} ✓", path.display());
+}
+
+/// 16-bit APNG：IHDR 位深为 16，`ApngDecoder` 会拒绝逐帧合成，触发位深降级。
+fn write_16bit_apng(path: &Path) {
+    use png::{BitDepth, ColorType, Encoder};
+
+    let (width, height) = (64u32, 64u32);
+    let file = std::fs::File::create(path).expect("创建 16-bit APNG");
+    let mut encoder = Encoder::new(std::io::BufWriter::new(file), width, height);
+    encoder.set_color(ColorType::Rgba);
+    encoder.set_depth(BitDepth::Sixteen);
+    encoder.set_animated(3, 0).expect("配置 16-bit APNG");
+    let mut writer = encoder.write_header().expect("写 16-bit APNG 头");
+
+    for frame in 0..3u16 {
+        writer.set_frame_delay(300, 1_000).expect("设置帧间隔");
+        // 每通道 16-bit 大端，三个色带交替，静态首帧也能看出内容。
+        let mut pixels = Vec::with_capacity(width as usize * height as usize * 8);
+        for y in 0..height {
+            for x in 0..width {
+                let band = (x / 16 + y / 16 + u32::from(frame)) % 4;
+                let (r, g, b): (u16, u16, u16) = match band {
+                    0 => (0xffff, 0x4000, 0x4000),
+                    1 => (0x4000, 0xffff, 0x4000),
+                    2 => (0x4000, 0x4000, 0xffff),
+                    _ => (0xffff, 0xffff, 0x8000),
+                };
+                pixels.extend_from_slice(&r.to_be_bytes());
+                pixels.extend_from_slice(&g.to_be_bytes());
+                pixels.extend_from_slice(&b.to_be_bytes());
+                pixels.extend_from_slice(&0xffffu16.to_be_bytes());
+            }
+        }
+        writer.write_image_data(&pixels).expect("写 16-bit 帧");
+    }
+    writer.finish().expect("完成 16-bit APNG");
+}
+
+/// 超过默认帧预算（1200 帧）的 GIF：逐帧累加到第 1201 帧时触发超预算降级。
+/// 用 8×8 小尺寸 + 交替纯色，控制文件体积与解码耗时。
+fn write_over_budget_gif(path: &Path) {
+    const FRAMES: u32 = 1_201;
+
+    let mut bytes = Vec::new();
+    let mut encoder = GifEncoder::new(&mut bytes);
+    encoder.set_repeat(Repeat::Infinite).expect("设置循环次数");
+
+    let images: Vec<Frame> = (0..FRAMES)
+        .map(|index| {
+            let color = if index % 2 == 0 {
+                Rgba([220, 64, 64, 255])
+            } else {
+                Rgba([48, 96, 220, 255])
+            };
+            Frame::from_parts(
+                RgbaImage::from_pixel(8, 8, color),
+                0,
+                0,
+                Delay::from_numer_denom_ms(100, 1),
+            )
+        })
+        .collect();
+
+    encoder.encode_frames(images).expect("编码超预算 GIF");
+    drop(encoder);
+    std::fs::write(path, bytes).expect("写入超预算 GIF");
 }
 
 /// 写一个 `frames` 帧的 GIF：每帧一条彩色竖条向右移动，便于目视确认逐帧切换。

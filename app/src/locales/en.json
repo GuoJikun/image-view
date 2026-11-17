@@ -68,7 +68,12 @@
   },
   "error": {
     "retry": "Retry",
-    "close": "Dismiss"
+    "close": "Dismiss",
+    "degraded": {
+      "overBudget": "The animation exceeds the frame or pixel budget and is shown as a still frame.",
+      "unsupported16Bit": "16-bit APNG animations are not supported; showing a still frame.",
+      "decodeFailed": "Animation frames failed to decode; showing a still frame."
+    }
   },
   "notice": {
     "copied": "Path copied",

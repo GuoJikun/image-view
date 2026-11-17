@@ -8,15 +8,24 @@ import type {
   AnimationInfo,
   AnimationReady,
   CommandError,
+  Degraded,
   DirectorySnapshot,
   FitMode,
   PreviewReady,
   SortOrder,
 } from "../types/ipc";
 import * as ipc from "../services/ipc";
+import { t, type MessageKey } from "../i18n";
 
 const MIN_ZOOM = 0.01;
 const MAX_ZOOM = 32;
+
+/** 降级 code → 文案键；未知 code 回退到 decodeFailed 的描述。 */
+const DEGRADED_KEYS: Record<string, MessageKey> = {
+  overBudget: "error.degraded.overBudget",
+  unsupported16Bit: "error.degraded.unsupported16Bit",
+  decodeFailed: "error.degraded.decodeFailed",
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -59,6 +68,8 @@ export const useViewerStore = defineStore("viewer", () => {
   let loopsPlayed = 0;
   /** 动画事件可能先于预览就绪到达，先暂存，等预览匹配后再播放。 */
   let pendingAnimation: AnimationReady | null = null;
+  /** 降级事件同样可能先于预览就绪；暂存后由 acceptPreview 应用。 */
+  let pendingDegraded: Degraded | null = null;
 
   const fitZoom = computed(() => {
     const image = preview.value;
@@ -141,11 +152,15 @@ export const useViewerStore = defineStore("viewer", () => {
     error.value = null;
     resetView();
 
-    // 切图后动画回到首帧；先前暂存的动画事件若与当前图片匹配则立即应用。
+    // 切图后动画回到首帧；暂存事件若与当前图片匹配则在重置后立即应用。
     const queued = pendingAnimation;
+    const queuedDegraded = pendingDegraded;
     resetAnimation();
     if (queued && queued.imageId === payload.imageId && queued.revision === payload.revision) {
       acceptAnimation(queued);
+    }
+    if (queuedDegraded && queuedDegraded.imageId === payload.imageId) {
+      acceptDegraded(queuedDegraded);
     }
   }
 
@@ -183,6 +198,7 @@ export const useViewerStore = defineStore("viewer", () => {
     animationPlaying.value = false;
     loopsPlayed = 0;
     pendingAnimation = null;
+    pendingDegraded = null;
   }
 
   /** 按当前帧的 delay 安排下一帧；delay 已由后端钳制到 50~1000 ms。 */
@@ -263,6 +279,22 @@ export const useViewerStore = defineStore("viewer", () => {
     activeRequestId.value = payload.requestId;
     error.value = { code: payload.code, message: payload.message };
     loading.value = false;
+  }
+
+  /** 动画降级为静态首帧：复用错误横幅提示，文案按 code 本地化。 */
+  function acceptDegraded(payload: Degraded): void {
+    if (snapshot.value?.current?.id !== payload.imageId) return;
+    if (payload.requestId < activeRequestId.value) return;
+    // 预览尚未就绪时先暂存，避免被 acceptPreview 的 error 清空覆盖。
+    const image = preview.value;
+    if (!image || image.imageId !== payload.imageId) {
+      pendingDegraded = payload;
+      return;
+    }
+    const key = DEGRADED_KEYS[payload.code] ?? "error.degraded.decodeFailed";
+    // 超预算与位深限制重试也无用；仅文件解码失败允许重试。
+    const retryable = payload.code === "decodeFailed";
+    error.value = { code: payload.code, message: t(key), retryable };
   }
 
   async function requestCurrent(): Promise<void> {
@@ -506,6 +538,7 @@ export const useViewerStore = defineStore("viewer", () => {
     await ipc.onPreviewReady(acceptPreview);
     await ipc.onPreviewFailed(failPreview);
     await ipc.onAnimationReady(acceptAnimation);
+    await ipc.onDegraded(acceptDegraded);
     await ipc.onOpenFile((path) => {
       void openPath(path);
     });

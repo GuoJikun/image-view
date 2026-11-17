@@ -121,6 +121,17 @@ pub struct PreviewFailedDto {
     pub message: String,
 }
 
+/// 动画降级提示：动画本应能播却被降级为静态首帧（超预算 / 16-bit / 解码失败）。
+/// `code` 供前端本地化，`detail` 保留底层数值/错误用于日志，不直接展示。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DegradedDto {
+    pub request_id: u64,
+    pub image_id: String,
+    pub code: &'static str,
+    pub detail: String,
+}
+
 /// 动画帧解码完成。首帧静态预览先由 `preview-ready` 送出，完整帧后到。
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

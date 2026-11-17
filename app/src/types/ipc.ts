@@ -64,9 +64,19 @@ export interface AnimationReady extends AnimationInfo {
   revision: number;
 }
 
+/** 动画降级事件（`image:degraded`）：本应能播却被降级为静态首帧。 */
+export interface Degraded {
+  requestId: number;
+  imageId: string;
+  code: "overBudget" | "unsupported16Bit" | "decodeFailed" | string;
+  detail: string;
+}
+
 export interface CommandError {
   code: string;
   message: string;
+  /** 为 false 时错误横幅隐藏「重试」按钮；默认可重试。 */
+  retryable?: boolean;
 }
 
 export type FitMode = "fit" | "actual" | "custom";

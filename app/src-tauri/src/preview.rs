@@ -16,16 +16,20 @@ use std::thread;
 use std::time::{Instant, UNIX_EPOCH};
 
 use iv_image_decode::{
-    Caps, DecodedAnimation, LoadError, Pixels, Purpose, decode_animation, decode_image,
+    AnimationOutcome, Caps, DecodedAnimation, DegradeReason, LoadError, Pixels, Purpose,
+    decode_animation, decode_image,
 };
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::dto::{AnimationReadyDto, PreviewFailedDto, PreviewReadyDto, PreviewRequestDto};
+use crate::dto::{
+    AnimationReadyDto, DegradedDto, PreviewFailedDto, PreviewReadyDto, PreviewRequestDto,
+};
 
 pub const PREVIEW_READY_EVENT: &str = "image:preview-ready";
 pub const PREVIEW_FAILED_EVENT: &str = "image:preview-failed";
 pub const ANIMATION_READY_EVENT: &str = "image:animation-ready";
+pub const DEGRADED_EVENT: &str = "image:degraded";
 
 /// 缓存最近三张预览：当前 + 前后各一张。
 const MAX_CACHED_PREVIEWS: usize = 3;
@@ -557,7 +561,7 @@ fn run_animation(shared: &Shared, job: AnimationJob) {
     }
 
     match decoded {
-        Ok(Some(decoded)) => {
+        Ok(AnimationOutcome::Ready(decoded)) => {
             let animation = Arc::new(Animation::new(decoded));
             let payload = AnimationReadyDto {
                 request_id: job.request_id,
@@ -586,16 +590,69 @@ fn run_animation(shared: &Shared, job: AnimationJob) {
             );
             emit_animation_ready(shared, payload);
         }
-        Ok(None) => log::debug!(
+        // 本来就是静态图（单帧 / 非动画格式）：正常情况，保持静默。
+        Ok(AnimationOutcome::NotAnimated) => log::debug!(
             target: "image_view::preview",
-            "{} 不是多帧动画或超出动画预算，按静态图显示",
+            "{} 不是多帧动画，按静态图显示",
             job.stamp.path.display()
         ),
-        Err(error) => log::warn!(
-            target: "image_view::preview",
-            "动画解码失败（{}），按静态首帧显示：{error}",
-            job.stamp.path.display()
+        // 本应能播却被降级：发事件让界面提示用户。
+        Ok(AnimationOutcome::Degraded(reason)) => {
+            let (code, detail) = degraded_code_and_detail(&reason);
+            log::debug!(
+                target: "image_view::preview",
+                "{} 动画降级（{code}）：{detail}",
+                job.stamp.path.display()
+            );
+            emit_degraded(
+                shared,
+                DegradedDto {
+                    request_id: job.request_id,
+                    image_id: job.image_id.clone(),
+                    code,
+                    detail,
+                },
+            );
+        }
+        // 真正的文件/解码错误：也走降级提示，但 code 标为 decodeFailed。
+        Err(error) => {
+            log::warn!(
+                target: "image_view::preview",
+                "动画解码失败（{}），按静态首帧显示：{error}",
+                job.stamp.path.display()
+            );
+            emit_degraded(
+                shared,
+                DegradedDto {
+                    request_id: job.request_id,
+                    image_id: job.image_id.clone(),
+                    code: "decodeFailed",
+                    detail: error.to_string(),
+                },
+            );
+        }
+    }
+}
+
+/// 把降级原因映射为稳定错误码 + 日志细节；文案由前端按 code 本地化。
+fn degraded_code_and_detail(reason: &DegradeReason) -> (&'static str, String) {
+    match reason {
+        DegradeReason::OverBudget {
+            frames,
+            pixels,
+            max_frames,
+            max_pixels,
+        } => (
+            "overBudget",
+            format!(
+                "{} 帧 / {} 像素，超出上限 {} 帧 / {} 像素",
+                frames, pixels, max_frames, max_pixels
+            ),
         ),
+        DegradeReason::Unsupported16Bit => {
+            ("unsupported16Bit", "16-bit APNG 不支持逐帧动画".into())
+        }
+        DegradeReason::DecodeFailed { message } => ("decodeFailed", message.clone()),
     }
 }
 
@@ -728,6 +785,15 @@ fn emit_animation_ready(shared: &Shared, payload: AnimationReadyDto) {
         log::warn!(
             target: "image_view::preview",
             "无法发送动画事件：{error}"
+        );
+    }
+}
+
+fn emit_degraded(shared: &Shared, payload: DegradedDto) {
+    if let Err(error) = shared.app.emit(DEGRADED_EVENT, payload) {
+        log::warn!(
+            target: "image_view::preview",
+            "无法发送动画降级事件：{error}"
         );
     }
 }

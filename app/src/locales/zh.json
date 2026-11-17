@@ -68,7 +68,12 @@
   },
   "error": {
     "retry": "重试",
-    "close": "关闭"
+    "close": "关闭",
+    "degraded": {
+      "overBudget": "动画帧数或像素超出内存预算，已按静态首帧显示。",
+      "unsupported16Bit": "16-bit APNG 暂不支持动画，已显示静态首帧。",
+      "decodeFailed": "动画帧解码失败，已按静态首帧显示。"
+    }
   },
   "notice": {
     "copied": "已复制路径",

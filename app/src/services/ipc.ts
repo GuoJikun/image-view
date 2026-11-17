@@ -7,6 +7,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AnimationReady,
   CommandError,
+  Degraded,
   DirectorySnapshot,
   MenuState,
   PreviewFailed,
@@ -161,6 +162,11 @@ export function onAnimationReady(
   handler: (payload: AnimationReady) => void,
 ): Promise<UnlistenFn> {
   return listen<AnimationReady>("image:animation-ready", (event) => handler(event.payload));
+}
+
+/** 动画降级为静态首帧（超预算 / 16-bit / 解码失败）。 */
+export function onDegraded(handler: (payload: Degraded) => void): Promise<UnlistenFn> {
+  return listen<Degraded>("image:degraded", (event) => handler(event.payload));
 }
 
 /** 单实例/文件关联把新文件转交给已运行窗口。 */

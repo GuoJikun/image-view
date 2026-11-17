@@ -129,7 +129,7 @@ cargo build --release --no-default-features --features jxl      # 仅 JPEG XL（
 
 命令行参数：
 
-```
+```sh
 image-view [PATH]
 
   PATH            要打开的图片文件，或目录（打开其中第一张）
@@ -184,7 +184,7 @@ JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 p
 
 - EXIF 方向校正只覆盖 JPEG/TIFF/WebP；HEIC/AVIF 使用容器内的旋转/镜像属性（`irot` / `imir`）。
 - JPEG XL 只解静态图：`jxl-oxide` 的 `image` 集成尚未实现动画解码，`.jxl` 动画按首帧显示；浮点源图（HDR）按 8-bit 显示，不做色调映射。
-- APNG 只支持 8-bit：16-bit APNG 的逐帧合成不在 `image` 解码器覆盖范围内，动画解码会失败，此时按 16-bit 静态首帧显示。
+- APNG 只支持 8-bit：16-bit APNG 的逐帧合成不在 `image` 解码器覆盖范围内，动画解码会失败，此时按 16-bit 静态首帧显示，并在顶部提示横幅说明原因。
 - HEIC/AVIF 若只带 nclx 色彩原色（如未内嵌 ICC 的 Display P3），暂不进行色域转换；内嵌 ICC 会经 LCMS 转换到 sRGB。iPhone 照片通常内嵌 ICC。
 - HEIC/AVIF 的 10/12-bit 源图由解码器内部转换为 8-bit 纹理；状态栏位深标记只区分通用解码路径的 8/16-bit。
 - HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估；AVIF（AV1）不在此列。
@@ -192,7 +192,7 @@ JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 p
 - SVG 按声明的固有尺寸（`width`/`height`/`viewBox`，逻辑像素）做上限检查，超过 250 MP 会被拒绝打开；`.svgz`（gzip 压缩）不在支持列表内。
 - 旋转仅作用于当前查看，不写回文件，切换图片后重置。
 - 动图的帧间隔被钳制到 50~1000 ms（0 或超大 delay 都按此范围播放），因此极快或极慢的自定义时间轴不会与原始文件完全一致。
-- 动图的总帧预算为 6400 万像素 / 1200 帧：超出上限的文件按静态首帧显示，不做逐帧播放。
+- 动图的总帧预算为 6400 万像素 / 1200 帧：超出上限的文件按静态首帧显示，不做逐帧播放，并在顶部提示横幅说明原因。动画帧解码失败时同样会提示。
 - 动图只播放一次解码出的循环次数（取自文件元数据）；动画帧 PNG 逐帧生成，首次播放长动画的前几秒可能有轻微编码开销。
 - 超大图会被降采样后再显示，此时「100%」是相对降采样后的纹理，状态栏会同时标注原图尺寸。
 - 目录扫描不递归，且在打开文件时一次性完成；运行期间新增的文件需重新打开目录才可见。

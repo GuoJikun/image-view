@@ -85,6 +85,7 @@ pub struct AnimationFrame {
 }
 
 /// 一次动画解码的结果；帧像素总量受 `Caps::max_animation_pixels` 约束。
+#[derive(Debug)]
 pub struct DecodedAnimation {
     pub size: [usize; 2],
     pub source_size: [usize; 2],
@@ -93,6 +94,33 @@ pub struct DecodedAnimation {
     /// 总播放轮数；`None` 表示无限循环。
     pub loops: Option<u32>,
     pub frames: Vec<AnimationFrame>,
+}
+
+/// 动画解码的结构化结果。
+///
+/// 只有 `Ready` 会触发播放；`NotAnimated` 是本来就是静态图的正常情况，不提示；
+/// `Degraded` 表示本应能播却被降级为静态首帧，GUI 应据此提示用户。
+#[derive(Debug)]
+pub enum AnimationOutcome {
+    Ready(DecodedAnimation),
+    NotAnimated,
+    Degraded(DegradeReason),
+}
+
+/// 动画降级原因；GUI 按变体本地化提示文案。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DegradeReason {
+    /// 帧数或累计像素超出 `Caps` 预算。
+    OverBudget {
+        frames: usize,
+        pixels: u64,
+        max_frames: usize,
+        max_pixels: u64,
+    },
+    /// 16-bit APNG：`ApngDecoder` 只输出 8-bit，逐帧合成被拒。
+    Unsupported16Bit,
+    /// 文件损坏或其它解码错误。
+    DecodeFailed { message: String },
 }
 
 /// 帧间隔下限：GIF 的 0 delay（部分导出工具写成 0）按 20 fps 兜底。
@@ -447,15 +475,15 @@ fn animation_kind(path: &Path) -> Option<AnimationKind> {
 
 /// 解码 APNG / GIF / WebP 的全部动画帧。
 ///
-/// 返回 `Ok(None)` 的三种情况：不是动画格式（含单帧 PNG）、只有一帧、帧总像素或
-/// 帧数超过 `Caps` 的动画预算。三者都按普通静态图（首帧）显示，不产生错误提示。
+/// 用 [`AnimationOutcome`] 区分三种情况：正常动画、本来就是静态图、以及本应能播
+/// 却被降级为静态首帧（超预算 / 16-bit / 解码失败）。GUI 只对 `Degraded` 提示。
 /// 帧间隔按 APNG delay / GIF delay / WebP duration 计时，异常值钳制到 50~1000 ms。
-pub fn decode_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+pub fn decode_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
     match animation_kind(path) {
         Some(AnimationKind::Apng) => decode_png_animation(path, caps),
         Some(AnimationKind::Gif) => decode_gif_animation(path, caps),
         Some(AnimationKind::Webp) => decode_webp_animation(path, caps),
-        None => Ok(None),
+        None => Ok(AnimationOutcome::NotAnimated),
     }
 }
 
@@ -464,13 +492,42 @@ pub fn decode_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimat
 /// `ApngDecoder` 会把每帧合成为整幅画布（含 `dispose` / `blend` 处理），输出
 /// 8-bit RGBA；16-bit APNG 会被它直接拒绝，此时动画解码报错，静态图仍由通用
 /// 解码路径按 16-bit 首帧正常显示。
-fn decode_png_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+/// 从 PNG 的 IHDR 读取位深（文件偏移 24），用于识别 16-bit APNG。
+/// 读取失败或非 PNG 时返回 `None`，不影响后续正常解码路径。
+fn png_bit_depth(path: &Path) -> Option<u8> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let mut header = [0u8; 26];
+    file.read_exact(&mut header).ok()?;
+    // 8 字节签名 + 4 字节长度 + "IHDR"；偏移 24 是 bit depth。
+    if !header.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a])
+        || header[12..16] != *b"IHDR"
+    {
+        return None;
+    }
+    Some(header[24])
+}
+
+fn decode_png_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
+    // 16-bit APNG：`image` 的 PNG 解码路径只支持 8-bit，可能在构造 decoder、
+    // 判断 is_apng 或逐帧合成的任一环节报 Unsupported(Rgba16)。先读 IHDR 位深，
+    // 把这类「能力限制」与真正的「文件损坏」区分开。
+    let is_16bit = png_bit_depth(path) == Some(16);
+    match decode_png_animation_inner(path, caps) {
+        Ok(outcome) => Ok(outcome),
+        Err(_) if is_16bit => Ok(AnimationOutcome::Degraded(DegradeReason::Unsupported16Bit)),
+        Err(error) => Err(error),
+    }
+}
+
+fn decode_png_animation_inner(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
     use image::AnimationDecoder as _;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
     let mut decoder = image::codecs::png::PngDecoder::new(reader).map_err(map_decode_error)?;
     if !decoder.is_apng().map_err(map_decode_error)? {
-        return Ok(None);
+        return Ok(AnimationOutcome::NotAnimated);
     }
     let (width, height) = decoder.dimensions();
     check_source_limits(width, height, caps, Purpose::Open)?;
@@ -486,17 +543,17 @@ fn decode_png_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimat
             None
         }
     };
-    let decoder = decoder.apng().map_err(map_decode_error)?;
+    let apng = decoder.apng().map_err(map_decode_error)?;
     // APNG 的 `num_plays` 即总播放轮数；0 表示无限。
-    let loops = match decoder.loop_count() {
+    let loops = match apng.loop_count() {
         image::metadata::LoopCount::Infinite => None,
         image::metadata::LoopCount::Finite(times) => Some(times.get()),
     };
 
-    build_animation(path, caps, decoder.into_frames(), loops, icc_profile)
+    build_animation(path, caps, apng.into_frames(), loops, icc_profile)
 }
 
-fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
     use image::AnimationDecoder as _;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
@@ -514,13 +571,13 @@ fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimat
     build_animation(path, caps, decoder.into_frames(), loops, None)
 }
 
-fn decode_webp_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+fn decode_webp_animation(path: &Path, caps: &Caps) -> Result<AnimationOutcome, LoadError> {
     use image::AnimationDecoder as _;
 
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
     let mut decoder = image::codecs::webp::WebPDecoder::new(reader).map_err(map_decode_error)?;
     if !decoder.has_animation() {
-        return Ok(None);
+        return Ok(AnimationOutcome::NotAnimated);
     }
     let (width, height) = decoder.dimensions();
     check_source_limits(width, height, caps, Purpose::Open)?;
@@ -552,7 +609,7 @@ fn build_animation(
     frames: impl Iterator<Item = image::ImageResult<image::Frame>>,
     loops: Option<u32>,
     icc_profile: Option<Vec<u8>>,
-) -> Result<Option<DecodedAnimation>, LoadError> {
+) -> Result<AnimationOutcome, LoadError> {
     let mut decoded: Vec<AnimationFrame> = Vec::new();
     let mut size = [1usize; 2];
     let mut source_size = [1usize; 2];
@@ -575,7 +632,12 @@ fn build_animation(
                 decoded.len() + 1,
                 total_pixels
             );
-            return Ok(None);
+            return Ok(AnimationOutcome::Degraded(DegradeReason::OverBudget {
+                frames: decoded.len() + 1,
+                pixels: total_pixels,
+                max_frames: caps.max_animation_frames,
+                max_pixels: caps.max_animation_pixels,
+            }));
         }
 
         size = target;
@@ -584,10 +646,10 @@ fn build_animation(
     }
 
     if decoded.len() < 2 {
-        return Ok(None);
+        return Ok(AnimationOutcome::NotAnimated);
     }
 
-    Ok(Some(DecodedAnimation {
+    Ok(AnimationOutcome::Ready(DecodedAnimation {
         size,
         source_size,
         // APNG / GIF / WebP 的解码器已统一输出 8-bit RGBA，动画不涉及 16-bit 源。
@@ -977,6 +1039,14 @@ mod tests {
     /// 把动画帧量化为 8-bit 字节。
     fn frame_rgba8(frame: &AnimationFrame) -> Vec<u8> {
         frame.rgba.clone().into_rgba8()
+    }
+
+    /// 断言动画解码成功并取出结果；用于原本 `.expect()` 的测试点。
+    fn ready_animation(result: Result<AnimationOutcome, LoadError>) -> DecodedAnimation {
+        match result.expect("decode") {
+            AnimationOutcome::Ready(animation) => animation,
+            other => panic!("期望动画就绪，实际 {other:?}"),
+        }
     }
 
     #[test]
@@ -1818,6 +1888,54 @@ mod tests {
         writer.finish().expect("finish apng");
     }
 
+    /// 16-bit APNG：IHDR 位深为 16，`ApngDecoder` 会拒绝逐帧合成。
+    fn write_16bit_animated_png(path: &Path) {
+        use png::{BitDepth, ColorType, Encoder};
+
+        let (width, height) = (4u32, 2u32);
+        let file = std::fs::File::create(path).expect("create 16-bit apng");
+        let mut encoder = Encoder::new(std::io::BufWriter::new(file), width, height);
+        encoder.set_color(ColorType::Rgba);
+        encoder.set_depth(BitDepth::Sixteen);
+        encoder.set_animated(2, 0).expect("configure 16-bit apng");
+        let mut writer = encoder.write_header().expect("write 16-bit apng header");
+
+        for _ in 0..2 {
+            writer.set_frame_delay(100, 1_000).expect("set frame delay");
+            let mut pixels = Vec::with_capacity((width * height * 8) as usize);
+            for _ in 0..width * height {
+                pixels.extend_from_slice(&[0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0xff, 0xff]);
+            }
+            writer
+                .write_image_data(&pixels)
+                .expect("write 16-bit frame");
+        }
+        writer.finish().expect("finish 16-bit apng");
+    }
+
+    #[test]
+    fn sixteen_bit_apng_is_reported_as_degraded() {
+        let dir = temp_dir("apng-16bit");
+        let path = dir.join("anim16.png");
+        write_16bit_animated_png(&path);
+
+        assert_eq!(png_bit_depth(&path), Some(16));
+        let outcome = decode_animation(&path, &Caps::default()).expect("decode 16-bit apng");
+        assert!(
+            matches!(
+                outcome,
+                AnimationOutcome::Degraded(DegradeReason::Unsupported16Bit)
+            ),
+            "16-bit APNG 应归类为可提示的降级，实际 {outcome:?}"
+        );
+
+        // 静态路径仍能按 16-bit 显示首帧。
+        let still = decode(&path, &Caps::default(), Purpose::Open).expect("decode still");
+        assert_eq!(still.source_depth, 16);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
     #[test]
     fn frame_delays_are_clamped_to_playable_range() {
         assert_eq!(frame_delay_ms(image::Delay::from_numer_denom_ms(0, 1)), 50);
@@ -1848,9 +1966,7 @@ mod tests {
             Some(2),
         );
 
-        let animation = decode_animation(&path, &Caps::default())
-            .expect("decode gif")
-            .expect("gif is animated");
+        let animation = ready_animation(decode_animation(&path, &Caps::default()));
 
         assert_eq!(animation.frames.len(), 3);
         assert_eq!(animation.size, [4, 2]);
@@ -1883,9 +1999,7 @@ mod tests {
             None,
         );
 
-        let animation = decode_animation(&path, &Caps::default())
-            .expect("decode gif")
-            .expect("gif is animated");
+        let animation = ready_animation(decode_animation(&path, &Caps::default()));
         assert_eq!(animation.loops, None);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
@@ -1897,9 +2011,7 @@ mod tests {
         let path = dir.join("anim.webp");
         write_animated_webp(&path, (4, 2), &[80, 500], 0);
 
-        let animation = decode_animation(&path, &Caps::default())
-            .expect("decode webp")
-            .expect("webp is animated");
+        let animation = ready_animation(decode_animation(&path, &Caps::default()));
 
         assert_eq!(animation.frames.len(), 2);
         assert_eq!(animation.size, [4, 2]);
@@ -1922,9 +2034,7 @@ mod tests {
         let path = dir.join("anim.png");
         write_animated_png(&path, &[20, 120], &[[255, 0, 0, 255], [0, 255, 0, 255]], 3);
 
-        let animation = decode_animation(&path, &Caps::default())
-            .expect("decode apng")
-            .expect("png is animated");
+        let animation = ready_animation(decode_animation(&path, &Caps::default()));
 
         assert_eq!(animation.frames.len(), 2);
         assert_eq!(animation.size, [4, 2]);
@@ -1956,29 +2066,26 @@ mod tests {
 
         let gif = dir.join("still.gif");
         write_animated_gif(&gif, &[100], &[[1, 2, 3, 255]], None);
-        assert!(
-            decode_animation(&gif, &Caps::default())
-                .expect("gif")
-                .is_none()
-        );
+        assert!(matches!(
+            decode_animation(&gif, &Caps::default()).expect("gif"),
+            AnimationOutcome::NotAnimated
+        ));
 
         let webp = dir.join("still.webp");
         write_animated_webp(&webp, (4, 2), &[100], 0);
-        assert!(
-            decode_animation(&webp, &Caps::default())
-                .expect("webp")
-                .is_none()
-        );
+        assert!(matches!(
+            decode_animation(&webp, &Caps::default()).expect("webp"),
+            AnimationOutcome::NotAnimated
+        ));
 
         let png = dir.join("still.png");
         image::RgbaImage::from_pixel(4, 2, image::Rgba([9, 9, 9, 255]))
             .save(&png)
             .expect("write png");
-        assert!(
-            decode_animation(&png, &Caps::default())
-                .expect("png")
-                .is_none()
-        );
+        assert!(matches!(
+            decode_animation(&png, &Caps::default()).expect("png"),
+            AnimationOutcome::NotAnimated
+        ));
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
@@ -1999,19 +2106,23 @@ mod tests {
             max_animation_pixels: 16,
             ..Caps::default()
         };
-        assert!(decode_animation(&path, &caps).expect("decode").is_none());
+        assert!(matches!(
+            decode_animation(&path, &caps).expect("decode"),
+            AnimationOutcome::Degraded(DegradeReason::OverBudget { .. })
+        ));
 
         // 帧数上限 2 时同样退回静态。
         let caps = Caps {
             max_animation_frames: 2,
             ..Caps::default()
         };
-        assert!(decode_animation(&path, &caps).expect("decode").is_none());
+        assert!(matches!(
+            decode_animation(&path, &caps).expect("decode"),
+            AnimationOutcome::Degraded(DegradeReason::OverBudget { .. })
+        ));
 
         // 放开预算后仍是动画，静态解码路径只取首帧。
-        let animated = decode_animation(&path, &Caps::default())
-            .expect("decode")
-            .expect("animated");
+        let animated = ready_animation(decode_animation(&path, &Caps::default()));
         assert_eq!(animated.frames.len(), 3);
         let still = decode(&path, &Caps::default(), Purpose::Open).expect("decode still");
         assert_eq!(still.size, [4, 2]);

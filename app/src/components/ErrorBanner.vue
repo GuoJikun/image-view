@@ -15,7 +15,14 @@ const emit = defineEmits<{ (event: "close"): void; (event: "retry"): void }>();
   <div class="error-banner" role="alert">
     <Icon name="warning" :size="14" class="error-icon" />
     <span class="error-message">{{ error.message }}</span>
-    <button type="button" class="text-button" @click="emit('retry')">{{ t("error.retry") }}</button>
+    <button
+      v-if="error.retryable !== false"
+      type="button"
+      class="text-button"
+      @click="emit('retry')"
+    >
+      {{ t("error.retry") }}
+    </button>
     <button type="button" class="text-button" @click="emit('close')">{{ t("error.close") }}</button>
   </div>
 </template>
