@@ -4,7 +4,7 @@
 //! 菜单栏单独占窗口顶部一行（见 `view/mod.rs`）。
 
 use iced::widget::{button, container, mouse_area, row, text};
-use iced::{Alignment, Element, Fill};
+use iced::{Alignment, Element, Fill, Padding};
 
 use crate::message::Message;
 use crate::state::AppState;
@@ -36,10 +36,17 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     .spacing(0);
 
     // 菜单栏占左侧（规范 4.5），标题吃满剩余宽度并居中，caption 按钮贴右。
+    // 右侧不留内边距：Windows 的窗口按钮要贴到窗口边缘（含关闭按钮的矩形高亮），
+    // 留 12px 会让人以为关闭按钮没靠边。间距只作用在标题与按钮之间。
     let bar = row![crate::view::menu::bar(state), draggable, buttons]
         .spacing(8)
         .align_y(iced::Center)
-        .padding([0, 12]);
+        .padding(Padding {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 12.0,
+        });
 
     container(bar)
         .style(theme::chrome)
