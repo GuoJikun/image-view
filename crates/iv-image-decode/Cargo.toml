@@ -39,10 +39,11 @@ image = { workspace = true, features = [
     "rayon",
 ] }
 log = { workspace = true }
-imgalifier-avif = { workspace = true, optional = true }
-imgalifier-heif = { workspace = true, optional = true }
-resvg = { workspace = true, optional = true }
-jxl-oxide = { workspace = true, optional = true }
+imgalifier-avif = { version = "0.1", optional = true }
+imgalifier-heif = { version = "0.1", default-features = false, optional = true }
+resvg = { version = "0.50", optional = true }
+# JPEG XL 解码。`image` 集成提供 `ImageDecoder`；`lcms2` 让 CMYK 文件复用同一份 LCMS。
+jxl-oxide = { version = "0.12", features = ["image", "lcms2"], optional = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

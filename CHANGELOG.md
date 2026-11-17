@@ -2,9 +2,16 @@
 
 本文件只记录各发布版本的用户可见变更，格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，发布时打标签 `vX.Y.Z`。
 
+> **分支说明**：当前为 Iced GUI 分支（`gui-iced`），不合并回 `main`，只从 `main` 合并 `crates/` 与工作区 `Cargo.toml`。
+> 下方历史版本（1.5.0 及以前）记录的是 `main` 上 Tauri GUI 的发布，其中解码 / 色彩 / 导航等 Core 变更随合并进入本分支，
+> 而界面、安装包、自动更新、多语言、原生菜单等 Tauri 专属条目**不适用于本分支**。本分支 GUI 的能力与限制见
+> [README.md](README.md) 与 [docs/02-iced-architecture.md](docs/02-iced-architecture.md) §12。
+
 ## [未发布]
 
 ### 新增
+
+- 从 `main` 合并非 GUI 部分到本分支：`crates/*` 与工作区 `Cargo.toml`（farbfeld / JPEG XL / APNG 解码、源位深保留、广色域转换、动画降级提示、磁盘缩略图缓存与日志改进等），Iced GUI 按需接线；同时按实际代码重写核心文档，去除 Tauri 口径的描述。
 
 - 广色域输出：探测屏幕的 `color-gamut` 与画布的 `display-p3` 支持，两者都成立时把像素转换到 Display P3，并在预览 PNG 里写入对应的 `iCCP` 块；其余情况保持 sRGB。状态栏与元数据面板显示实际目标空间，切换显示器会让缓存按目标空间失效并重新解码。
 - JPEG XL 支持：打开 `.jxl` 文件，解码器为纯 Rust 的 `jxl-oxide`（`image` 集成 + `lcms2`），支持 8/16-bit 与浮点源图、alpha、内嵌 ICC 与 CMYK；扩展名、文件过滤器、文件关联与构建特性 `jxl` 同步加入。
@@ -14,14 +21,14 @@
 
 ### 变更
 
-- 16-bit 图片在解码、ICC 转换与预览/缩略图 PNG 传输中全程保留 16-bit 精度，不再于解码阶段量化到 8-bit；显示端仍由 WebView 落到 8-bit Canvas，屏幕观感不变。
-- 禁用 WebView 自带的右键菜单（重新加载、另存为图片、检查元素），看图时右键不再弹出与操作无关的系统菜单。
+- 16-bit 图片在解码、ICC 转换与预览/缩略图 PNG 传输中全程保留 16-bit 精度，不再于解码阶段量化到 8-bit；显示端仍由 WebView 落到 8-bit Canvas，屏幕观感不变。（Core 变更已随合并进入本分支；WebView 相关描述属于 `main` 的 GUI。）
+- 禁用 WebView 自带的右键菜单（重新加载、另存为图片、检查元素），看图时右键不再弹出与操作无关的系统菜单。（`main` 的 Tauri GUI 专属，本分支不涉及。）
 
 ### 修复
 
 - macOS 应用内更新恢复：发布流程的 macOS 构建只产出了 dmg，缺少更新所需的 `*.app.tar.gz`，
   导致 `latest.json` 里没有 `darwin-*` 条目，macOS 端「检查更新」始终提示已是最新。现已补上
-  该产物，下一个版本发布后 macOS 即可正常收到更新（无需先重装）。
+  该产物，下一个版本发布后 macOS 即可正常收到更新（无需先重装）。（`main` 的发布流程专属，本分支不涉及。）
 
 ## [1.5.0] - 2026-11-16
 

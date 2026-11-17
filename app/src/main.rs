@@ -70,7 +70,7 @@ fn main() -> iced::Result {
 }
 
 fn load_icon() -> Option<iced::window::Icon> {
-    let bytes = include_bytes!("../../../assets/icon.png");
+    let bytes = include_bytes!("../../assets/icon.png");
     let decoded = match image::load_from_memory(bytes) {
         Ok(image) => image.to_rgba8(),
         Err(error) => {

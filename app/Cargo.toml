@@ -14,16 +14,16 @@ heic = ["iv-image-decode/heic"]
 svg = ["iv-image-decode/svg"]
 
 [dependencies]
-iv-application = { path = "../../crates/iv-application" }
-iv-cache = { path = "../../crates/iv-cache" }
-iv-domain = { path = "../../crates/iv-domain" }
-iv-image-decode = { path = "../../crates/iv-image-decode" }
-iv-image-render = { path = "../../crates/iv-image-render" }
-iv-infra = { path = "../../crates/iv-infra" }
-iv-metadata = { path = "../../crates/iv-metadata" }
-iv-platform = { path = "../../crates/iv-platform" }
+iv-application = { path = "../crates/iv-application" }
+iv-cache = { path = "../crates/iv-cache" }
+iv-domain = { path = "../crates/iv-domain" }
+iv-image-decode = { path = "../crates/iv-image-decode" }
+iv-image-render = { path = "../crates/iv-image-render" }
+iv-infra = { path = "../crates/iv-infra" }
+iv-metadata = { path = "../crates/iv-metadata" }
+iv-platform = { path = "../crates/iv-platform" }
 
-iced = { workspace = true, features = [
+iced = { version = "0.14.0", features = [
     "wgpu",
     "canvas",
     "image-without-codecs",
@@ -36,12 +36,12 @@ iced = { workspace = true, features = [
 emath = { workspace = true }
 # 只用于窗口图标与测试夹具，不承担图片解码。
 image = { workspace = true, features = ["png"] }
-rfd = { workspace = true }
+rfd = { version = "0.18", default-features = false }
 log = { workspace = true }
 ron = { workspace = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
+rfd = { version = "0.18", default-features = false, features = ["xdg-portal", "wayland"] }
 
 [dev-dependencies]
 image = { workspace = true, features = ["png", "jpeg", "gif"] }

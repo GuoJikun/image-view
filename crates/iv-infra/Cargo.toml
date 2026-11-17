@@ -9,7 +9,9 @@ description = "ImageViewer 基础设施：设置持久化与日志"
 [dependencies]
 iv-domain = { path = "../iv-domain" }
 log = { workspace = true }
-env_logger = { workspace = true }
-chrono = { workspace = true }
+env_logger = "0.11"
+# 日志时间戳按本地时区渲染；依赖树里 trash 已带 chrono，直接复用同一版本。
+# 只开 `clock`（隐含 `std`），不引入 wasmbind，桌面端用不到。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde = { workspace = true }
 ron = { workspace = true }

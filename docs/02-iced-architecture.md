@@ -1,6 +1,10 @@
 # ImageViewer 架构设计：Iced + Rust
 
-# 统一架构基线（适用于三套 GUI 方案）
+> **本分支现行架构**：`gui-iced` 分支的 GUI 就是本文描述的 Iced 方案（`app`），
+> 纯 Rust、不随安装包发布。本分支不合并回 `main`，只从 `main` 合并 `crates/` 与工作区根 `Cargo.toml`。
+> 下文的「统一架构基线」是三套 GUI 共享的设计原则，Iced 具体实现与进度见 §「架构设计 B」与 §12。
+
+# 统一架构基线（三套 GUI 方案共享的设计原则）
 
 ## 1. 项目目标与设计原则
 
@@ -369,7 +373,7 @@ Widget、自定义 Widget、窗口事件和各平台 renderer。
 ## 3. 应用结构
 
 ``` text
-apps/iced-app/
+app/
 ├── Cargo.toml
 └── src/
     ├── main.rs
@@ -489,7 +493,7 @@ Windows、macOS、Linux，尤其验证： - 各平台 renderer 可用性。 - �
 
 ## 10. 本方案的 GUI 替换成本
 
-替换为 eframe 或 Tauri 时需要替换： - `apps/iced-app` -
+替换为 eframe 或 Tauri 时需要替换： - `app` -
 Message/Update/View - Iced Canvas 和自定义 Widget - Iced
 Task/Subscription 到统一应用事件的适配 - Iced 窗口与菜单适配
 
@@ -508,9 +512,13 @@ renderer、文件打开事件、单实例和安装包工作正常。 6. Iced
 
 ## 12. 实施进度（Iced POC）
 
-代码位于 `apps/iced-app`，与 eframe 应用共用全部 Core crate，未修改任何
-`crates/*` 的公开 API。锁定版本：`iced 0.14`（`wgpu` + `canvas` +
-`image-without-codecs` + `smol`）。
+代码位于 `app`，与 `main` 的 Tauri GUI 共用同一套 Core crate
+（`crates/iv-*`），GUI 层独立。本分支不合并回 `main`，只从 `main` 合并
+`crates/` 与工作区根 `Cargo.toml`，因此对 Core 的修改要保持接口兼容。
+
+GUI 依赖为 `iced`，特性见 `app/Cargo.toml`（`wgpu` + `canvas` +
+`image-without-codecs` + `thread-pool` + `smol` + `crisp` + `x11` + `wayland`）；
+像素解码只开 `image/png`，用于窗口图标与测试夹具。
 
 ``` bash
 cargo run -p image-view-iced -- "D:\photos\a.jpg"
@@ -545,11 +553,12 @@ cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
   结果按 generation 丢弃；`Message::Poll` 每 50 ms 收拢一次，消息量有上界。
 - **系统集成**：`rfd` 文件对话框、拖放打开、回收站删除、资源管理器定位、
   复制路径、全屏切换、幻灯片（3 s 自动前进）。
-- **持久化**：目录、文件、排序、主题、缩略图条开关写入 `settings.ron`
+- **持久化**：最近目录、最近文件、排序、缩略图条开关写入 `settings.ron`
   （默认 `%APPDATA%\image-view-iced\`，可用
-  `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。
-- **质量门禁**：`cargo fmt` / `cargo clippy`（零告警）/ `cargo test`
-  （14 个单测）通过，启动冒烟测试正常打开图片。
+  `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。主题从该文件读取但没有界面切换入口，
+  元数据面板开关目前也不持久化。
+- **测试**：源码内有 14 个单测（`app/src` 随实现放置）；
+  质量门禁命令见 [AGENTS.md](../AGENTS.md)。
 
 ### 12.3 尚未完成
 
@@ -558,5 +567,10 @@ cargo run -p image-view-iced -- "D:\photos"     # 目录取第一张
 3. 原生菜单栏与触控板手势：目前只有自绘工具栏与 `⋯` 溢出菜单。
 4. 长时浏览的大图 GPU 资源生命周期、macOS/Linux renderer 实机验证。
 5. 多语言（i18n）：POC 只提供中文界面，未接入 `iv-domain::Language`。
-6. 「跟随系统」主题回落为深色：Iced 0.14 的 `Theme` 没有系统主题探测入口。
+6. 「跟随系统」主题回落为深色：Iced 0.14 的 `Theme` 没有系统主题探测入口；
+   界面也没有主题切换控件。
+7. 动画逐帧播放：GIF / WebP / APNG 目前按静态首帧显示；Core 的动画帧解码能力
+   随 `main` 合并进来了，但 Iced GUI 尚未接线。
+8. 元数据面板开关、色彩转换标记、「启动时检查更新」等偏好未接线或未持久化：
+   `iv-infra::Settings` 里有对应字段，GUI 侧未使用。
 

@@ -8,5 +8,5 @@ description = "ImageViewer 目录遍历与排序（不依赖 GUI）"
 
 [dependencies]
 iv-domain = { path = "../iv-domain" }
-natord = { workspace = true }
+natord = "1.0"
 log = { workspace = true }

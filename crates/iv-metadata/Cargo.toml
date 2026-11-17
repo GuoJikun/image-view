@@ -8,6 +8,6 @@ description = "ImageViewer 色彩管理：ICC profile 解析与 sRGB 转换"
 
 [dependencies]
 image = { workspace = true }
-lcms2 = { workspace = true }
+lcms2 = "6.2"
 bytemuck = { workspace = true }
 log = { workspace = true }

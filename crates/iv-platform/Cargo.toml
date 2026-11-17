@@ -7,11 +7,13 @@ publish.workspace = true
 description = "ImageViewer 平台集成：回收站、文件管理器定位、系统语言"
 
 [dependencies]
-sys-locale = { workspace = true }
-trash = { workspace = true }
+# 系统界面语言：启动首帧原生菜单在还没有前端输入时就要确定语言。
+sys-locale = "0.3"
+# 依赖树里已带 chrono，复用同一版本；各 target 段在此基础上叠加平台特性。
+trash = { version = "5", default-features = false, features = ["chrono"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-trash = { workspace = true, features = ["coinit_apartmentthreaded"] }
+trash = { version = "5", default-features = false, features = ["chrono", "coinit_apartmentthreaded"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-trash = { workspace = true, features = ["freedesktop"] }
+trash = { version = "5", default-features = false, features = ["chrono", "freedesktop"] }
