@@ -44,6 +44,8 @@ cargo test --workspace
 - 主题只有 Light / Dark / System 三档，且 `app.rs::theme` 把 System 回落为 Dark（Iced 0.14 无系统主题探测入口）；界面无主题切换控件，改主题是改配置文件的行为。
 - 视觉规范以 [design/macos-first](design/macos-first/README.md) 为准。颜色、圆角、间距、字号只从 `theme::Palette` 与 `theme::` 样式函数取，**不要在 `view/` / `widgets/` 里硬编码颜色**；新增可复用样式加在 `theme.rs`，不要就地写匿名闭包样式。图标统一用 `widgets/icons.rs` 的内联 SVG（`Icon` 枚举 + 主题着色），不引入图标字体或图标 crate。
 - 标题栏按平台分叉：macOS 保持系统原生装饰；Windows / Linux 关装饰、用 `view/titlebar.rs` 自绘（拖动、双击最大化、caption 按钮）。改标题栏或窗口 `Settings` 时两侧都要照顾，且注意全屏下自绘标题栏要隐藏。
+- 无边框窗口不会自动圆角：Windows 需要在 `window::Settings.platform_specific.corner_preference` 里显式给 `CornerPreference::Round`（Win11 生效，最大化 / 旧系统由系统忽略）。别把这个字段当噪音删掉。
+- **`button` 会把内容区的 min/max 都收紧成按钮尺寸**（`layout::padded` → `Limits::width(Fixed)`），内部固定尺寸的 SVG / 图片会被 `Limits::resolve` 拉到按钮大小。图标按钮要按 `(按钮边长 - 图标边长) / 2` 设 padding 把内容区收回，否则图标会顶满按钮（曾导致 17px 图标被渲染成 30px）。文本按钮同理：不设 `padding(0)` 时默认 padding 会挤掉内容宽度，且 `Text` 默认左对齐，表现就是「符号没居中」——胶囊缩放的 `−` / 百分比 / `+` 三段必须同时 `padding(0)` + `center()`。
 - 「跟随系统」的语言判定在 `iv-domain::Language::resolve_tag`（只看主语言子标签，非中文回退英文），系统语言由 `iv-platform::system_locale()` 读取。本分支 GUI 未接线，但 Core 侧规则不要擅自改。
 
 ## 本分支没有的能力

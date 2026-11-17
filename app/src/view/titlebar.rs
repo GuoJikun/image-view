@@ -11,6 +11,7 @@ use crate::theme::{self, Palette};
 use crate::widgets::icons::{self, Icon};
 
 pub fn view(state: &AppState) -> Element<'_, Message> {
+    let t = crate::view::viewer::theme_of(state);
     let filename = state
         .current_path()
         .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
@@ -27,10 +28,11 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .on_double_click(Message::ToggleMaximize);
 
     let buttons = row![
-        caption_button(Icon::Minimize, Message::MinimizeWindow, false),
-        caption_button(Icon::Maximize, Message::ToggleMaximize, false),
-        caption_button(Icon::Close, Message::CloseWindow, true),
-    ];
+        caption_button(Icon::Minimize, Message::MinimizeWindow, false, &t),
+        caption_button(Icon::Maximize, Message::ToggleMaximize, false, &t),
+        caption_button(Icon::Close, Message::CloseWindow, true, &t),
+    ]
+    .spacing(0);
 
     let bar = row![draggable, buttons]
         .spacing(8)
@@ -44,12 +46,21 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .into()
 }
 
-fn caption_button(icon: Icon, message: Message, danger: bool) -> Element<'static, Message> {
-    let icon_element = icons::view(icon, 14.0, iced::Color::from_rgb(0.35, 0.35, 0.38));
+fn caption_button(
+    icon: Icon,
+    message: Message,
+    danger: bool,
+    theme_ref: &iced::Theme,
+) -> Element<'static, Message> {
+    // 按钮 46×28、图标 14：用 padding 把内容区收回到 14×14，否则 `button`
+    // 会把固定尺寸的 SVG 拉伸到按钮大小（与工具栏图标同一问题）。
+    const ICON: f32 = 14.0;
+    // 图标颜色来自主题令牌；SVG 是自绘的，按钮的 `text_color` 管不到它。
+    let icon_element = icons::view(icon, ICON, Palette::from(theme_ref).icon);
     button(icon_element)
         .width(46)
         .height(28)
-        .padding(0)
+        .padding([(28.0 - ICON) / 2.0, (46.0 - ICON) / 2.0])
         .style(move |t, status| {
             let p = Palette::from(t);
             let hovering = matches!(status, button::Status::Hovered);

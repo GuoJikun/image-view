@@ -52,11 +52,21 @@ fn main() -> iced::Result {
     #[cfg(target_os = "macos")]
     let decorations = true;
 
+    // Windows：无边框窗口不会由系统自动圆角，需显式要求（Win11 Build 22000+ 生效，
+    // 更早版本与最大化时系统会忽略，退回方角）。
+    #[cfg(target_os = "windows")]
+    let platform_specific = iced::window::settings::platform::PlatformSpecific {
+        corner_preference: iced::window::settings::platform::CornerPreference::Round,
+        ..Default::default()
+    };
+
     let window = iced::window::Settings {
         size: iced::Size::new(1100.0, 760.0),
         min_size: Some(iced::Size::new(720.0, 520.0)),
         icon: load_icon(),
         decorations,
+        #[cfg(target_os = "windows")]
+        platform_specific,
         ..Default::default()
     };
 

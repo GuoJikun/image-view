@@ -22,6 +22,10 @@ fn fixed_color(hex: u32) -> Color {
 }
 
 /// 工具条按钮统一尺寸（规范 4.1：30×30 / 圆角 6 / 图标 17）。
+const TOOL_BUTTON: f32 = 30.0;
+/// 规范 4.1 的图标边长。
+const TOOL_ICON: f32 = 17.0;
+
 fn tool_button(
     icon: Icon,
     message: Message,
@@ -36,11 +40,13 @@ fn tool_button(
     } else {
         Palette::from(theme_ref).text3
     };
-    let content = icons::view(icon, 17.0, color);
+    let content = icons::view(icon, TOOL_ICON, color);
+    // `button` 会把内容区的 min/max 都收紧成按钮尺寸，内部固定尺寸的 SVG 会被
+    // `Limits::resolve` 拉到按钮大小；用 padding 把内容区收回到图标边长。
     let mut btn = button(content)
-        .width(30)
-        .height(30)
-        .padding(0)
+        .width(TOOL_BUTTON)
+        .height(TOOL_BUTTON)
+        .padding((TOOL_BUTTON - TOOL_ICON) / 2.0)
         .style(move |t, status| theme::icon_button(t, status, active));
     if enabled {
         btn = btn.on_press(message);
@@ -150,22 +156,25 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
         .into()
 }
 
-/// 118×30 胶囊缩放：− / 值（点击=适配）/ +。
+/// 118×30 胶囊缩放：− / 值（点击=适配）/ +（规范 4.2）。
+///
+/// 三段的 `button` 都会把内容区收紧成按钮尺寸，文字若不显式居中会被画在
+/// 内容区左侧；默认 padding 还会挤掉中段「值」的宽度，所以统一 `padding(0)`
+/// + `center()`。
 fn capsule_zoom(label: &str, has_image: bool) -> Element<'static, Message> {
-    let minus_icon = icons::view(Icon::ZoomOut, 14.0, Color::from_rgb(0.35, 0.35, 0.38));
-    let plus_icon = icons::view(Icon::ZoomIn, 14.0, Color::from_rgb(0.35, 0.35, 0.38));
-    let minus = button(minus_icon)
+    let minus = button(text("−").size(15).center())
         .width(38)
         .height(30)
         .padding(0)
         .style(|t, s| theme::capsule_segment(t, s, false))
         .on_press_maybe(has_image.then_some(Message::ZoomBy(0.8)));
-    let middle = button(text(label.to_owned()).size(12))
+    let middle = button(text(label.to_owned()).size(12).center())
         .width(42)
         .height(30)
+        .padding(0)
         .style(|t, s| theme::capsule_segment(t, s, true))
         .on_press_maybe(has_image.then_some(Message::Fit));
-    let plus = button(plus_icon)
+    let plus = button(text("+").size(15).center())
         .width(38)
         .height(30)
         .padding(0)
@@ -188,7 +197,7 @@ fn capsule_zoom(label: &str, has_image: bool) -> Element<'static, Message> {
 }
 
 /// 从 AppState 推断当前 Iced Theme（与 app::theme 规则一致）。
-fn theme_of(state: &AppState) -> iced::Theme {
+pub(crate) fn theme_of(state: &AppState) -> iced::Theme {
     match state.settings.theme {
         iv_domain::ThemeSetting::Light => iced::Theme::Light,
         _ => iced::Theme::Dark,
@@ -270,10 +279,13 @@ fn empty_state() -> Element<'static, Message> {
     .spacing(12)
     .align_x(iced::Center);
 
+    // 容器必须撑满画布区才能居中；居中后再用底部内边距把整体上移 24 px（规范 4.6）。
     container(content)
+        .width(Fill)
+        .height(Fill)
         .align_x(iced::Center)
-        .align_y(iced::Bottom)
-        .padding(iced::Padding::from(0).bottom(120))
+        .align_y(iced::Center)
+        .padding(iced::Padding::from(0).bottom(48))
         .into()
 }
 
