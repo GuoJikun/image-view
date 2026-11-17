@@ -10,7 +10,7 @@ use iv_infra::settings::Settings;
 use crate::adapters::storage::FileStorage;
 use crate::i18n::{self, Text};
 use crate::menu::MenuState;
-use crate::message::Message;
+use crate::message::{Caption, Message};
 use crate::state::library_state::LibraryState;
 use crate::state::viewer_state::ViewerState;
 
@@ -37,6 +37,8 @@ pub struct AppState {
     pub notice: Option<String>,
     pub menu: MenuState,
     pub dialog: Option<Dialog>,
+    /// 自绘标题栏里鼠标停留的 caption 按钮；图标配色随它变化。
+    pub caption_hover: Option<Caption>,
     pub slideshow: bool,
     pub last_advance: Instant,
     pub scale_factor: f32,
@@ -80,6 +82,7 @@ impl AppState {
             notice: None,
             menu: MenuState::default(),
             dialog: None,
+            caption_hover: None,
             slideshow: false,
             last_advance: Instant::now(),
             scale_factor: 1.0,
@@ -130,6 +133,7 @@ impl AppState {
             notice: None,
             menu: MenuState::default(),
             dialog: None,
+            caption_hover: None,
             slideshow: false,
             last_advance: Instant::now(),
             scale_factor: 1.0,

@@ -579,7 +579,7 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
 - **持久化**：最近目录、最近文件、排序、缩略图条开关、主题、界面语言与
   色彩转换标记写入 `settings.ron`（默认 `%APPDATA%\image-view\`，可用
   `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。元数据面板开关仍只在本次会话生效。
-- **测试**：`app/src` 内有 28 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击与画布光标）；
+- **测试**：`app/src` 内有 32 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标与 caption 配色）；
   质量门禁命令见 [AGENTS.md](../AGENTS.md)。
 
 ### 12.3 尚未完成

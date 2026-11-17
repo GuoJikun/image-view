@@ -6,7 +6,7 @@
 use iced::widget::{button, container, mouse_area, row, text};
 use iced::{Alignment, Element, Fill, Padding};
 
-use crate::message::Message;
+use crate::message::{Caption, Message};
 use crate::state::AppState;
 use crate::theme::{self, Palette};
 use crate::widgets::icons::{self, Icon};
@@ -28,10 +28,15 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
         .on_press(Message::DragWindow)
         .on_double_click(Message::ToggleMaximize);
 
+    // 悬停状态决定图标配色（关闭按钮悬停转白），因此每颗按钮各自判断。
+    let caption = |kind: Caption, icon: Icon, message: Message| {
+        caption_button(kind, icon, message, state.caption_hover == Some(kind), &t)
+    };
+
     let buttons = row![
-        caption_button(Icon::Minimize, Message::MinimizeWindow, false, &t),
-        caption_button(Icon::Maximize, Message::ToggleMaximize, false, &t),
-        caption_button(Icon::Close, Message::CloseWindow, true, &t),
+        caption(Caption::Minimize, Icon::Minimize, Message::MinimizeWindow),
+        caption(Caption::Maximize, Icon::Maximize, Message::ToggleMaximize),
+        caption(Caption::Close, Icon::Close, Message::CloseWindow),
     ]
     .spacing(0);
 
@@ -56,17 +61,20 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 }
 
 fn caption_button(
+    kind: Caption,
     icon: Icon,
     message: Message,
-    danger: bool,
+    hovered: bool,
     theme_ref: &iced::Theme,
 ) -> Element<'static, Message> {
     // 按钮 46×28、图标 14：用 padding 把内容区收回到 14×14，否则 `button`
     // 会把固定尺寸的 SVG 拉伸到按钮大小（与工具栏图标同一问题）。
     const ICON: f32 = 14.0;
-    // 图标颜色来自主题令牌；SVG 是自绘的，按钮的 `text_color` 管不到它。
-    let icon_element = icons::view(icon, ICON, Palette::from(theme_ref).icon);
-    button(icon_element)
+    let danger = kind == Caption::Close;
+    let palette = Palette::from(theme_ref);
+    let icon_color = caption_icon_color(kind, hovered, palette);
+
+    let button = button(icons::view(icon, ICON, icon_color))
         .width(46)
         .height(28)
         .padding([(28.0 - ICON) / 2.0, (46.0 - ICON) / 2.0])
@@ -82,20 +90,65 @@ fn caption_button(
             } else {
                 None
             };
-            let text_color = if hovering && danger {
-                iced::Color::WHITE
-            } else if danger {
-                p.text
-            } else {
-                p.icon
-            };
             button::Style {
                 background: bg,
-                text_color,
+                text_color: p.text,
                 border: iced::Border::default(),
                 ..Default::default()
             }
         })
-        .on_press(message)
+        .on_press(message);
+
+    // 悬停要驱动图标配色，而 `button` 的样式触不到内部 SVG，故在外面记一笔；
+    // 光标仍由 `button` 决定（`mouse_area` 不声明 interaction，取 max 后是手型）。
+    mouse_area(button)
+        .on_enter(Message::CaptionHovered(kind))
+        .on_exit(Message::CaptionLeft(kind))
         .into()
+}
+
+/// caption 图标的颜色。
+///
+/// 关闭按钮悬停时底色转红，图标必须变白才看得清；最小化 / 最大化悬停底只是浅灰，
+/// 保持主题图标色。`button::Style.text_color` 管不到内部 SVG，所以颜色在构建时按
+/// 悬停状态决定，悬停状态由 `AppState::caption_hover` 记录。
+fn caption_icon_color(caption: Caption, hovered: bool, palette: Palette) -> iced::Color {
+    match (caption, hovered) {
+        (Caption::Close, true) => iced::Color::WHITE,
+        (Caption::Close, false) => palette.text,
+        _ => palette.icon,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn palette() -> Palette {
+        Palette::from(&iced::Theme::Light)
+    }
+
+    #[test]
+    fn close_icon_turns_white_on_hover_only() {
+        let p = palette();
+        assert_eq!(
+            caption_icon_color(Caption::Close, true, p),
+            iced::Color::WHITE,
+            "关闭按钮悬停：红底上必须是白图标"
+        );
+        assert_eq!(
+            caption_icon_color(Caption::Close, false, p),
+            p.text,
+            "关闭按钮常态：跟随主题文字色"
+        );
+    }
+
+    #[test]
+    fn other_captions_keep_theme_icon_color() {
+        let p = palette();
+        for caption in [Caption::Minimize, Caption::Maximize] {
+            assert_eq!(caption_icon_color(caption, true, p), p.icon);
+            assert_eq!(caption_icon_color(caption, false, p), p.icon);
+        }
+    }
 }

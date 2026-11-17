@@ -44,6 +44,16 @@ pub fn handle_event(state: &mut AppState, event: iced::Event) -> Task<Message> {
             library::persist(state);
             Task::none()
         }
+        // 指针移出窗口或窗口失焦时，caption 按钮收不到 `on_exit`（鼠标直接移出边缘、
+        // Alt+Tab 切走都会漏），必须主动清掉，否则关闭按钮会停在「红底 + 白图标」状态。
+        iced::Event::Mouse(iced::mouse::Event::CursorLeft) => {
+            state.caption_hover = None;
+            Task::none()
+        }
+        iced::Event::Window(iced::window::Event::Unfocused) => {
+            state.caption_hover = None;
+            Task::none()
+        }
         _ => Task::none(),
     }
 }

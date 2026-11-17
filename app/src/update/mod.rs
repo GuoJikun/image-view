@@ -174,6 +174,17 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             Some(id) => iced::window::close(id),
             None => Task::none(),
         },
+        Message::CaptionHovered(caption) => {
+            state.caption_hover = Some(caption);
+            Task::none()
+        }
+        Message::CaptionLeft(caption) => {
+            // 只清自己：离开旧按钮的退出事件可能晚于进入新按钮的进入事件。
+            if state.caption_hover == Some(caption) {
+                state.caption_hover = None;
+            }
+            Task::none()
+        }
         Message::Poll => task::poll(state),
         Message::Dismiss => {
             state.notice = None;
@@ -182,5 +193,55 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             state.menu.close();
             Task::none()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::Caption;
+
+    fn state() -> AppState {
+        let dir = std::env::temp_dir().join(format!("iv-caption-{}", std::process::id()));
+        AppState::for_test(dir)
+    }
+
+    /// caption 相关的消息都返回空任务，测试里显式丢弃。
+    fn send(state: &mut AppState, message: Message) {
+        let _ = update(state, message);
+    }
+
+    #[test]
+    fn hovering_caption_tracks_and_clears_the_touched_button() {
+        let mut state = state();
+
+        send(&mut state, Message::CaptionHovered(Caption::Close));
+        assert_eq!(state.caption_hover, Some(Caption::Close));
+
+        // 离开另一颗按钮不能把当前悬停清掉（退出事件可能晚于进入事件）。
+        send(&mut state, Message::CaptionLeft(Caption::Minimize));
+        assert_eq!(state.caption_hover, Some(Caption::Close));
+
+        send(&mut state, Message::CaptionLeft(Caption::Close));
+        assert_eq!(state.caption_hover, None);
+    }
+
+    #[test]
+    fn caption_hover_resets_when_cursor_leaves_or_window_unfocuses() {
+        let mut state = state();
+
+        send(&mut state, Message::CaptionHovered(Caption::Close));
+        send(
+            &mut state,
+            Message::Event(iced::Event::Mouse(iced::mouse::Event::CursorLeft)),
+        );
+        assert_eq!(state.caption_hover, None, "指针移出窗口要复位");
+
+        send(&mut state, Message::CaptionHovered(Caption::Close));
+        send(
+            &mut state,
+            Message::Event(iced::Event::Window(iced::window::Event::Unfocused)),
+        );
+        assert_eq!(state.caption_hover, None, "窗口失焦要复位");
     }
 }

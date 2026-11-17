@@ -8,6 +8,14 @@ use std::path::PathBuf;
 use crate::menu::{Action, Hover};
 use emath::Vec2;
 
+/// 自绘标题栏的 caption 按钮；悬停时要单独着色，因此需要能被状态记住。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Caption {
+    Minimize,
+    Maximize,
+    Close,
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     /// 全局事件（键盘、窗口、拖放）；widget 已捕获的事件不会到达这里。
@@ -75,6 +83,10 @@ pub enum Message {
     ToggleMaximize,
     MinimizeWindow,
     CloseWindow,
+    /// 进入 caption 按钮：关闭按钮的图标据此转白。
+    CaptionHovered(Caption),
+    /// 离开 caption 按钮：只清掉自己那一颗，避免误清刚进入的按钮。
+    CaptionLeft(Caption),
 
     /// 定时轮询解码线程与缩略图线程的结果。
     Poll,

@@ -59,6 +59,9 @@ cargo test --workspace
 - 标题栏按平台分叉：macOS 保持系统原生装饰；Windows / Linux 关装饰、用 `view/titlebar.rs` 自绘（拖动、双击最大化、caption 按钮）。改标题栏或窗口 `Settings` 时两侧都要照顾，且注意全屏下自绘标题栏要隐藏。
   caption 三钮（46×28）必须贴到窗口右边缘：横向内边距只给左侧（`Padding { left: 12, right: 0 }`），
   `spacing` 只作用在标题与按钮之间，否则关闭按钮会离边 12px，看起来像没靠右。
+  关闭按钮悬停时图标转白：`button::Style.text_color` 触不到内部 SVG，配色由
+  `caption_icon_color()` 在构建时按 `AppState::caption_hover` 决定；该状态在
+  `CursorLeft` / 窗口 `Unfocused` 时要主动复位（`update/task.rs`），否则图标会停在白色。
 - 无边框窗口不会自动圆角：Windows 需要在 `window::Settings.platform_specific.corner_preference` 里显式给 `CornerPreference::Round`（Win11 生效，最大化 / 旧系统由系统忽略）。别把这个字段当噪音删掉。
 - **`button` 会把内容区的 min/max 都收紧成按钮尺寸**（`layout::padded` → `Limits::width(Fixed)`），内部固定尺寸的 SVG / 图片会被 `Limits::resolve` 拉到按钮大小。图标按钮要按 `(按钮边长 - 图标边长) / 2` 设 padding 把内容区收回，否则图标会顶满按钮（曾导致 17px 图标被渲染成 30px）。文本按钮同理：不设 `padding(0)` 时默认 padding 会挤掉内容宽度，且 `Text` 默认左对齐，表现就是「符号没居中」——胶囊缩放的 `−` / 百分比 / `+` 三段必须同时 `padding(0)` + `center()`。
 - **`container` 默认左上对齐**（`Horizontal::Left` / `Vertical::Top`），`container(x).width(w).height(h)` 不会把内容居中——自绘的「格子」控件（菜单栏标题、图标槽位）必须显式 `.align_x(Center).align_y(Center)`，否则文字会贴在格子左上角（曾导致菜单栏标题偏左偏上）。
