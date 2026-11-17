@@ -33,6 +33,8 @@ cargo test --workspace
 - `message.rs` 的 `Message` 只表示 UI 事件与异步结果，**不进入 Core**；`update/` 负责把消息转成 `iv-application` 用例，并把结果映射回 `Message`。`app.rs` 只做 boot/update/view/subscription/title/theme 装配，不写业务。
 - 全局键鼠、拖放、窗口事件统一由 `app.rs` 的 `iced::event::listen()` 收口到 `update/task.rs`；widget 已消费的事件不要重复处理。
 - 后台解码结果按 `generation` 判定新旧，过期结果丢弃；结果通过固定周期 `Poll` 收拢进 Update，保证消息量有上界，不要在 Update 里做同步解码或目录遍历。
+  相邻图片预加载走 `Purpose::Preload`：它不带 generation 语义，只填 `ViewerState` 的 LRU、不改变当前画面，
+  大图由 `Caps::preload_max_source_pixels` 在 Core 侧放弃，别把预加载结果当成打开结果处理。
 - 画布几何（缩放锚点、平移钳制、旋转、Fit 计算）全部来自 `iv-image-render::ViewState`，`widgets/image_canvas.rs` 只把结果映射到 Iced 的 `canvas::Program`；不要把 Iced 的 renderer 类型泄漏进 Core。
 
 ## GUI 约定
@@ -43,6 +45,9 @@ cargo test --workspace
   语言偏好存 `Settings::language`，「跟随系统」由 `iv-platform::system_locale()` 交 `iv-domain::Language::resolve_tag` 解析。
 - 偏好只有一处持久化：`app/src/adapters/storage.rs` 的 `FileStorage`（`settings.ron`，原子写）。新增字段走 `iv-infra::Settings`（加 `#[serde(default)]` 保持兼容），在 `state/` 读写并经 `persist` 落盘；不要引入第二份本地存储。
 - `settings.ron` 目录可用 `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖；默认位置按平台取 `%APPDATA%` / `Application Support` / `XDG_CONFIG_HOME`。
+- 缩略图磁盘缓存**不是偏好**，走 `iv-cache::FileCache`（`app/src/adapters/preview.rs`），
+  目录在平台缓存目录的 `image-view/thumbnails/`，可用 `IMAGE_VIEW_ICED_CACHE_DIR` 覆盖；
+  键为「路径摘要 / mtime / 尺寸」，写失败只降级为内存缓存，不要把它并进 `settings.ron`。
 - 主题只有 Light / Dark / System 三档，且 `app.rs::theme` 把 System 回落为 Dark（Iced 0.14 无系统主题探测入口）；切换入口是 `显示 › 主题` 菜单，选择写入 `settings.ron`。
 - 菜单是**窗口内自绘**的（Iced 0.14 无系统菜单 API）：结构与勾选在 `menu.rs`，绘制在 `view/menu.rs`；
   Windows / Linux 的菜单栏并入自绘标题栏，macOS 单独占窗口顶部一行。新增菜单项先加 `Action` 与文案字段，

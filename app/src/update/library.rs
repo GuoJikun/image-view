@@ -72,12 +72,32 @@ pub fn set_sort(state: &mut AppState, order: SortOrder) -> Task<Message> {
     center_thumbnails(state)
 }
 
-/// 当前下标变化后统一的收尾：显示、元数据、持久化、缩略图居中。
+/// 当前下标变化后统一的收尾：显示、预加载、元数据、持久化、缩略图居中。
 fn go_to_current(state: &mut AppState) -> Task<Message> {
     show_current(state);
+    preload_neighbors(state);
     persist(state);
     request_visible_thumbnails(state);
     center_thumbnails(state)
+}
+
+/// 前后各预加载一张，回翻时直接命中缓存；超过 Core 的预加载上限时由解码层放弃。
+fn preload_neighbors(state: &mut AppState) {
+    let Some(index) = state.nav.index else {
+        return;
+    };
+
+    let mut targets: Vec<PathBuf> = Vec::with_capacity(2);
+    if let Some(previous) = index.checked_sub(1).and_then(|i| state.nav.files.get(i)) {
+        targets.push(previous.clone());
+    }
+    if let Some(next) = index.checked_add(1).and_then(|i| state.nav.files.get(i)) {
+        targets.push(next.clone());
+    }
+
+    for path in targets {
+        state.viewer.preload(path);
+    }
 }
 
 fn show_current(state: &mut AppState) {

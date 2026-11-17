@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use emath::Vec2;
 use iced::widget::image::Handle;
 use iv_cache::LruCache;
-use iv_image_decode::{Decoded, LoadResponse, Purpose};
+use iv_image_decode::{Decoded, LoadError, LoadResponse, Purpose};
 use iv_image_render::{ViewMode, ViewState};
 use iv_metadata::ColorInfo;
 
@@ -138,8 +138,14 @@ impl ViewerState {
         let mut changed = false;
 
         while let Some(response) = self.preview.try_recv() {
+            if response.purpose == Purpose::Preload {
+                // 预加载只填缓存：不改变当前画面，也不触发重绘。
+                self.absorb_preload(response);
+                continue;
+            }
+
             if !self.accepts(&response) {
-                // 过期的打开请求或预加载结果：直接丢弃。
+                // 过期的打开请求：直接丢弃。
                 continue;
             }
 
@@ -161,6 +167,50 @@ impl ViewerState {
         }
 
         changed
+    }
+
+    /// 预加载相邻图片；已有缓存或正在显示的图片不重复请求。
+    pub fn preload(&self, path: PathBuf) {
+        if self.is_cached(&path) {
+            return;
+        }
+        self.preview.preload(path);
+    }
+
+    /// 该路径是否已有可直接显示的主图缓存。
+    pub fn is_cached(&self, path: &PathBuf) -> bool {
+        self.cache.contains(path) || self.image.as_ref().is_some_and(|image| &image.path == path)
+    }
+
+    /// 预加载结果进 LRU，供随后的翻页命中；失败只记日志。
+    fn absorb_preload(&mut self, response: LoadResponse) {
+        match response.result {
+            Ok(decoded) => {
+                if self
+                    .image
+                    .as_ref()
+                    .is_some_and(|image| image.path == response.path)
+                {
+                    return;
+                }
+                log::debug!(
+                    target: "image_view::viewer",
+                    "预加载完成：{}",
+                    response.path.display()
+                );
+                let image = LoadedImage::from_decoded(response.path.clone(), decoded);
+                self.cache.insert(response.path, image);
+            }
+            Err(LoadError::PreloadSkipped { w, h }) => {
+                log::debug!(
+                    target: "image_view::viewer",
+                    "跳过预加载：源图 {w}×{h} 超过预加载上限"
+                );
+            }
+            Err(error) => {
+                log::debug!(target: "image_view::viewer", "预加载失败：{error}");
+            }
+        }
     }
 
     fn accepts(&self, response: &LoadResponse) -> bool {
@@ -238,5 +288,62 @@ impl ViewerState {
 
     pub fn rotate(&mut self, steps: i8) {
         self.view.rotate(steps);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use iv_image_decode::Purpose;
+    use iv_metadata::{ColorInfo, Pixels};
+
+    use super::*;
+
+    fn decoded() -> Decoded {
+        Decoded {
+            size: [2, 2],
+            source_size: [2, 2],
+            rgba: Pixels::Rgba8(vec![0; 16]),
+            source_depth: 8,
+            color: ColorInfo::default(),
+        }
+    }
+
+    /// 预加载结果只填缓存，不接管当前画面。
+    #[test]
+    fn preload_results_fill_cache_without_changing_view() {
+        let mut viewer = ViewerState::new();
+        let path = PathBuf::from("neighbor.png");
+
+        viewer.absorb_preload(LoadResponse {
+            generation: 0,
+            path: path.clone(),
+            purpose: Purpose::Preload,
+            result: Ok(decoded()),
+        });
+
+        assert!(viewer.is_cached(&path), "预加载结果应进入主图缓存");
+        assert!(viewer.image.is_none(), "预加载不应改变当前显示");
+        assert!(!viewer.loading(), "预加载不应让界面进入加载态");
+    }
+
+    /// 超过预加载上限的大图被 Core 放弃，缓存保持为空且不报错。
+    #[test]
+    fn skipped_preload_leaves_cache_empty() {
+        let mut viewer = ViewerState::new();
+        let path = PathBuf::from("huge.png");
+
+        viewer.absorb_preload(LoadResponse {
+            generation: 0,
+            path: path.clone(),
+            purpose: Purpose::Preload,
+            result: Err(LoadError::PreloadSkipped {
+                w: 60_000,
+                h: 40_000,
+            }),
+        });
+
+        assert!(!viewer.is_cached(&path));
+        assert!(viewer.image.is_none());
+        assert!(viewer.error.is_none(), "跳过预加载不是用户可见错误");
     }
 }

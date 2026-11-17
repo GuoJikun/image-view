@@ -8,10 +8,13 @@ description = "ImageViewer 的 Iced GUI POC"
 
 # 图片格式解码能力与 eframe 应用保持一致，便于在同一批夹具上比较两套 GUI。
 [features]
-default = ["avif", "heic", "svg"]
+default = ["avif", "heic", "svg", "jxl"]
 avif = ["iv-image-decode/avif"]
 heic = ["iv-image-decode/heic"]
 svg = ["iv-image-decode/svg"]
+# JPEG XL 解码（jxl-oxide）；`iv-domain` 的扩展名表已包含 `jxl`，
+# 不开启这个特性时打开 `.jxl` 只会得到「解码器未包含」的错误。
+jxl = ["iv-image-decode/jxl"]
 
 [dependencies]
 iv-application = { path = "../crates/iv-application" }

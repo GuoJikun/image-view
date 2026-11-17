@@ -56,7 +56,16 @@ impl ThumbnailState {
         while let Some(result) = self.service.try_recv() {
             changed = true;
             match result.result {
-                Ok(handle) => self.insert(result.path, handle),
+                Ok(handle) => {
+                    if result.from_disk {
+                        log::debug!(
+                            target: "image_view::thumbnail",
+                            "缩略图命中磁盘缓存：{}",
+                            result.path.display()
+                        );
+                    }
+                    self.insert(result.path, handle);
+                }
                 Err(error) => {
                     log::debug!("缩略图解码失败 {}：{error}", result.path.display());
                     self.failed.insert(result.path);
@@ -73,6 +82,8 @@ impl ThumbnailState {
     pub fn remove(&mut self, path: &Path) {
         self.entries.remove(path);
         self.failed.remove(path);
+        // 源文件已删除：磁盘上按该路径派生的缩略图一并丢弃。
+        self.service.invalidate(path);
     }
 
     fn insert(&mut self, path: PathBuf, handle: Handle) {

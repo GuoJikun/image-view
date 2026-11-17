@@ -518,7 +518,8 @@ renderer、文件打开事件、单实例和安装包工作正常。 6. Iced
 
 GUI 依赖为 `iced`，特性见 `app/Cargo.toml`（`wgpu` + `canvas` +
 `image-without-codecs` + `thread-pool` + `smol` + `crisp` + `x11` + `wayland`）；
-像素解码只开 `image/png`，用于窗口图标与测试夹具。
+像素解码只开 `image/png`，用于窗口图标、测试夹具与缩略图磁盘缓存的重编码。
+`app` 的默认特性为 `avif` / `heic` / `svg` / `jxl`，与 `main` 的默认构建一致。
 
 ``` bash
 cargo run -p image-view -- "D:\photos\a.jpg"
@@ -548,9 +549,14 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   `iv-image-render::ViewState`（滚动缩放锚定光标、拖拽平移、双击切换
   适配/100%、旋转 90° 步进）。
 - **缩略图条**：水平虚拟滚动，只为可见区间（外扩 3 张）构建 widget，首尾用
-  `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。
+  `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。缩略图经
+  `iv-cache::FileCache` 写入磁盘缓存（键为「源路径摘要 / mtime / 目标边长」，
+  预算 64 MiB），命中时跳过解码；源文件删除时按路径前缀失效。
 - **异步**：主图解码复用 `iv-image-decode::Loader` 的 latest-wins 语义，过期
-  结果按 generation 丢弃；`Message::Poll` 每 50 ms 收拢一次，消息量有上界。
+  结果按 generation 丢弃；相邻图片（前后各一张）以 `Purpose::Preload` 预加载，
+  结果只进 `ViewerState` 的 LRU 缓存、不改变当前画面，超过
+  `Caps::preload_max_source_pixels` 的大图由 Core 直接放弃；
+  `Message::Poll` 每 50 ms 收拢一次，消息量有上界。
 - **系统集成**：`rfd` 文件对话框、拖放打开、回收站删除、资源管理器定位、
   复制路径、全屏切换、幻灯片（3 s 自动前进）。拖放悬停时画布叠加强调色
   描边与「松开以打开」提示（`window::Event::FileHovered` /
@@ -578,8 +584,10 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   持久化；快捷键弹窗（`view/dialog.rs`）的文案同样取自这张表。
 - **持久化**：最近目录、最近文件、排序、缩略图条开关、主题、界面语言与
   色彩转换标记写入 `settings.ron`（默认 `%APPDATA%\image-view\`，可用
-  `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。元数据面板开关仍只在本次会话生效。
-- **测试**：`app/src` 内有 32 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标与 caption 配色）；
+  `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。缩略图磁盘缓存放在平台缓存目录的
+  `image-view/thumbnails/`（可用 `IMAGE_VIEW_ICED_CACHE_DIR` 覆盖），
+  与偏好分离，可随时删除重建。元数据面板开关仍只在本次会话生效。
+- **测试**：`app/src` 内有 36 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标、caption 配色、预加载分流与缩略图磁盘缓存往返）；
   质量门禁命令见 [AGENTS.md](../AGENTS.md)。
 
 ### 12.3 尚未完成
