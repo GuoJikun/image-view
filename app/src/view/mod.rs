@@ -59,6 +59,9 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
     if let Some(mut overlay) = menu::overlay(state) {
         layers.append(&mut overlay);
     }
+    if let Some(mut overlay) = menu::sort_overlay(state) {
+        layers.append(&mut overlay);
+    }
     if let Some(dialog) = dialog::view(state) {
         layers.push(dialog);
     }

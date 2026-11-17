@@ -55,10 +55,6 @@ pub enum Message {
     /// 鼠标离开分组标题。
     MenuGroupLeft(usize),
     /// 直接展开某个分组（工具栏的排序按钮用）。
-    MenuOpened {
-        group: usize,
-        sub: Option<usize>,
-    },
     /// 展开 / 收起子菜单。
     MenuSubmenuToggled(usize),
     /// 进入某一行：设置悬停高亮。
@@ -67,6 +63,8 @@ pub enum Message {
     MenuRowLeft(Hover),
     MenuClose,
     MenuAction(Action),
+    /// 工具栏排序按钮：展开 / 收起按钮下方的下拉面板。
+    SortMenuToggled,
 
     // ---- 弹窗 ----
     CloseDialog,

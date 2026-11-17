@@ -30,6 +30,13 @@ const GUTTER: f32 = 22.0;
 /// 子菜单指示箭头边长；路径在 24 的 viewBox 里纵向只占 12 单位，所以渲染时
 /// 图形墨迹约为这里的一半（16 → 约 8px 高），定为 16 才比原来的 `›` 明显。
 const CHEVRON: f32 = 16.0;
+/// 工具栏高度（与 `viewer::toolbar` 一致：30px 控件 + 上下 11px 内边距）。
+const TOOLBAR_HEIGHT: f32 = 52.0;
+/// 工具栏排序下拉的宽度：只放两个选项，比菜单栏面板窄。
+const SORT_PANEL_WIDTH: f32 = 168.0;
+/// 排序按钮右缘到窗口右缘的距离：12（工具栏右内边距）+ 118（胶囊）+ 6 + 1（分隔线）+ 6。
+/// 面板右对齐到这条线，就落在按钮正下方，无需测量文字宽度。
+const SORT_PANEL_RIGHT: f32 = 143.0;
 
 /// 菜单栏：`文件` `显示` `帮助`。外层决定左侧内边距（标题栏或顶部栏）。
 pub fn bar(state: &AppState) -> Element<'static, Message> {
@@ -106,6 +113,52 @@ pub fn overlay(state: &AppState) -> Option<Vec<Element<'static, Message>>> {
     Some(layers)
 }
 
+/// 工具栏排序按钮的下拉面板：锚定在按钮右缘正下方，条目与「显示 › 排序」同源。
+pub fn sort_overlay(state: &AppState) -> Option<Vec<Element<'static, Message>>> {
+    if !state.menu.sort_open {
+        return None;
+    }
+
+    let palette = Palette::from(&crate::view::viewer::theme_of(state));
+    let rows: Vec<Element<'static, Message>> = menu::sort_items(state)
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let hovered = state.menu.hover
+                == Some(Hover {
+                    entry: index,
+                    child: None,
+                });
+            item_row(item, hovered, index, None, palette)
+        })
+        .collect();
+
+    let panel = container(column(rows).spacing(0.0))
+        .style(theme::menu_panel)
+        .padding(PANEL_PADDING)
+        .width(SORT_PANEL_WIDTH);
+
+    let top = sort_panel_top(state);
+    Some(vec![
+        dismiss_layer_from(top),
+        positioned_right(claim(panel.into()), SORT_PANEL_RIGHT, top),
+    ])
+}
+
+/// 下拉面板的顶边：标题栏（或 macOS 顶部菜单行）+ 工具栏；全屏时标题栏隐藏。
+fn sort_panel_top(state: &AppState) -> f32 {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = state;
+        BAR_HEIGHT + TOOLBAR_HEIGHT
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let chrome = if state.fullscreen { 0.0 } else { BAR_HEIGHT };
+        chrome + TOOLBAR_HEIGHT
+    }
+}
+
 /// 面板高度之和，用于把子菜单对齐到父级行。
 fn entries_height(entries: &[Entry]) -> f32 {
     entries
@@ -137,8 +190,33 @@ fn positioned(
         .into()
 }
 
+/// 把元素右对齐放到窗口右缘内 `right` 处（从窗口底部量 `top`）。
+fn positioned_right(
+    content: Element<'static, Message>,
+    right: f32,
+    top: f32,
+) -> Element<'static, Message> {
+    container(content)
+        .width(Fill)
+        .height(Fill)
+        .align_x(iced::Right)
+        .align_y(iced::Top)
+        .padding(Padding {
+            top,
+            right,
+            bottom: 0.0,
+            left: 0.0,
+        })
+        .into()
+}
+
 /// 菜单下方整块可点击区域：点一下关闭菜单（首次点击不穿透到画布）。
 fn dismiss_layer() -> Element<'static, Message> {
+    dismiss_layer_from(BAR_HEIGHT)
+}
+
+/// 遮罩从 `top` 开始：工具栏下拉不能让遮罩盖住按钮本身，否则再点按钮无法收起。
+fn dismiss_layer_from(top: f32) -> Element<'static, Message> {
     container(
         mouse_area(space().width(Fill).height(Fill))
             .interaction(mouse::Interaction::Idle)
@@ -147,7 +225,7 @@ fn dismiss_layer() -> Element<'static, Message> {
     .width(Fill)
     .height(Fill)
     .padding(Padding {
-        top: BAR_HEIGHT,
+        top,
         left: 0.0,
         right: 0.0,
         bottom: 0.0,

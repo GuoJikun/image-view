@@ -103,8 +103,8 @@ fn key_pressed(state: &mut AppState, key: Key, modifiers: Modifiers) -> Task<Mes
         Key::Named(Named::Delete) => library::delete_current(state),
         Key::Named(Named::F11) => toggle_fullscreen(state),
         Key::Named(Named::Escape) => {
-            // 逐层退出：菜单 → 弹窗 → 提示条。
-            if state.menu.is_open() {
+            // 逐层退出：菜单 / 排序下拉 → 弹窗 → 提示条。
+            if state.menu.is_open() || state.menu.sort_open {
                 state.menu.close();
             } else if state.dialog.is_some() {
                 state.dialog = None;

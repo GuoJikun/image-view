@@ -136,10 +136,7 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     .height(TOOL_BUTTON)
     .padding([0, 8])
     .style(theme::text_button)
-    .on_press(Message::MenuOpened {
-        group: crate::menu::GROUP_VIEW,
-        sub: Some(crate::menu::SORT_ENTRY),
-    });
+    .on_press(Message::SortMenuToggled);
 
     let right = row![
         tool_button(

@@ -572,7 +572,10 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   说明 + 主按钮，错误用 danger-soft 底横幅。标题栏策略：macOS 保持系统原生；
   Windows / Linux 关系统装饰、自绘 28px 标题栏（`view/titlebar.rs`，
   拖动 / 双击最大化 / caption 按钮），全屏时隐藏。
-- **菜单栏**：Iced 0.14 没有系统菜单 API，三端都在窗口内自绘。菜单结构、
+- **菜单栏**：Iced 0.14 没有系统菜单 API，三端都在窗口内自绘。工具栏 `排序▾`
+  另有一块锚定在按钮下方、右对齐的下拉面板（`view::menu::sort_overlay`），条目与
+  「显示 › 排序」同源（`menu::sort_items`），与菜单栏互斥；遮罩从工具栏下沿开始，
+  按钮本身仍可再次点击收起。菜单结构、
   勾选状态与快捷键由 `menu.rs` 从 `AppState` 派生（分组与条目对齐 `main` 的
   `MenuBar.vue`），`view/menu.rs` 只负责绘制：Windows / Linux 的菜单栏并入
   28px 自绘标题栏，macOS 单独占窗口顶部一行；下拉面板用 `stack` 叠加，落点按

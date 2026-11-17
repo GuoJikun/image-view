@@ -69,9 +69,11 @@ pub struct Group {
 }
 
 /// 「显示」分组的下标，供工具栏的排序按钮直接定位菜单。
+#[cfg(test)]
 pub const GROUP_VIEW: usize = 1;
 
-/// 「显示」菜单里「排序」子菜单所在的行号（工具栏的排序按钮用它展开）。
+/// 「显示」菜单里「排序」子菜单所在的行号（供菜单结构测试断言）。
+#[cfg(test)]
 pub const SORT_ENTRY: usize = 3;
 
 /// 菜单的展开状态。
@@ -88,6 +90,8 @@ pub struct MenuState {
     /// 菜单是靠悬停切换过来的：此时点击当前分组不应把它关掉
     /// （与 `main` 的 `MenuBar.vue`、macOS 菜单栏一致）。
     pub hover_opened: bool,
+    /// 工具栏排序按钮下方的下拉面板是否展开（与菜单栏互斥）。
+    pub sort_open: bool,
 }
 
 /// 鼠标停留的行：`child` 为子菜单内的行号。
@@ -103,6 +107,7 @@ impl MenuState {
         self.sub = None;
         self.hover = None;
         self.hover_opened = false;
+        self.sort_open = false;
     }
 
     pub fn is_open(&self) -> bool {
@@ -111,6 +116,31 @@ impl MenuState {
 }
 
 /// 按当前状态构建整份菜单。
+/// 排序选项：「显示 › 排序」子菜单与工具栏下拉面板共用同一份条目。
+pub fn sort_items(state: &AppState) -> Vec<Item> {
+    let text = state.text();
+    vec![
+        Item {
+            action: Action::Sort(SortOrder::Name),
+            label: text.menu_sort_name,
+            shortcut: None,
+            mark: Mark::Dot,
+            checked: state.nav.sort == SortOrder::Name,
+            danger: false,
+            enabled: true,
+        },
+        Item {
+            action: Action::Sort(SortOrder::ModifiedNewest),
+            label: text.menu_sort_modified,
+            shortcut: None,
+            mark: Mark::Dot,
+            checked: state.nav.sort == SortOrder::ModifiedNewest,
+            danger: false,
+            enabled: true,
+        },
+    ]
+}
+
 pub fn groups(state: &AppState) -> Vec<Group> {
     let text = state.text();
     let has_image = state.current_path().is_some();
@@ -182,26 +212,7 @@ pub fn groups(state: &AppState) -> Vec<Group> {
             Entry::Separator,
             Entry::Sub {
                 label: text.menu_sort,
-                items: vec![
-                    Entry::Item(Item {
-                        action: Action::Sort(SortOrder::Name),
-                        label: text.menu_sort_name,
-                        shortcut: None,
-                        mark: Mark::Dot,
-                        checked: state.nav.sort == SortOrder::Name,
-                        danger: false,
-                        enabled: true,
-                    }),
-                    Entry::Item(Item {
-                        action: Action::Sort(SortOrder::ModifiedNewest),
-                        label: text.menu_sort_modified,
-                        shortcut: None,
-                        mark: Mark::Dot,
-                        checked: state.nav.sort == SortOrder::ModifiedNewest,
-                        danger: false,
-                        enabled: true,
-                    }),
-                ],
+                items: sort_items(state).into_iter().map(Entry::Item).collect(),
             },
             Entry::Separator,
             Entry::Item(item_disabled(
@@ -476,6 +487,29 @@ mod tests {
 
         let _ = crate::update::update(&mut state, Message::MenuGroupClicked(GROUP_VIEW));
         assert!(!state.menu.is_open(), "第二次点击收起");
+    }
+
+    /// 工具栏排序下拉与菜单栏互斥，且点空白 / Esc 能收起；条目勾选跟随当前排序。
+    #[test]
+    fn sort_dropdown_is_exclusive_with_menu_bar() {
+        let mut state = state();
+        assert!(sort_items(&state)[0].checked, "默认按名称");
+
+        let _ = crate::update::update(&mut state, Message::MenuGroupClicked(0));
+        assert_eq!(state.menu.open, Some(0));
+
+        let _ = crate::update::update(&mut state, Message::SortMenuToggled);
+        assert!(state.menu.sort_open);
+        assert!(!state.menu.is_open(), "展开下拉时收起菜单栏");
+
+        let _ = crate::update::update(&mut state, Message::MenuGroupClicked(0));
+        assert_eq!(state.menu.open, Some(0));
+        assert!(!state.menu.sort_open, "展开菜单栏时收起下拉");
+
+        let _ = crate::update::update(&mut state, Message::SortMenuToggled);
+        assert!(state.menu.sort_open);
+        let _ = crate::update::update(&mut state, Message::MenuClose);
+        assert!(!state.menu.sort_open, "点空白 / Esc 关闭下拉");
     }
 
     /// 标题悬停只记录高亮，不展开菜单；离开后清掉自己那一项。

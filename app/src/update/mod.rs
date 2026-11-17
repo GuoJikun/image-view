@@ -65,6 +65,7 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
                 state.menu.sub = None;
                 state.menu.hover = None;
                 state.menu.hover_opened = false;
+                state.menu.sort_open = false;
             }
             Task::none()
         }
@@ -87,9 +88,11 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             }
             Task::none()
         }
-        Message::MenuOpened { group, sub } => {
-            state.menu.open = Some(group);
-            state.menu.sub = sub;
+        Message::SortMenuToggled => {
+            // 排序下拉与菜单栏互斥：展开下拉时收起菜单栏，反之亦然。
+            state.menu.sort_open = !state.menu.sort_open;
+            state.menu.open = None;
+            state.menu.sub = None;
             state.menu.hover = None;
             state.menu.hover_opened = false;
             Task::none()
