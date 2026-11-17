@@ -27,6 +27,8 @@ pub struct Palette {
     pub chrome: Color,
     pub strip: Color,
     pub hairline: Color,
+    /// 卡片 / 图片的一像素描边（`main` 的 `--tile-border`，带 alpha 叠在内容上）。
+    pub tile_border: Color,
     pub control: Color,
     pub text: Color,
     pub text2: Color,
@@ -57,6 +59,7 @@ impl Palette {
             chrome: rgb(0xF6F6F7),
             strip: rgb(0xEFEFF1),
             hairline: rgb(0xE4E4E7),
+            tile_border: rgba(0x000000, 0.07),
             control: rgb(0xFFFFFF),
             text: rgb(0x1D1D1F),
             text2: rgb(0x6E6E73),
@@ -79,6 +82,7 @@ impl Palette {
             chrome: rgb(0x2A2A2D),
             strip: rgb(0x232326),
             hairline: rgb(0x3A3A3D),
+            tile_border: rgba(0xFFFFFF, 0.07),
             control: rgb(0x3A3A3D),
             text: rgb(0xF5F5F7),
             text2: rgb(0xA1A1A6),
@@ -261,31 +265,63 @@ pub fn capsule_segment(theme: &Theme, status: button::Status, middle: bool) -> b
     }
 }
 
-/// 缩略图卡片：选中时外扩 2px accent 环 + 投影。
-pub fn thumb_card(theme: &Theme, status: button::Status, selected: bool) -> button::Style {
+/// 把带 alpha 的前景色按底色预乘成不透明色。
+///
+/// `main` 的 `--tile-border` 是 `rgba(0,0,0,.07)`，在 CSS 里叠在卡片白底上；
+/// Iced 的 `border` 画在填充**之外**，直接给 alpha 色会叠到条带底色上而偏深，
+/// 所以这里按 `control` 预算出等效像素值。
+fn over(top: Color, bottom: Color) -> Color {
+    let a = top.a;
+    Color {
+        r: top.r * a + bottom.r * (1.0 - a),
+        g: top.g * a + bottom.g * (1.0 - a),
+        b: top.b * a + bottom.b * (1.0 - a),
+        a: 1.0,
+    }
+}
+
+/// 缩略图卡片：白底 + 1 px 描边 + 圆角 8，图片内缩 1 px 后由自己裁圆角。
+///
+/// 与 `main` 的 `.thumb-item` 对齐（`background: var(--control)`、
+/// `border: 1px solid var(--tile-border)`、`border-radius: 8px`）。
+/// 选中时 `main` 把描边转透明，露出卡片白底；这里直接填 `control` 色——像素等价，
+/// 也避免透明描边露出条带底色（Iced 的填充只画在描边内侧）。
+pub fn thumb_card(theme: &Theme, _status: button::Status, selected: bool) -> button::Style {
     let p = Palette::from(theme);
-    let background = if selected {
-        Some(Background::Color(p.strip))
-    } else {
-        match status {
-            button::Status::Hovered => Some(Background::Color(p.hover)),
-            button::Status::Pressed => Some(Background::Color(p.press)),
-            _ => None,
-        }
-    };
     button::Style {
-        background,
-        text_color: if selected { p.accent } else { p.text2 },
+        background: Some(Background::Color(p.control)),
+        text_color: p.text2,
         border: Border {
-            color: if selected { p.accent } else { p.hairline },
-            width: if selected { 2.0 } else { HAIRLINE },
+            color: if selected {
+                p.control
+            } else {
+                over(p.tile_border, p.control)
+            },
+            width: HAIRLINE,
             radius: radius(RADIUS_TILE),
         },
-        shadow: if selected {
-            shadow_selected()
-        } else {
-            Shadow::default()
+        ..Default::default()
+    }
+}
+
+/// 缩略图选中环：2 px `accent` 环画在卡片外 2 px 处，等价于 `main` 的
+/// `outline: 2px solid var(--accent); outline-offset: 2px`。
+///
+/// 容器尺寸 84×64 由视图层给出，内边距 4 px 让卡片落回 76×56；
+/// 环画在容器外沿、卡片与外环之间留 2 px 空隙，卡片本身尺寸不变（选中不跳动）。
+pub fn thumb_ring(theme: &Theme, selected: bool) -> container::Style {
+    let p = Palette::from(theme);
+    if !selected {
+        return container::Style::default();
+    }
+
+    container::Style {
+        border: Border {
+            color: p.accent,
+            width: 2.0,
+            radius: radius(RADIUS_TILE + 2.0),
         },
+        shadow: shadow_selected(),
         ..Default::default()
     }
 }

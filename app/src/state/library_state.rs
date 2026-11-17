@@ -15,8 +15,19 @@ use crate::state::viewer_state::LoadedImage;
 
 const THUMB_CACHE_ENTRIES: usize = 512;
 
-/// 缩略图条目宽度：卡片 76 + 间距 9（规范 4.3），视图层与虚拟化计算共用。
+/// 缩略图条目宽度：卡片 76 + 间距 9（规范 4.3 / `main` 的 `ITEM_WIDTH`），
+/// 视图层与虚拟化计算共用。
 pub const THUMB_ITEM_WIDTH: f32 = 85.0;
+/// 卡片宽度：只量卡片本体（选中环画在卡片外侧，不占布局）。
+pub const THUMB_CARD_WIDTH: f32 = 76.0;
+/// 卡片到条带左右边缘的距离（`main` 的 `PAD`）。
+pub const THUMB_EDGE: f32 = 16.0;
+/// 选中环向外扩出的距离：2 px 间隙 + 2 px 环。
+pub const THUMB_RING_OVERHANG: f32 = 4.0;
+/// 轨道左右留白：首尾卡片距边缘 16 px，其中 4 px 被选中环占据，故占位只有 12 px。
+pub const THUMB_TRACK_PAD: f32 = THUMB_EDGE - THUMB_RING_OVERHANG;
+/// 视口外预取的条目数，与 `main` 的 `OVERSCAN` 一致（两侧各 4）。
+const THUMB_OVERSCAN: usize = 4;
 
 #[derive(Debug, Default)]
 pub struct ThumbnailState {
@@ -182,16 +193,19 @@ impl Default for LibraryState {
 }
 
 impl LibraryState {
-    /// 当前需要绘制的缩略图下标区间（两侧各多留几张，滚动时不易露白）。
+    /// 当前需要绘制的缩略图下标区间：可见区间两侧各多留 `THUMB_OVERSCAN` 张，
+    /// 滚动时不易露白（与 `main` 的预取策略一致）。
     pub fn visible_range(&self, total: usize) -> std::ops::Range<usize> {
         if total == 0 {
             return 0..0;
         }
         let viewport = self.thumb_viewport_w.max(THUMB_ITEM_WIDTH * 2.0);
-        let first = (self.thumb_offset_x / THUMB_ITEM_WIDTH).floor().max(0.0) as usize;
-        let count = (viewport / THUMB_ITEM_WIDTH).ceil() as usize + 4;
-        let start = first.min(total);
-        let end = (start + count).min(total);
+        // 轨道左侧有 12 px 留白，滚动位移要先扣掉它才能换算成条目下标。
+        let scrolled = (self.thumb_offset_x - THUMB_TRACK_PAD).max(0.0);
+        let first = (scrolled / THUMB_ITEM_WIDTH).floor() as usize;
+        let count = (viewport / THUMB_ITEM_WIDTH).ceil() as usize;
+        let start = first.saturating_sub(THUMB_OVERSCAN).min(total);
+        let end = (start + count + THUMB_OVERSCAN * 2).min(total);
         start..end
     }
 }
@@ -244,14 +258,19 @@ mod tests {
             ..LibraryState::default()
         };
 
-        assert_eq!(library.visible_range(1000), 0..8);
-        library.thumb_offset_x = THUMB_ITEM_WIDTH * 50.0;
-        assert_eq!(library.visible_range(1000), 50..58);
+        // 视口 4 张 + 两侧各 4 张预取。
+        assert_eq!(library.visible_range(1000), 0..12);
 
+        // 位移要先扣掉轨道左侧 12 px 留白：50 × 85 - 12 = 4238，落在第 49 张。
+        library.thumb_offset_x = THUMB_ITEM_WIDTH * 50.0;
+        assert_eq!(library.visible_range(1000), 45..57);
+
+        // 滚到末尾时右侧被 total 截断，但左侧预取仍在。
         library.thumb_offset_x = THUMB_ITEM_WIDTH * 999.0;
         let range = library.visible_range(1000);
-        assert_eq!(range.start, 999);
+        assert_eq!(range.start, 994);
         assert_eq!(range.end, 1000);
+
         assert_eq!(library.visible_range(0), 0..0);
     }
 }

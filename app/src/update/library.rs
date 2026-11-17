@@ -10,7 +10,7 @@ use iv_domain::SortOrder;
 use crate::adapters::errors;
 use crate::message::Message;
 use crate::state::AppState;
-use crate::state::library_state::THUMB_ITEM_WIDTH;
+use crate::state::library_state::{THUMB_CARD_WIDTH, THUMB_EDGE, THUMB_ITEM_WIDTH};
 use crate::widgets::thumbnail_strip::THUMB_SCROLL_ID;
 
 /// 打开文件或目录（目录取第一张），并重建目录列表。
@@ -150,7 +150,9 @@ pub fn center_thumbnails(state: &AppState) -> Task<Message> {
     let Some(index) = state.nav.index else {
         return Task::none();
     };
-    let offset = (index as f32 * THUMB_ITEM_WIDTH + THUMB_ITEM_WIDTH / 2.0
+    // 与 `main` 的 `centerCurrent` 同式：卡片到边缘 16 px、卡片宽 76，
+    // 目标是把卡片中心对到视口中心。
+    let offset = (index as f32 * THUMB_ITEM_WIDTH + THUMB_EDGE + THUMB_CARD_WIDTH / 2.0
         - state.library.thumb_viewport_w / 2.0)
         .max(0.0);
     operation::scroll_to(
