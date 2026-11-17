@@ -32,6 +32,8 @@ ron = "0.12"
 imgalifier-avif = "0.1"
 imgalifier-heif = { version = "0.1", default-features = false }
 resvg = "0.50"
+# JPEG XL 解码。`image` 集成提供 `ImageDecoder`；`lcms2` 让 CMYK 文件复用同一份 LCMS。
+jxl-oxide = { version = "0.12", features = ["image", "lcms2"] }
 
 [profile.release]
 lto = "thin"

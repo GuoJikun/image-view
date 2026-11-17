@@ -16,6 +16,7 @@ heic = [
     "imgalifier-heif/unci-compression",
 ]
 svg = ["dep:resvg"]
+jxl = ["dep:jxl-oxide"]
 
 [dependencies]
 iv-metadata = { path = "../iv-metadata" }
@@ -40,6 +41,7 @@ log = { workspace = true }
 imgalifier-avif = { workspace = true, optional = true }
 imgalifier-heif = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }
+jxl-oxide = { workspace = true, optional = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }

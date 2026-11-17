@@ -243,6 +243,19 @@ Where a crate offers a choice of licenses, this notice relies on the permissive 
 | `jobserver` | 0.1.35 | MIT OR Apache-2.0 | included below | https://github.com/rust-lang/jobserver-rs |
 | `json-patch` | 4.2.0 | MIT/Apache-2.0 | included below | https://github.com/idubrov/json-patch |
 | `jsonptr` | 0.7.1 | MIT OR Apache-2.0 | included below | https://github.com/chanced/jsonptr |
+| `jxl-bitstream` | 1.1.0 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-coding` | 1.0.1 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-color` | 0.11.0 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-frame` | 0.13.3 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-grid` | 0.6.2 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-image` | 0.13.0 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-jbr` | 0.2.1 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-modular` | 0.11.3 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-oxide` | 0.12.6 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-oxide-common` | 1.0.0 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-render` | 0.12.4 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-threadpool` | 1.0.0 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
+| `jxl-vardct` | 0.11.1 | MIT OR Apache-2.0 | included below | https://github.com/tirr-c/jxl-oxide.git |
 | `keyboard-types` | 0.8.3 | MIT OR Apache-2.0 | included below | https://github.com/rust-windowing/keyboard-types |
 | `kurbo` | 0.13.1 | Apache-2.0 OR MIT | included below | https://github.com/linebender/kurbo |
 | `lcms2` | 6.2.0 | MIT | included below | https://github.com/kornelski/rust-lcms2.git |
@@ -429,6 +442,7 @@ Where a crate offers a choice of licenses, this notice relies on the permissive 
 | `syn` | 3.0.10 | MIT OR Apache-2.0 | included below | https://github.com/dtolnay/syn |
 | `sync_wrapper` | 1.0.2 | Apache-2.0 | included below | https://github.com/Actyx/sync_wrapper |
 | `synstructure` | 0.14.0 | MIT | included below | https://github.com/mystor/synstructure |
+| `sys-locale` | 0.3.2 | MIT OR Apache-2.0 | included below | https://github.com/1Password/sys-locale |
 | `system-configuration` | 0.7.0 | MIT OR Apache-2.0 | included below | https://github.com/mullvad/system-configuration-rs |
 | `system-configuration-sys` | 0.6.0 | MIT OR Apache-2.0 | included below | https://github.com/mullvad/system-configuration-rs |
 | `system-deps` | 6.2.2 | MIT OR Apache-2.0 | included below | https://github.com/gdesmott/system-deps |
@@ -1390,6 +1404,19 @@ Applies to:
 - `dyn-clone 1.0.20`
 - `erased-serde 0.4.11`
 - `itoa 1.0.19`
+- `jxl-bitstream 1.1.0`
+- `jxl-coding 1.0.1`
+- `jxl-color 0.11.0`
+- `jxl-frame 0.13.3`
+- `jxl-grid 0.6.2`
+- `jxl-image 0.13.0`
+- `jxl-jbr 0.2.1`
+- `jxl-modular 0.11.3`
+- `jxl-oxide 0.12.6`
+- `jxl-oxide-common 1.0.0`
+- `jxl-render 0.12.4`
+- `jxl-threadpool 1.0.0`
+- `jxl-vardct 0.11.1`
 - `libc 0.2.191`
 - `osakit 0.3.1`
 - `paste 1.0.15`
@@ -3653,6 +3680,7 @@ Applies to:
 - `serialize-to-javascript-impl 0.1.2`
 - `siphasher 1.0.4`
 - `static_assertions 1.1.0`
+- `sys-locale 0.3.2`
 - `target-features 0.1.6`
 - `tinyvec 1.13.3`
 - `utf8_iter 1.1.0`
@@ -7045,6 +7073,19 @@ Applies to:
 - `itertools 0.14.0`
 - `itoa 1.0.19`
 - `jobserver 0.1.35`
+- `jxl-bitstream 1.1.0`
+- `jxl-coding 1.0.1`
+- `jxl-color 0.11.0`
+- `jxl-frame 0.13.3`
+- `jxl-grid 0.6.2`
+- `jxl-image 0.13.0`
+- `jxl-jbr 0.2.1`
+- `jxl-modular 0.11.3`
+- `jxl-oxide 0.12.6`
+- `jxl-oxide-common 1.0.0`
+- `jxl-render 0.12.4`
+- `jxl-threadpool 1.0.0`
+- `jxl-vardct 0.11.1`
 - `kurbo 0.13.1`
 - `libc 0.2.191`
 - `linux-raw-sys 0.12.1`
@@ -7291,6 +7332,7 @@ Applies to:
 - `static_assertions 1.1.0`
 - `strum 0.27.2`
 - `strum_macros 0.27.2`
+- `sys-locale 0.3.2`
 - `tauri 2.12.5`
 - `tauri-build 2.7.4`
 - `tauri-codegen 2.7.4`
@@ -10494,6 +10536,58 @@ These notices were extracted from the bundled license files listed above.
 - Copyright (c) 2022 Chance Dinkins
 - Copyright 2024 Chance Dinkins
 
+### `jxl-bitstream 1.1.0`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-coding 1.0.1`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-color 0.11.0`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-frame 0.13.3`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-grid 0.6.2`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-image 0.13.0`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-jbr 0.2.1`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-modular 0.11.3`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-oxide 0.12.6`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-oxide-common 1.0.0`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-render 0.12.4`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-threadpool 1.0.0`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
+### `jxl-vardct 0.11.1`
+
+- (c) You must retain, in the Source form of any Derivative Works
+
 ### `keyboard-types 0.8.3`
 
 - (c) You must retain, in the Source form of any Derivative Works
@@ -11280,6 +11374,11 @@ These notices were extracted from the bundled license files listed above.
 ### `synstructure 0.14.0`
 
 - Copyright 2016 Nika Layzell
+
+### `sys-locale 0.3.2`
+
+- (c) You must retain, in the Source form of any Derivative Works
+- Copyright (c) 2021 1Password
 
 ### `system-configuration 0.7.0`
 

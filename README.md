@@ -64,7 +64,7 @@ git push origin v1.5.0
 Release 正文取自 `CHANGELOG.md` 中 `## [版本号]` 段落（到下一个 `## [` 为止），并追加三端安装包的选择说明。该段落缺失时工作流会在校验阶段直接失败，因此打标签前需先把这个版本的变更记录补进 `CHANGELOG.md`。
 
 - **安装**：按用户安装到 `%LOCALAPPDATA%\image-view`，无需管理员权限；NSIS 安装界面支持简体中文 / English，安装时可选择语言。
-- **文件关联**：安装时注册 19 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
+- **文件关联**：安装时注册 20 个图片扩展名（`png` / `jpg` / `jpeg` / `gif` / `webp` / `bmp` / `tif` / `tiff` / `ico` / `qoi` / `tga` / `pnm` / `hdr` / `exr` / `dds` / `jxl` / `avif` / `heic` / `heif` / `svg`）的 ProgID `ImageView.<ext>` 与打开命令，并写入 `OpenWithProgids`、`Applications\image-view.exe\SupportedTypes` 与 `RegisteredApplications` 能力项，因此程序会同时出现在右键「打开方式」与「设置 → 默认应用」中；安装前的默认处理器会备份，卸载时还原并清理上述键值。
 - **卸载**：从「设置 → 应用」或开始菜单卸载。
 
 ### macOS（arm64 / x64）
@@ -115,13 +115,14 @@ cd app
 pnpm build              # vue-tsc --noEmit && vite build
 ```
 
-HEIC/AVIF 与 SVG 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
+HEIC/AVIF、SVG 与 JPEG XL 解码为可选特性，默认开启，且均为纯 Rust 实现，不需要额外的 C 运行库或 DLL：
 
 ```powershell
-cargo build --release --no-default-features                     # 不含 HEIC/AVIF/SVG
+cargo build --release --no-default-features                     # 不含 HEIC/AVIF/SVG/JXL
 cargo build --release --no-default-features --features avif     # 仅 AVIF
 cargo build --release --no-default-features --features heic     # 仅 HEIC/HEIF
 cargo build --release --no-default-features --features svg      # 仅 SVG（resvg 光栅化）
+cargo build --release --no-default-features --features jxl      # 仅 JPEG XL（jxl-oxide）
 ```
 
 未包含对应解码器的构建打开这类文件时，会显示“解码器未包含在此构建中”的明确提示，不会崩溃。
@@ -165,19 +166,22 @@ image-view [PATH]
 
 ## 支持的格式
 
-PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、AVIF、HEIC/HEIF、SVG。
+PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、JPEG XL、AVIF、HEIC/HEIF、SVG。
 
 GIF 与 WebP 支持多帧动画播放（含 alpha 与循环次数）；其余格式按静态图显示。
 
 HEIC/AVIF 默认启用，使用纯 Rust 解码器（`imgalifier-heif` / `imgalifier-avif`），不依赖 libheif 或系统 DLL。`.heif` 扩展名按 HEIC 处理。
 
+JPEG XL 默认启用，使用纯 Rust 的 `jxl-oxide`（附 `image` 集成与 `lcms2` 特性），支持 8/16-bit 与浮点源图、alpha 与内嵌 ICC；CMYK 文件由解码器经 LCMS 转为 sRGB。
+
 SVG 默认启用，使用 `resvg`（usvg + tiny-skia）光栅化，同样为纯 Rust、无系统 DLL：先解析出 `width`/`height`（缺失时回退 `viewBox`，两者都没有时按规范用 300×150）并做 250 MP 原图上限检查，再直接渲染到目标尺寸——矢量缩放即渲染，不会先画成位图再重采样。`.svgz`（gzip 压缩）暂不支持。
 
-JPEG/TIFF/PNG/WebP/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
+JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 profile 时按 sRGB 处理。CMYK 专用 profile 不受支持（解码后已转为 RGB），会回退原像素显示。
 
 ## 已知限制
 
 - EXIF 方向校正只覆盖 JPEG/TIFF/WebP；HEIC/AVIF 使用容器内的旋转/镜像属性（`irot` / `imir`）。
+- JPEG XL 只解静态图：`jxl-oxide` 的 `image` 集成尚未实现动画解码，`.jxl` 动画按首帧显示；浮点源图（HDR）按 8-bit 显示，不做色调映射。
 - HEIC/AVIF 若只带 nclx 色彩原色（如未内嵌 ICC 的 Display P3），暂不进行色域转换；内嵌 ICC 会经 LCMS 转换到 sRGB。iPhone 照片通常内嵌 ICC。
 - HEIC/AVIF 的 10/12-bit 源图由解码器内部转换为 8-bit 纹理；状态栏位深标记只区分通用解码路径的 8/16-bit。
 - HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估；AVIF（AV1）不在此列。

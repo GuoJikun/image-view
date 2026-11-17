@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// 与解码器特性保持一致的扩展名列表。
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "qoi", "tga", "pnm", "hdr",
-    "exr", "dds", "avif", "heic", "heif", "svg",
+    "exr", "dds", "jxl", "avif", "heic", "heif", "svg",
 ];
 
 /// 扩展名是否属于支持的图片格式（大小写不敏感）。
@@ -91,6 +91,7 @@ mod tests {
         assert!(is_supported_image(Path::new("c.AVIF")));
         assert!(is_supported_image(Path::new("d.HEIC")));
         assert!(is_supported_image(Path::new("e.heif")));
+        assert!(is_supported_image(Path::new("j.JXL")));
         assert!(is_supported_image(Path::new("g.SVG")));
         assert!(!is_supported_image(Path::new("h.svgz")));
         assert!(!is_supported_image(Path::new("f.txt")));

@@ -119,7 +119,7 @@ pub enum LoadError {
     Svg(String),
     /// 仅在关闭对应 feature 的构建中构造。
     #[cfg_attr(
-        all(feature = "avif", feature = "heic", feature = "svg"),
+        all(feature = "avif", feature = "heic", feature = "svg", feature = "jxl"),
         allow(dead_code)
     )]
     MissingDecoder {
@@ -177,12 +177,13 @@ impl From<image::ImageError> for LoadError {
     }
 }
 
-/// 按扩展名选择解码器；HEIC/AVIF 不走 `image` 的通用读取路径，SVG 走光栅化。
+/// 按扩展名选择解码器；HEIC/AVIF/JXL 不走 `image` 的通用读取路径，SVG 走光栅化。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Format {
     Standard,
     Avif,
     Heic,
+    Jxl,
     Svg,
 }
 
@@ -194,6 +195,7 @@ fn format_for(path: &Path) -> Format {
         {
             Format::Heic
         }
+        Some(extension) if extension.eq_ignore_ascii_case("jxl") => Format::Jxl,
         Some(extension) if extension.eq_ignore_ascii_case("svg") => Format::Svg,
         _ => Format::Standard,
     }
@@ -201,13 +203,14 @@ fn format_for(path: &Path) -> Format {
 
 /// 仅在关闭对应 feature 的构建中调用。
 #[cfg_attr(
-    all(feature = "avif", feature = "heic", feature = "svg"),
+    all(feature = "avif", feature = "heic", feature = "svg", feature = "jxl"),
     allow(dead_code)
 )]
 fn missing_decoder(path: &Path, format: Format) -> LoadError {
     let (label, fallback) = match format {
         Format::Avif => ("AVIF", "avif"),
         Format::Heic => ("HEIC", "heic"),
+        Format::Jxl => ("JPEG XL", "jxl"),
         Format::Svg => ("SVG", "svg"),
         Format::Standard => ("image", "img"),
     };
@@ -398,6 +401,7 @@ fn decode(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadErr
         Format::Standard => decode_standard(path, caps, purpose),
         Format::Avif => decode_avif(path, caps, purpose),
         Format::Heic => decode_heic(path, caps, purpose),
+        Format::Jxl => decode_jxl(path, caps, purpose),
         Format::Svg => decode_svg(path, caps, purpose),
     }
 }
@@ -716,6 +720,40 @@ fn decode_heic(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, Lo
 #[cfg(not(feature = "heic"))]
 fn decode_heic(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
     Err(missing_decoder(path, Format::Heic))
+}
+
+/// JPEG XL：`jxl-oxide` 的 `image` 集成直接给出 `ImageDecoder`，走与通用路径相同的
+/// 尺寸检查与 `finish` 收尾。
+#[cfg(feature = "jxl")]
+fn decode_jxl(path: &Path, caps: &Caps, purpose: Purpose) -> Result<Decoded, LoadError> {
+    use jxl_oxide::integration::JxlDecoder;
+
+    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    let mut decoder = JxlDecoder::new(reader).map_err(map_decode_error)?;
+    // 头部已解析：先按声明尺寸做限额检查，再解像素。
+    let (width, height) = decoder.dimensions();
+    check_source_limits(width, height, caps, purpose)?;
+
+    // `rendered_icc` 是解码器最终输出的色彩空间；CMYK 已在解码器内部请求为 sRGB。
+    let icc_profile = match decoder.icc_profile() {
+        Ok(profile) => profile,
+        Err(error) => {
+            log::debug!(
+                target: "image_view::loader",
+                "无法读取 {} 的 ICC profile：{error}",
+                path.display()
+            );
+            None
+        }
+    };
+    let image = image::DynamicImage::from_decoder(decoder).map_err(map_decode_error)?;
+
+    finish(path, caps, image, icc_profile)
+}
+
+#[cfg(not(feature = "jxl"))]
+fn decode_jxl(path: &Path, _caps: &Caps, _purpose: Purpose) -> Result<Decoded, LoadError> {
+    Err(missing_decoder(path, Format::Jxl))
 }
 
 /// 共享的系统字体库；只在第一次解码 SVG 时扫描系统字体。
@@ -1159,6 +1197,8 @@ mod tests {
         assert_eq!(format_for(Path::new("a.AVIF")), Format::Avif);
         assert_eq!(format_for(Path::new("a.heic")), Format::Heic);
         assert_eq!(format_for(Path::new("a.HEIF")), Format::Heic);
+        assert_eq!(format_for(Path::new("a.jxl")), Format::Jxl);
+        assert_eq!(format_for(Path::new("a.JXL")), Format::Jxl);
         assert_eq!(format_for(Path::new("a.SVG")), Format::Svg);
         assert_eq!(format_for(Path::new("a.svg")), Format::Svg);
         assert_eq!(format_for(Path::new("a.png")), Format::Standard);
@@ -1224,6 +1264,66 @@ mod tests {
     fn heic_without_decoder_reports_missing_decoder() {
         let dir = temp_dir("heic-missing");
         let path = dir.join("photo.heif");
+        std::fs::write(&path, b"").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::MissingDecoder { .. })
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    /// 3×3 sRGB 无损 JPEG XL 测试向量（66 字节，取自 libjxl/jxl-rs，Apache-2.0）。
+    #[cfg(feature = "jxl")]
+    const JXL_LOSSLESS_3X3: &[u8] = &[
+        0xff, 0x0a, 0x10, 0x10, 0x10, 0x50, 0xb9, 0xb7, 0x8a, 0x22, 0x08, 0x04, 0x01, 0x00, 0xc8,
+        0x00, 0x4b, 0x18, 0x8b, 0x15, 0x52, 0x6c, 0x00, 0xfc, 0xe7, 0xed, 0x42, 0xd3, 0x04, 0x84,
+        0x17, 0x08, 0x82, 0x9d, 0xb3, 0x7d, 0x13, 0x1d, 0x60, 0xe8, 0x7e, 0x7d, 0xec, 0x06, 0xe8,
+        0xd1, 0x73, 0xcd, 0x6b, 0x7d, 0xeb, 0xf4, 0xba, 0x8e, 0x02, 0x03, 0x7f, 0xd9, 0xfd, 0x1e,
+        0xf1, 0x94, 0xca, 0x45, 0x20, 0x00,
+    ];
+
+    #[cfg(feature = "jxl")]
+    #[test]
+    fn jxl_is_decoded() {
+        let dir = temp_dir("jxl");
+        let path = dir.join("sample.jxl");
+        std::fs::write(&path, JXL_LOSSLESS_3X3).expect("write fixture");
+
+        let decoded = decode(&path, &Caps::default(), Purpose::Open).expect("decode jxl");
+        assert_eq!(decoded.source_size, [3, 3]);
+        assert_eq!(decoded.size, [3, 3]);
+        assert_eq!(decoded.source_depth, 8);
+        assert_eq!(decoded.rgba.len(), 3 * 3 * 4);
+        assert!(
+            decoded.rgba.iter().skip(3).step_by(4).all(|alpha| *alpha == 255),
+            "3×3 测试向量不透明"
+        );
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(feature = "jxl")]
+    #[test]
+    fn corrupt_jxl_reports_decode_error() {
+        let dir = temp_dir("jxl-corrupt");
+        let path = dir.join("broken.jxl");
+        std::fs::write(&path, b"not a jpeg xl file").expect("write fixture");
+
+        assert!(matches!(
+            decode(&path, &Caps::default(), Purpose::Open),
+            Err(LoadError::Decode(_))
+        ));
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[cfg(not(feature = "jxl"))]
+    #[test]
+    fn jxl_without_decoder_reports_missing_decoder() {
+        let dir = temp_dir("jxl-missing");
+        let path = dir.join("photo.jxl");
         std::fs::write(&path, b"").expect("write fixture");
 
         assert!(matches!(

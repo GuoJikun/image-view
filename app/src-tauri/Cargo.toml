@@ -9,10 +9,11 @@ build = "build.rs"
 
 # 与 workspace crates 共享图片格式特性。
 [features]
-default = ["avif", "heic", "svg"]
+default = ["avif", "heic", "svg", "jxl"]
 avif = ["iv-image-decode/avif"]
 heic = ["iv-image-decode/heic"]
 svg = ["iv-image-decode/svg"]
+jxl = ["iv-image-decode/jxl"]
 
 [dependencies]
 iv-application = { path = "../../crates/iv-application" }
