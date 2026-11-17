@@ -11,6 +11,7 @@ use crate::menu::{self, Entry, Hover, Item, Mark};
 use crate::message::Message;
 use crate::state::AppState;
 use crate::theme::{self, Palette};
+use crate::widgets::icons::{self, Icon};
 use iced::widget::{column, container, mouse_area, row, rule, space, text};
 use iced::{Color, Element, Fill, Padding, mouse};
 
@@ -26,6 +27,9 @@ const ROW_HEIGHT: f32 = 26.0;
 const SEPARATOR_HEIGHT: f32 = 9.0;
 /// 勾选 / 单选图标槽宽度（规范 4.5）。
 const GUTTER: f32 = 22.0;
+/// 子菜单指示箭头边长；路径在 24 的 viewBox 里纵向只占 12 单位，所以渲染时
+/// 图形墨迹约为这里的一半（16 → 约 8px 高），定为 16 才比原来的 `›` 明显。
+const CHEVRON: f32 = 16.0;
 
 /// 菜单栏：`文件` `显示` `帮助`。外层决定左侧内边距（标题栏或顶部栏）。
 pub fn bar(state: &AppState) -> Element<'static, Message> {
@@ -255,10 +259,7 @@ fn sub_row(
     let cells = vec![
         container(text("").size(12)).width(GUTTER).into(),
         text(label).size(13).color(color).width(Fill).into(),
-        text("›")
-            .size(13)
-            .color(if hovered { Color::WHITE } else { palette.text3 })
-            .into(),
+        chevron(hovered, palette),
     ];
 
     let mut element = row_shell(
@@ -289,6 +290,25 @@ fn sub_row(
     }
 
     element
+}
+
+/// 子菜单指示箭头。
+///
+/// 早期用字形 `›`（13px）：这个字符只在 x-height 区域落下一个小三角，实测高度不足
+/// 5px，看着像个点。改成 SVG 后尺寸由像素决定，也能和行内文字精确垂直居中。
+fn chevron(hovered: bool, palette: Palette) -> Element<'static, Message> {
+    container(icons::view(
+        Icon::Chevron,
+        CHEVRON,
+        submenu_arrow_color(hovered, palette),
+    ))
+    .width(CHEVRON)
+    .into()
+}
+
+/// 子菜单箭头颜色：悬停时行底变强调色，箭头必须转白才看得清。
+fn submenu_arrow_color(hovered: bool, palette: Palette) -> Color {
+    if hovered { Color::WHITE } else { palette.text3 }
 }
 
 fn gutter(
