@@ -3,3 +3,4 @@ dist
 node_modules
 app/src-tauri/gen/
 .workbuddy
+test_files/
