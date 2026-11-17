@@ -1,7 +1,7 @@
 //! `iviewer://` 自定义协议。
 //!
 //! - `iviewer://preview/{image_id}/{revision}`
-//! - `iviewer://frame/{image_id}/{index}/{revision}`（GIF / WebP 动画帧）
+//! - `iviewer://frame/{image_id}/{index}/{revision}`（APNG / GIF / WebP 动画帧）
 //! - `iviewer://thumbnail/{image_id}/{size}/{revision}`
 //!
 //! URL 只包含授权句柄，不包含文件路径；handler 在 Rust 缓存/授权表中查找，

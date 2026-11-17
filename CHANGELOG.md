@@ -7,6 +7,7 @@
 ### 新增
 
 - JPEG XL 支持：打开 `.jxl` 文件，解码器为纯 Rust 的 `jxl-oxide`（`image` 集成 + `lcms2`），支持 8/16-bit 与浮点源图、alpha、内嵌 ICC 与 CMYK；扩展名、文件过滤器、文件关联与构建特性 `jxl` 同步加入。
+- APNG 动画：`.png` 带 `acTL` 块时按动画播放（`dispose` / `blend` 由解码器逐帧合成为整幅画布），循环次数取自 `num_plays`；普通 PNG 仍是静态图，16-bit APNG 只显示静态首帧。
 
 ### 变更
 

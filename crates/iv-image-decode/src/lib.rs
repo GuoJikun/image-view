@@ -428,29 +428,69 @@ pub fn decode_thumbnail(path: &Path, max_side: u32) -> Result<Decoded, LoadError
 /// 可能包含多帧的格式。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AnimationKind {
+    Apng,
     Gif,
     Webp,
 }
 
 fn animation_kind(path: &Path) -> Option<AnimationKind> {
     match path.extension().and_then(OsStr::to_str) {
+        Some(extension) if extension.eq_ignore_ascii_case("png") => Some(AnimationKind::Apng),
         Some(extension) if extension.eq_ignore_ascii_case("gif") => Some(AnimationKind::Gif),
         Some(extension) if extension.eq_ignore_ascii_case("webp") => Some(AnimationKind::Webp),
         _ => None,
     }
 }
 
-/// 解码 GIF / WebP 的全部动画帧。
+/// 解码 APNG / GIF / WebP 的全部动画帧。
 ///
-/// 返回 `Ok(None)` 的三种情况：不是动画格式、只有一帧、帧总像素或帧数超过
-/// `Caps` 的动画预算。三者都按普通静态图（首帧）显示，不产生错误提示。
-/// 帧间隔按 GIF delay / WebP duration 计时，异常值钳制到 50~1000 ms。
+/// 返回 `Ok(None)` 的三种情况：不是动画格式（含单帧 PNG）、只有一帧、帧总像素或
+/// 帧数超过 `Caps` 的动画预算。三者都按普通静态图（首帧）显示，不产生错误提示。
+/// 帧间隔按 APNG delay / GIF delay / WebP duration 计时，异常值钳制到 50~1000 ms。
 pub fn decode_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
     match animation_kind(path) {
+        Some(AnimationKind::Apng) => decode_png_animation(path, caps),
         Some(AnimationKind::Gif) => decode_gif_animation(path, caps),
         Some(AnimationKind::Webp) => decode_webp_animation(path, caps),
         None => Ok(None),
     }
+}
+
+/// APNG 复用 `image` 的 `PngDecoder`：只有带 `acTL` 块的 PNG 才算动画。
+///
+/// `ApngDecoder` 会把每帧合成为整幅画布（含 `dispose` / `blend` 处理），输出
+/// 8-bit RGBA；16-bit APNG 会被它直接拒绝，此时动画解码报错，静态图仍由通用
+/// 解码路径按 16-bit 首帧正常显示。
+fn decode_png_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
+    use image::AnimationDecoder as _;
+
+    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    let mut decoder = image::codecs::png::PngDecoder::new(reader).map_err(map_decode_error)?;
+    if !decoder.is_apng().map_err(map_decode_error)? {
+        return Ok(None);
+    }
+    let (width, height) = decoder.dimensions();
+    check_source_limits(width, height, caps, Purpose::Open)?;
+
+    let icc_profile = match decoder.icc_profile() {
+        Ok(profile) => profile,
+        Err(error) => {
+            log::debug!(
+                target: "image_view::loader",
+                "无法读取 {} 的 ICC profile：{error}",
+                path.display()
+            );
+            None
+        }
+    };
+    let decoder = decoder.apng().map_err(map_decode_error)?;
+    // APNG 的 `num_plays` 即总播放轮数；0 表示无限。
+    let loops = match decoder.loop_count() {
+        image::metadata::LoopCount::Infinite => None,
+        image::metadata::LoopCount::Finite(times) => Some(times.get()),
+    };
+
+    build_animation(path, caps, decoder.into_frames(), loops, icc_profile)
 }
 
 fn decode_gif_animation(path: &Path, caps: &Caps) -> Result<Option<DecodedAnimation>, LoadError> {
@@ -547,7 +587,7 @@ fn build_animation(
     Ok(Some(DecodedAnimation {
         size,
         source_size,
-        // GIF / WebP 的解码器已统一输出 8-bit RGBA，动画不涉及 16-bit 源。
+        // APNG / GIF / WebP 的解码器已统一输出 8-bit RGBA，动画不涉及 16-bit 源。
         source_depth: 8,
         color,
         loops,
@@ -1297,7 +1337,12 @@ mod tests {
         assert_eq!(decoded.source_depth, 8);
         assert_eq!(decoded.rgba.len(), 3 * 3 * 4);
         assert!(
-            decoded.rgba.iter().skip(3).step_by(4).all(|alpha| *alpha == 255),
+            decoded
+                .rgba
+                .iter()
+                .skip(3)
+                .step_by(4)
+                .all(|alpha| *alpha == 255),
             "3×3 测试向量不透明"
         );
 
@@ -1688,6 +1733,37 @@ mod tests {
         std::fs::write(path, file).expect("write webp");
     }
 
+    /// 用 `png` crate 写一个多帧 APNG：每帧铺一种颜色，`plays` 为总播放轮数
+    /// （0 = 无限）。`png` 只是测试依赖，生产解码仍走 `image`。
+    fn write_animated_png(path: &Path, delays_ms: &[u16], colors: &[[u8; 4]], plays: u16) {
+        use png::{BitDepth, ColorType, Encoder};
+
+        let (width, height) = (4u32, 2u32);
+        let file = std::fs::File::create(path).expect("create apng");
+        let mut encoder = Encoder::new(std::io::BufWriter::new(file), width, height);
+        encoder.set_color(ColorType::Rgba);
+        encoder.set_depth(BitDepth::Eight);
+        encoder
+            .set_animated(
+                u32::try_from(delays_ms.len()).expect("frame count"),
+                u32::from(plays),
+            )
+            .expect("configure apng");
+        let mut writer = encoder.write_header().expect("write apng header");
+
+        for (delay, color) in delays_ms.iter().zip(colors) {
+            writer
+                .set_frame_delay(*delay, 1_000)
+                .expect("set frame delay");
+            let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+            for _ in 0..width * height {
+                pixels.extend_from_slice(color);
+            }
+            writer.write_image_data(&pixels).expect("write apng frame");
+        }
+        writer.finish().expect("finish apng");
+    }
+
     #[test]
     fn frame_delays_are_clamped_to_playable_range() {
         assert_eq!(frame_delay_ms(image::Delay::from_numer_denom_ms(0, 1)), 50);
@@ -1787,6 +1863,40 @@ mod tests {
     }
 
     #[test]
+    fn animated_png_frames_and_loops_are_decoded() {
+        let dir = temp_dir("apng-animation");
+        let path = dir.join("anim.png");
+        write_animated_png(&path, &[20, 120], &[[255, 0, 0, 255], [0, 255, 0, 255]], 3);
+
+        let animation = decode_animation(&path, &Caps::default())
+            .expect("decode apng")
+            .expect("png is animated");
+
+        assert_eq!(animation.frames.len(), 2);
+        assert_eq!(animation.size, [4, 2]);
+        assert_eq!(animation.source_size, [4, 2]);
+        assert_eq!(animation.source_depth, 8);
+        // APNG delay 同样是秒分数：20 ms 钳到下限 50 ms，120 ms 原样保留。
+        assert_eq!(
+            animation
+                .frames
+                .iter()
+                .map(|frame| frame.delay_ms)
+                .collect::<Vec<_>>(),
+            [50, 120]
+        );
+        assert_eq!(animation.loops, Some(3), "num_plays 即总播放轮数");
+        // 首帧属于动画，像素来自第一种颜色。
+        assert_eq!(&animation.frames[0].rgba[..4], &[255, 0, 0, 255]);
+
+        // 静态解码路径仍取首帧（通用 PNG 解码不受影响）。
+        let still = decode(&path, &Caps::default(), Purpose::Open).expect("decode still");
+        assert_eq!(still.size, [4, 2]);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
     fn single_frame_files_are_not_animations() {
         let dir = temp_dir("still");
 
@@ -1857,12 +1967,15 @@ mod tests {
 
     #[test]
     fn animation_kind_is_selected_by_extension() {
+        assert_eq!(
+            animation_kind(Path::new("a.PNG")),
+            Some(AnimationKind::Apng)
+        );
         assert_eq!(animation_kind(Path::new("a.GIF")), Some(AnimationKind::Gif));
         assert_eq!(
             animation_kind(Path::new("a.WebP")),
             Some(AnimationKind::Webp)
         );
-        assert_eq!(animation_kind(Path::new("a.png")), None);
         assert_eq!(animation_kind(Path::new("a.webpz")), None);
     }
 }

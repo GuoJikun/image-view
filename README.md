@@ -13,12 +13,12 @@
 
 - 适配窗口与 100%（1 图像像素 = 1 物理屏幕像素）；以光标为锚点缩放、拖拽平移、双击切换
 - 按 EXIF 方向自动校正，`R` / `Shift+R` 顺时针 / 逆时针旋转 90°
-- 幻灯片（`Space`，每 3 秒）与 GIF / WebP 动画播放，`Space` 暂停或继续
+- 幻灯片（`Space`，每 3 秒）与 APNG / GIF / WebP 动画播放，`Space` 暂停或继续
 - 超大图自动等比降采样并在状态栏提示，极端尺寸直接拒绝打开，不会卡住界面
 
 **格式与色彩**
 
-- 16 种常见格式，其中 GIF / WebP 支持多帧动画，HEIC / AVIF / SVG 为纯 Rust 解码，详见下方「支持的格式」
+- 17 种常见格式，其中 APNG / GIF / WebP 支持多帧动画，HEIC / AVIF / SVG / JPEG XL 为纯 Rust 解码，详见下方「支持的格式」
 - 读取内嵌 ICC profile 转换到 sRGB，16-bit 图像在转换与缩放阶段保持精度；状态栏显示位深、格式与色彩转换标记
 
 **界面与设置**
@@ -168,7 +168,7 @@ image-view [PATH]
 
 PNG、JPEG、GIF、WebP、BMP、TIFF、ICO、QOI、TGA、PNM、HDR、EXR、DDS、JPEG XL、AVIF、HEIC/HEIF、SVG。
 
-GIF 与 WebP 支持多帧动画播放（含 alpha 与循环次数）；其余格式按静态图显示。
+APNG、GIF 与 WebP 支持多帧动画播放（含 alpha 与循环次数）；其余格式按静态图显示。
 
 HEIC/AVIF 默认启用，使用纯 Rust 解码器（`imgalifier-heif` / `imgalifier-avif`），不依赖 libheif 或系统 DLL。`.heif` 扩展名按 HEIC 处理。
 
@@ -182,6 +182,7 @@ JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到 sRGB；无 p
 
 - EXIF 方向校正只覆盖 JPEG/TIFF/WebP；HEIC/AVIF 使用容器内的旋转/镜像属性（`irot` / `imir`）。
 - JPEG XL 只解静态图：`jxl-oxide` 的 `image` 集成尚未实现动画解码，`.jxl` 动画按首帧显示；浮点源图（HDR）按 8-bit 显示，不做色调映射。
+- APNG 只支持 8-bit：16-bit APNG 的逐帧合成不在 `image` 解码器覆盖范围内，动画解码会失败，此时按 16-bit 静态首帧显示。
 - HEIC/AVIF 若只带 nclx 色彩原色（如未内嵌 ICC 的 Display P3），暂不进行色域转换；内嵌 ICC 会经 LCMS 转换到 sRGB。iPhone 照片通常内嵌 ICC。
 - HEIC/AVIF 的 10/12-bit 源图由解码器内部转换为 8-bit 纹理；状态栏位深标记只区分通用解码路径的 8/16-bit。
 - HEIC（HEVC/H.265）涉及专利许可，发布或商业分发前需自行评估；AVIF（AV1）不在此列。

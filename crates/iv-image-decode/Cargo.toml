@@ -45,3 +45,5 @@ jxl-oxide = { workspace = true, optional = true }
 
 [dev-dependencies]
 bytemuck = { workspace = true }
+# APNG 测试夹具：生产解码走 `image`，这里只用编码器生成多帧 PNG。
+png = "0.18"

@@ -1,11 +1,11 @@
-//! 生成 GIF / WebP 动画验收夹具。
+//! 生成 APNG / GIF / WebP 动画验收夹具。
 //!
 //! ```text
 //! cargo run -p iv-image-decode --example animation_fixtures -- target/animation-fixtures
 //! ```
 //!
 //! 覆盖三处边界：正常循环、超大 delay（应钳制到 1000 ms）、0 delay（应钳制到 50 ms），
-//! 以及一个多帧 WebP（image crate 只能编码单帧，容器由本示例拼装）。
+//! 以及一个多帧 WebP（image crate 只能编码单帧，容器由本示例拼装）与一个多帧 APNG。
 
 use std::path::{Path, PathBuf};
 
@@ -27,6 +27,8 @@ fn main() {
     write_gif(&dir.join("anim-zero-delay.gif"), 240, 135, 6, 0, None);
     // 320×180 / 4 帧 WebP：循环次数 0 表示无限。
     write_animated_webp(&dir.join("anim-4f.webp"), 320, 180, &[60, 90, 120, 200], 0);
+    // 320×180 / 4 帧 APNG：不同 delay，循环 3 轮。
+    write_animated_png(&dir.join("anim-4f.png"), 320, 180, &[60, 90, 120, 200], 3);
 
     println!("已生成动画夹具：{}", dir.display());
 }
@@ -67,6 +69,42 @@ fn write_gif(
     encoder.encode_frames(images).expect("编码 GIF");
     drop(encoder);
     std::fs::write(path, bytes).expect("写入 GIF");
+}
+
+/// 用 `png` crate 写一个多帧 APNG：每帧一条彩色竖条，`plays` 为总播放轮数（0 = 无限）。
+fn write_animated_png(path: &Path, width: u32, height: u32, delays_ms: &[u16], plays: u16) {
+    use png::{BitDepth, ColorType, Encoder};
+
+    let file = std::fs::File::create(path).expect("创建 APNG");
+    let mut encoder = Encoder::new(std::io::BufWriter::new(file), width, height);
+    encoder.set_color(ColorType::Rgba);
+    encoder.set_depth(BitDepth::Eight);
+    encoder
+        .set_animated(
+            u32::try_from(delays_ms.len()).expect("帧数"),
+            u32::from(plays),
+        )
+        .expect("配置 APNG");
+    let mut writer = encoder.write_header().expect("写 APNG 头");
+
+    let frames = u32::try_from(delays_ms.len()).unwrap_or(1);
+    for (index, delay) in delays_ms.iter().enumerate() {
+        writer.set_frame_delay(*delay, 1_000).expect("设置帧间隔");
+
+        let mut buffer = RgbaImage::from_pixel(width, height, Rgba([18, 18, 20, 255]));
+        let bar = (width / 6).max(1);
+        let offset = (width - bar) * index as u32 / frames;
+        for y in 0..height {
+            for x in offset..(offset + bar).min(width) {
+                let level = (255 * index as u32 / frames) as u8;
+                buffer.put_pixel(x, y, Rgba([level, 90, 255 - level, 255]));
+            }
+        }
+        writer
+            .write_image_data(buffer.as_raw())
+            .expect("写 APNG 帧");
+    }
+    writer.finish().expect("完成 APNG");
 }
 
 fn u24(value: u32) -> [u8; 3] {

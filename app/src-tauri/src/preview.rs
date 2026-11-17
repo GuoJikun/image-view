@@ -3,7 +3,7 @@
 //! - `Open` 优先：队列里只执行最新的打开请求，预加载会让路。
 //! - `Preload` 只在后台填充缓存，不发送事件；超过 30 MP 的图片直接跳过。
 //! - 缓存键是 `image_id + 路径 + 修改时间 + 文件大小`，预加载结果可被后续打开复用。
-//! - 动画（GIF / WebP）分两段：首帧随预览先显示，完整帧由独立线程解码后
+//! - 动画（APNG / GIF / WebP）分两段：首帧随预览先显示，完整帧由独立线程解码后
 //!   追加到同一条目并发 `image:animation-ready`；帧随条目一起淘汰。
 //!
 //! 像素只保存在 Rust 侧；事件 payload 只有尺寸/元数据与资源句柄。
@@ -512,12 +512,17 @@ impl PreviewService {
     }
 }
 
-/// 只有 GIF / WebP 可能带多帧；扩展名过滤避免为普通图片排队动画任务。
+/// 只有 APNG / GIF / WebP 可能带多帧；扩展名过滤避免为普通图片排队动画任务。
+///
+/// `.png` 大多不是动画，真正的判断由解码器读 `acTL` 块完成，重复开销只是一次
+/// 头部解析。
 fn is_animatable(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("gif") || extension.eq_ignore_ascii_case("webp")
+            extension.eq_ignore_ascii_case("png")
+                || extension.eq_ignore_ascii_case("gif")
+                || extension.eq_ignore_ascii_case("webp")
         })
 }
 
@@ -927,10 +932,11 @@ mod tests {
     }
 
     #[test]
-    fn only_gif_and_webp_queue_animation_jobs() {
+    fn only_apng_gif_and_webp_queue_animation_jobs() {
+        assert!(is_animatable(Path::new("a.png")));
         assert!(is_animatable(Path::new("a.gif")));
         assert!(is_animatable(Path::new("a.WEBP")));
-        assert!(!is_animatable(Path::new("a.png")));
+        assert!(!is_animatable(Path::new("a.jpg")));
         assert!(!is_animatable(Path::new("no-extension")));
     }
 }
