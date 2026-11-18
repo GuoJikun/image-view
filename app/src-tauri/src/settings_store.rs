@@ -12,9 +12,13 @@ use std::thread;
 use std::time::Duration;
 
 use iv_infra::settings::Settings;
+use iv_infra::window_state;
 
 /// 防抖窗口：连按翻页时只写入最终状态。
 const DEBOUNCE: Duration = Duration::from_millis(400);
+
+/// 插件时代窗口状态文件名；仅用于一次性迁移，迁移后不再写入。
+const LEGACY_WINDOW_STATE: &str = ".window-state.json";
 
 pub struct SettingsStore {
     path: PathBuf,
@@ -27,16 +31,26 @@ pub struct SettingsStore {
 impl SettingsStore {
     /// 读取已有设置并启动后台写入线程。
     pub fn open(path: PathBuf) -> Arc<Self> {
-        let settings = read_settings(&path);
+        let mut settings = read_settings(&path);
+        // 旧插件的窗口几何只在首次升级时搬进 settings.ron；之后统一走 SettingsStore。
+        let migrated = settings.window.is_unset()
+            && migrate_legacy_window(&path).is_some_and(|legacy| {
+                settings.window = legacy;
+                true
+            });
         let (tx, rx) = mpsc::channel::<()>();
         let store = Arc::new(Self {
             path,
             state: Mutex::new(settings),
             write_lock: Mutex::new(()),
-            dirty: AtomicBool::new(false),
+            dirty: AtomicBool::new(migrated),
             tx,
         });
         spawn_writer(Arc::downgrade(&store), rx);
+        if migrated {
+            // 让后台线程把迁移结果写回 settings.ron，避免下次启动再读旧文件。
+            let _ = store.tx.send(());
+        }
         store
     }
 
@@ -72,6 +86,30 @@ impl SettingsStore {
             self.dirty.store(true, Ordering::Relaxed);
         }
     }
+}
+
+/// 从插件时代的 `.window-state.json` 读一次主窗口几何。
+/// 文件缺失、损坏或无有效几何时返回 `None`，不影响正常启动。
+fn migrate_legacy_window(settings_path: &Path) -> Option<iv_infra::window_state::WindowState> {
+    let legacy_path = settings_path.with_file_name(LEGACY_WINDOW_STATE);
+    let text = match std::fs::read_to_string(&legacy_path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(error) => {
+            log::warn!(
+                target: "image_view::settings",
+                "无法读取旧窗口状态 {}：{error}",
+                legacy_path.display()
+            );
+            return None;
+        }
+    };
+    let state = window_state::from_legacy_json(&text, "main")?;
+    log::info!(
+        target: "image_view::settings",
+        "已从旧窗口状态文件迁移几何到 settings.ron"
+    );
+    Some(state)
 }
 
 fn spawn_writer(weak: Weak<SettingsStore>, rx: Receiver<()>) {
@@ -187,6 +225,31 @@ mod tests {
 
         let store = SettingsStore::open(path);
         assert_eq!(store.snapshot(), Settings::default());
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
+    }
+
+    #[test]
+    fn legacy_window_state_is_migrated_once() {
+        let dir = temp_dir("window-migration");
+        let path = dir.join("settings.ron");
+        let legacy = dir.join(LEGACY_WINDOW_STATE);
+        std::fs::write(
+            &legacy,
+            r#"{"main":{"width":1024,"height":768,"x":10,"y":20,"prev_x":8,"prev_y":18,"maximized":true,"visible":true,"decorated":true,"fullscreen":false}}"#,
+        )
+        .expect("write legacy fixture");
+
+        let store = SettingsStore::open(path.clone());
+        let migrated = store.snapshot().window.clone();
+        assert_eq!(migrated.width, 1024);
+        assert!(migrated.maximized);
+        // 迁移结果应写回 settings.ron，下次启动不再依赖旧文件。
+        store.flush();
+        std::fs::remove_file(&legacy).expect("remove legacy");
+
+        let reloaded = SettingsStore::open(path);
+        assert_eq!(reloaded.snapshot().window, migrated);
 
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }

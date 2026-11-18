@@ -58,7 +58,7 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 
 **风险**：跨平台配置目录差异 → 复用 eframe `persistence` 的存储位置（Windows：`%APPDATA%\image-view\data`）；设置项增多时在 `settings.rs` 内按 schema 版本扩展。
 
-> 1.2.0 起改用 `settings.ron` 与 `tauri-plugin-window-state`，实现差异与验收见 §6「P1-M1 重写：会话与偏好持久化」。
+> 1.2.0 起改用 `settings.ron` 与独立的窗口几何持久化（1.2.0～1.5.0 由 `tauri-plugin-window-state` 承担，之后合并为 `Settings.window` 字段、由 `iv-infra::window_state` 提供纯逻辑，旧 `.window-state.json` 仅一次性迁移），实现差异与验收见 §6「P1-M1 重写：会话与偏好持久化」。
 
 ### 3.2 P1-M2 色彩管理与高位深（1.5~2 d）
 

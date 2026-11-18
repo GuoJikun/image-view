@@ -12,6 +12,7 @@ mod protocol;
 mod settings_store;
 mod state;
 mod thumbnails;
+mod window_state;
 
 use std::path::PathBuf;
 
@@ -56,19 +57,28 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        // 窗口大小/位置/最大化由插件保管；主窗口 `visible: false` 等插件恢复后再显示。
-        .plugin(tauri_plugin_window_state::Builder::default().build())
         .register_asynchronous_uri_scheme_protocol("iviewer", protocol::handle)
         .on_window_event(|window, event| {
             // 退出前同步落盘会话/偏好；防抖线程可能来不及写最后一次修改。
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                window.app_handle().state::<AppState>().flush_settings();
+            // 窗口事件可能早于 setup 的 manage 触发，必须用 try_state 避免启动期 panic。
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. })
+                && let Some(state) = window.app_handle().try_state::<AppState>()
+            {
+                state.flush_settings();
+            }
+            if let Some(store) = window
+                .app_handle()
+                .try_state::<window_state::WindowStateStore>()
+            {
+                store.on_window_event(window, event);
             }
         })
         .setup(move |app| {
             app.manage(AppState::new(app.handle(), startup_path.clone()));
             app.manage(commands::update::UpdateState::new());
             app.manage(menu::NativeMenu::new());
+            let settings = app.state::<AppState>().settings_store();
+            app.manage(window_state::WindowStateStore::new(settings));
 
             // 原生菜单在 setup 阶段就要建好，此时前端还没跑起来：
             // 语言与勾选状态只能由后端按设置 + 系统语言解析（与前端同一规则）。
@@ -83,11 +93,14 @@ pub fn run() {
 
             if let Some(window) = app.get_webview_window("main") {
                 // macOS 保留系统原生标题栏与红绿灯；Win/Linux 使用 28 px 自绘标题栏。
+                // 必须先改装饰再恢复几何，否则无边框窗口的 inner size 会偏移。
                 #[cfg(not(target_os = "macos"))]
                 let _ = window.set_decorations(false);
 
-                #[cfg(target_os = "macos")]
-                let _ = window;
+                // 恢复保存的大小/位置/最大化；主窗口 `visible: false`，由这里显示，
+                // 避免启动时先出现在默认位置再跳动。
+                app.state::<window_state::WindowStateStore>()
+                    .restore(&window);
             }
 
             log::info!(

@@ -105,6 +105,11 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// 窗口几何与其他偏好共用同一份 `SettingsStore`，由适配层读写 `settings.window`。
+    pub fn settings_store(&self) -> Arc<SettingsStore> {
+        self.settings.clone()
+    }
+
     pub fn new(app: &AppHandle, startup_path: Option<String>) -> Self {
         let settings = SettingsStore::open(settings_path(app));
         let restored = settings.snapshot();

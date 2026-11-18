@@ -1,8 +1,9 @@
-//! ImageViewer 基础设施：设置持久化与日志。
+//! ImageViewer 基础设施：设置与窗口状态持久化、日志。
 //!
-//! 不依赖 GUI；`settings` 通过 [`storage::Storage`] 端口读写键值，
-//! 由 GUI/宿主提供具体实现（eframe 存储适配器在 app 内）。
+//! 不依赖 GUI；`settings` 定义含窗口几何在内的持久化数据结构，`window_state` 提供
+//! 恢复判定与几何采集的纯逻辑。存储位置与窗口 API 由 GUI/宿主适配层提供。
 
 pub mod logging;
 pub mod settings;
 pub mod storage;
+pub mod window_state;

@@ -14,6 +14,7 @@
 
 ### 变更
 
+- 窗口几何的保存与恢复改由共享 crate `iv-infra::window_state` 实现，不再依赖 Tauri 的 window-state 插件；几何并入 `settings.ron` 与其他偏好统一落盘，旧 `.window-state.json` 只在首次启动迁移一次，其他 GUI 分支可直接复用这份实现。缩略图条收起/展开补 180 ms 高度动画，与 macOS 优先设计规范对齐。
 - 16-bit 图片在解码、ICC 转换与预览/缩略图 PNG 传输中全程保留 16-bit 精度，不再于解码阶段量化到 8-bit；显示端仍由 WebView 落到 8-bit Canvas，屏幕观感不变。
 - 禁用 WebView 自带的右键菜单（重新加载、另存为图片、检查元素），看图时右键不再弹出与操作无关的系统菜单。
 

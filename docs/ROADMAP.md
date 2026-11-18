@@ -71,7 +71,7 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 
 P1-M5 已完成安装器、文件关联、崩溃日志与版本规范；原属 M5 的自动更新与中/英 UI 于 2026-11-12 提升为独立的 M8 / M9 并纳入 v1.0。界面改版（版式 A）已随 M5 之后的 `f852060` 落地。
 
-1.2.0 起对 M1 / M4 的重写（`settings.ron`、`tauri-plugin-window-state`、缩略图磁盘缓存）与 P0-M7 的相邻预加载已在 2026-11-16 完成；P1-M7 的 GIF/WebP 逐帧播放同日补齐，验收记录见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8。
+1.2.0 起对 M1 / M4 的重写（`settings.ron`、窗口几何持久化、缩略图磁盘缓存）与 P0-M7 的相邻预加载已在 2026-11-16 完成；P1-M7 的 GIF/WebP 逐帧播放同日补齐，验收记录见 [PLAN-P1.md](PLAN-P1.md) §6 与 [PLAN-P0.md](PLAN-P0.md) §9.8。
 
 ## P2 / P3 摘要
 

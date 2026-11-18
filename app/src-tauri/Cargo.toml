@@ -36,7 +36,6 @@ uuid = { version = "1", features = ["v4", "v5"] }
 image = { workspace = true, features = ["png"] }
 rfd = { workspace = true }
 log = { workspace = true }
-tauri-plugin-window-state = "2.5.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
 rfd = { workspace = true, features = ["xdg-portal", "wayland"] }
