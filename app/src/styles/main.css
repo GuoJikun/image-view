@@ -760,6 +760,22 @@ kbd {
   border-top: 1px solid var(--hairline);
 }
 
+/* 收起 / 展开高度动画（规范 3.4：180 ms）。flex 容器里须同时过渡
+   flex-basis；border-top 归零才能完全收起、不留 1 px 残线。 */
+.thumbnail-strip.strip-enter-active,
+.thumbnail-strip.strip-leave-active {
+  overflow: hidden;
+  transition: height 180ms ease, flex-basis 180ms ease,
+    border-top-width 180ms ease;
+}
+
+.thumbnail-strip.strip-enter-from,
+.thumbnail-strip.strip-leave-to {
+  height: 0;
+  flex-basis: 0;
+  border-top-width: 0;
+}
+
 .thumb-track {
   position: relative;
   height: 100%;

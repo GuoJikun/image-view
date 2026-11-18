@@ -292,7 +292,9 @@ onBeforeUnmount(() => {
       <ImageCanvas />
       <MetadataPanel v-if="store.showMetadata" />
     </main>
-    <ThumbnailStrip v-if="stripVisible" />
+    <Transition name="strip">
+      <ThumbnailStrip v-if="stripVisible" />
+    </Transition>
     <StatusBar />
 
     <HelpDialog v-if="ui.helpOpen" @close="ui.helpOpen = false" />
