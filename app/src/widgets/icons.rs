@@ -1,8 +1,8 @@
 //! 单色 SVG 图标集（图标源文件位于 `app/src/icons/`，编译期打包）。
 //!
 //! 图标来自 Lucide 线性图标集合（ISC 许可，见 `icons/LICENSE`）：24×24 viewBox、
-//! 圆角端点。线宽从上游的 2.0 调到 2.5：工具栏图标只有 17px 高，2.0 的描边缩到
-//! 约 1.4px，经 Iced 的 SVG 光栅化 + 线性采样后横线会断成虚线、看起来像被压扁。
+//! 2.0 线宽、圆角端点。工具栏图标 16px 高，2.0 的描边缩到约 1.3px；图标边长必须取
+//! 偶数，让按钮 padding 落在整像素，否则半像素偏移叠加 Iced 的线性采样会把横线冲淡。
 //! 源文件只声明几何与 `stroke="currentColor"`，不带具体颜色；Iced 用 usvg 光栅化
 //! 后由 `svg::Style.color` 给所有不透明像素重新上色，因此同一份路径可随浅 / 深
 //! 主题切换颜色。
@@ -142,8 +142,8 @@ mod tests {
                 "{icon:?} 缺少 stroke，Iced 会把路径渲染成透明"
             );
             assert!(
-                source.contains("stroke-width=\"2.5\""),
-                "{icon:?} 线宽不足时小尺寸下横线会断成虚线"
+                source.contains("stroke-width=\"2\""),
+                "{icon:?} 应使用 Lucide 上游的 2px 线宽"
             );
         }
     }

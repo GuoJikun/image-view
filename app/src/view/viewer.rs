@@ -23,20 +23,21 @@ fn fixed_color(hex: u32) -> Color {
     )
 }
 
-/// 工具条按钮统一尺寸（规范 4.1：30×30 / 圆角 6 / 图标 17）。
+/// 工具条按钮统一尺寸（规范 4.1：30×30 / 圆角 6）。
 const TOOL_BUTTON: f32 = 30.0;
-/// 规范 4.1 的图标边长。
-const TOOL_ICON: f32 = 17.0;
+/// 图标边长一律取偶数：按钮边长也是偶数，`(按钮边长 - 图标边长) / 2` 才落在整像素。
+/// 规范 4.1 写的是 17px，这里取最接近的 16px。
+const TOOL_ICON: f32 = 16.0;
 /// 翻页箭头与菜单子项共用同一份 `CHEVRON` 几何（24 viewBox / 2.0 线宽），但箭头在
-/// viewBox 里只占 12/24，按 17px 渲染后实际只有 8px 高、1.4px 描边，比相邻的文件夹
+/// viewBox 里只占 12/24，按 16px 渲染后实际只有 8px 高、1.3px 描边，比相邻的文件夹
 /// 图标弱一截。给到 20px 后约 10px 高、1.7px 描边，与菜单里的箭头观感一致。
 const TOOL_ARROW: f32 = 20.0;
-/// 播放 / 暂停：图形只占 viewBox 的一半，17px 下又小又虚，放大 2px。
-const TOOL_MEDIA: f32 = 19.0;
+/// 播放 / 暂停：图形只占 viewBox 的一半，16px 下又小又虚，放大到 18px。
+const TOOL_MEDIA: f32 = 18.0;
 /// 胶囊缩放两端的 − / + 图标。
 ///
-/// 13px 下 Lucide 的 2px 描边缩到约 1px，再叠加 Iced SVG 的半像素采样，
-/// 横线几乎不可见；16px 配整数内边距后描边才稳定落在像素上。
+/// 取偶数边长 16：(30 - 16) / 2 = 7 是整数，描边才稳定落在像素上；
+/// 原先 13px 配 8.5px 的半像素 padding 时 `−` 完全不可见。
 const ZOOM_ICON: f32 = 16.0;
 
 fn tool_button(
@@ -68,13 +69,13 @@ fn tool(
     let content = icons::view(icon, size, color);
     // `button` 会把内容区的 min/max 都收紧成按钮尺寸，内部固定尺寸的 SVG 会被
     // `Limits::resolve` 拉到按钮大小；用 padding 把内容区收回到图标边长。
-    // 内边距取整：Iced 0.14 的 SVG 不做像素对齐，半像素偏移会让 2px 描边的
-    // 横线被双线性采样冲淡，看起来像「压扁」了（箭头 20px 本来就是整数偏移）。
-    let padding = ((TOOL_BUTTON - size) / 2.0).round();
+    // 图标边长都是偶数，(30 - size) / 2 天然是整数：Iced 0.14 的 SVG 不做像素对齐，
+    // 半像素偏移会让细横线被线性采样冲淡，看起来像「压扁」了。不要用 round() 兜底，
+    // 那只会掩盖尺寸填错的问题。
     let mut btn = button(content)
         .width(TOOL_BUTTON)
         .height(TOOL_BUTTON)
-        .padding(padding)
+        .padding((TOOL_BUTTON - size) / 2.0)
         .style(move |t, status| theme::icon_button(t, status, active));
     if enabled {
         btn = btn.on_press(message);
@@ -252,8 +253,8 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
 
 /// 118×30 胶囊缩放：− / 值（点击=适配）/ +（规范 4.2）。
 ///
-/// 三段的 `button` 都会把内容区收紧成按钮尺寸：两端的 SVG 用整数 padding 收回
-/// 内容区（半像素偏移会让细横线消失），中间的值文字用 `padding(0)` + `center()`，
+/// 三段的 `button` 都会把内容区收紧成按钮尺寸：两端的 SVG 用整数 padding `[7, 11]`
+/// 收回内容区（半像素偏移会让细横线消失），中间的值文字用 `padding(0)` + `center()`，
 /// 否则会被画在内容区左侧。
 fn capsule_zoom(
     label: &str,
