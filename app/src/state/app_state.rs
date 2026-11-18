@@ -86,6 +86,9 @@ pub struct AppState {
 
     /// 系统语言标签；启动时读一次，供「跟随系统」解析语言。
     pub system_locale: Option<String>,
+    /// 系统明暗；由 `iced::system::theme()` 异步查询与 `theme_changes()` 订阅更新。
+    /// `None` 表示平台未给出偏好或查询尚未返回，按浅色回退。
+    pub system_theme: iced::theme::Mode,
     /// 文件操作/系统能力的用户可读提示，与解码错误分开。
     pub notice: Option<String>,
     pub menu: MenuState,
@@ -146,6 +149,7 @@ impl AppState {
             settings: settings.clone(),
             storage,
             system_locale,
+            system_theme: iced::theme::Mode::None,
             notice: None,
             menu: MenuState::default(),
             dialog: None,
@@ -219,8 +223,9 @@ impl AppState {
             library: LibraryState::default(),
             settings: Settings::default(),
             storage: FileStorage::open_at(config_dir.join("settings.ron")),
-            // 测试固定系统语言，避免用例结果随执行环境变化。
+            // 测试固定系统语言与主题，避免用例结果随执行环境变化。
             system_locale: Some("zh-CN".to_owned()),
+            system_theme: iced::theme::Mode::None,
             notice: None,
             menu: MenuState::default(),
             dialog: None,

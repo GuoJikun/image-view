@@ -102,6 +102,9 @@ pub enum Message {
     /// 离开 caption 按钮：只清掉自己那一颗，避免误清刚进入的按钮。
     CaptionLeft(Caption),
 
+    /// 系统明暗查询结果 / 运行中切换。仅「跟随系统」时影响实际主题。
+    SystemTheme(iced::theme::Mode),
+
     /// 定时轮询解码线程与缩略图线程的结果。
     Poll,
     Dismiss,

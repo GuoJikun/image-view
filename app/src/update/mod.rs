@@ -147,6 +147,10 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
         Message::CopyPath => library::copy_path(state),
 
         // ---- 异步结果与系统事件 ----
+        Message::SystemTheme(mode) => {
+            state.system_theme = mode;
+            Task::none()
+        }
         Message::OpenDialog => task::open_dialog(state.text()),
         Message::DialogPicked(path) => match path {
             Some(path) => library::open_path(state, path),
