@@ -158,6 +158,14 @@ fn key_pressed(state: &mut AppState, key: Key, modifiers: Modifiers) -> Task<Mes
                 state.viewer.rotate(-1);
                 Task::none()
             }
+            "h" | "H" => {
+                state.viewer.flip_horizontal();
+                Task::none()
+            }
+            "v" | "V" => {
+                state.viewer.flip_vertical();
+                Task::none()
+            }
             _ => Task::none(),
         },
         _ => Task::none(),
@@ -261,6 +269,19 @@ pub fn poll(state: &mut AppState) -> Task<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn h_and_v_keys_toggle_flips() {
+        let mut state = AppState::for_test(
+            std::env::temp_dir().join(format!("image-view-key-flip-{}", std::process::id())),
+        );
+        let _ = key_pressed(&mut state, Key::Character("h".into()), Modifiers::NONE);
+        assert!(state.viewer.view.flip_x);
+        let _ = key_pressed(&mut state, Key::Character("H".into()), Modifiers::NONE);
+        assert!(!state.viewer.view.flip_x);
+        let _ = key_pressed(&mut state, Key::Character("v".into()), Modifiers::NONE);
+        assert!(state.viewer.view.flip_y);
+    }
 
     #[test]
     fn poll_interval_is_bounded() {

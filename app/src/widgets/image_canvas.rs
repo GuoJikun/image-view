@@ -205,9 +205,11 @@ mod tests {
     use iced::widget::image::Handle;
 
     fn fixture() -> LoadedImage {
+        let handle = Handle::from_rgba(2, 2, vec![0; 16]);
         LoadedImage {
             path: "sample.png".into(),
-            handle: Handle::from_rgba(2, 2, vec![0; 16]),
+            handle: handle.clone(),
+            source_handle: handle,
             pixel_size: [200, 100],
             source_size: [200, 100],
             depth: 8,

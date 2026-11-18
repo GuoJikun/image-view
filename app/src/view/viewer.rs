@@ -7,6 +7,7 @@ use iced::widget::{button, canvas, center, column, container, row, sensor, stack
 use iced::{Color, Element, Fill};
 
 use crate::adapters::errors;
+use crate::menu::Action;
 use crate::message::Message;
 use crate::state::AppState;
 use crate::state::library_state::format_label;
@@ -97,8 +98,10 @@ fn playback_active(state: &AppState) -> bool {
 
 pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     let t = theme_of(state);
+    let has_image = state.viewer.image.is_some();
 
-    // 左：打开 | 上一张 / 下一张
+    // 左：打开 | 上一张 / 下一张 | 顺 / 逆时针旋转、水平 / 垂直翻转
+    // （与 `main` 的 AppToolbar 同序；动作复用菜单的 Action，共用一条分派路径）
     let left = row![
         tool_button(Icon::Open, Message::OpenDialog, true, false, &t),
         separator(&t),
@@ -118,6 +121,35 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             false,
             &t,
         ),
+        separator(&t),
+        tool_button(
+            Icon::RotateCw,
+            Message::MenuAction(Action::RotateCw),
+            has_image,
+            false,
+            &t,
+        ),
+        tool_button(
+            Icon::RotateCcw,
+            Message::MenuAction(Action::RotateCcw),
+            has_image,
+            false,
+            &t,
+        ),
+        tool_button(
+            Icon::FlipH,
+            Message::MenuAction(Action::FlipH),
+            has_image,
+            false,
+            &t,
+        ),
+        tool_button(
+            Icon::FlipV,
+            Message::MenuAction(Action::FlipV),
+            has_image,
+            false,
+            &t,
+        ),
     ]
     .spacing(6);
 
@@ -126,7 +158,6 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
         Some(value) => format!("{:.0}%", value * 100.0),
         None => "—".to_owned(),
     };
-    let has_image = state.viewer.image.is_some();
 
     // 排序按钮显示当前排序值 + 下拉箭头（与 `main` 的 AppToolbar 一致），
     // 点击展开菜单栏里的排序子菜单。

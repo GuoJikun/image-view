@@ -31,12 +31,22 @@ const THUMBS: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2
 const MINIMIZE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round"><path d="M5 12h14"/></svg>"#;
 const MAXIMIZE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linejoin="round"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg>"#;
 const CLOSE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>"#;
+// 旋转 / 翻转：路径与 `main` 的 `Icon.vue` 同源，仍是 24 viewBox / 线性描边；
+// 虚线是镜像轴，两个三角分别指向镜像后的方向。
+const ROTATE_CW: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.2v4.5H15"/></svg>"#;
+const ROTATE_CCW: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.2v4.5H9"/></svg>"#;
+const FLIP_H: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15" stroke-dasharray="2 2"/><path d="M9.5 7 4.5 12l5 5z"/><path d="M14.5 7l5 5-5 5z"/></svg>"#;
+const FLIP_V: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12h15" stroke-dasharray="2 2"/><path d="M7 9.5 12 4.5l5 5z"/><path d="M7 14.5 12 19.5l5-5z"/></svg>"#;
 
 #[derive(Clone, Copy)]
 pub enum Icon {
     Open,
     Prev,
     Next,
+    RotateCw,
+    RotateCcw,
+    FlipH,
+    FlipV,
     Play,
     Stop,
     Thumbs,
@@ -53,6 +63,10 @@ impl Icon {
             Icon::Open => OPEN,
             Icon::Prev => CHEVRON_LEFT,
             Icon::Next => CHEVRON_RIGHT,
+            Icon::RotateCw => ROTATE_CW,
+            Icon::RotateCcw => ROTATE_CCW,
+            Icon::FlipH => FLIP_H,
+            Icon::FlipV => FLIP_V,
             Icon::Play => PLAY,
             Icon::Stop => STOP,
             Icon::Thumbs => THUMBS,

@@ -1,6 +1,6 @@
 //! 快捷键弹窗（规范 4.8）：两列「按键 + 说明」，遮罩点击关闭。
 //!
-//! 只列本分支真实支持的快捷键；翻转能力不在本分支，不予展示。
+//! 只列本分支真实支持的快捷键，与菜单项保持一致。
 
 use iced::widget::{button, column, container, mouse_area, row, space, stack, text};
 use iced::{Element, Fill, Padding, mouse};
@@ -26,6 +26,8 @@ pub fn view(state: &AppState) -> Option<Element<'static, Message>> {
         ("0".to_owned(), t.shortcut_fit),
         ("1".to_owned(), t.shortcut_actual),
         (format!("R / {}", accel(&["shift", "R"])), t.shortcut_rotate),
+        ("H".to_owned(), t.shortcut_flip_h),
+        ("V".to_owned(), t.shortcut_flip_v),
         ("Space".to_owned(), t.shortcut_playback),
         ("F11".to_owned(), t.shortcut_fullscreen),
         (accel(&["mod", "shift", "C"]), t.shortcut_copy_path),

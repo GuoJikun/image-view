@@ -21,6 +21,7 @@ iv-application = { path = "../crates/iv-application" }
 iv-cache = { path = "../crates/iv-cache" }
 iv-domain = { path = "../crates/iv-domain" }
 iv-image-decode = { path = "../crates/iv-image-decode" }
+iv-image-process = { path = "../crates/iv-image-process" }
 iv-image-render = { path = "../crates/iv-image-render" }
 iv-infra = { path = "../crates/iv-infra" }
 iv-metadata = { path = "../crates/iv-metadata" }

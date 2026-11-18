@@ -26,6 +26,10 @@ pub struct ViewState {
     pub mode: ViewMode,
     /// 顺时针旋转的 90° 次数（0~3），只影响显示，不改动纹理。
     pub rotation: u8,
+    /// 水平 / 垂直镜像；只影响显示，不写回文件。Iced canvas 不支持镜像变换，
+    /// GUI 侧据此把句柄换成 Core 翻转后的副本。
+    pub flip_x: bool,
+    pub flip_y: bool,
     /// 上一帧画布尺寸，供键盘缩放的锚点使用。
     pub last_view: Vec2,
 }
@@ -37,6 +41,8 @@ impl Default for ViewState {
             pan: Vec2::ZERO,
             mode: ViewMode::Fit,
             rotation: 0,
+            flip_x: false,
+            flip_y: false,
             last_view: Vec2::ZERO,
         }
     }
@@ -57,6 +63,15 @@ impl ViewState {
     pub fn rotate(&mut self, steps: i8) {
         self.rotation = (self.rotation as i8 + steps).rem_euclid(4) as u8;
         self.pan = Vec2::ZERO;
+    }
+
+    /// 切换水平 / 垂直镜像。与 `main` 一致：翻转不改变平移与缩放。
+    pub fn flip_horizontal(&mut self) {
+        self.flip_x = !self.flip_x;
+    }
+
+    pub fn flip_vertical(&mut self) {
+        self.flip_y = !self.flip_y;
     }
 
     /// 旋转后图像的显示尺寸（奇数个 90° 时长宽互换）。
@@ -289,5 +304,24 @@ mod tests {
         approx(state.pan.y, 0.0);
         state.rotate(1);
         assert_eq!(state.rotation, 0);
+    }
+
+    #[test]
+    fn flip_toggles_without_touching_pan_or_rotation() {
+        let mut state = ViewState {
+            rotation: 1,
+            pan: vec2(10.0, 20.0),
+            ..Default::default()
+        };
+        state.flip_horizontal();
+        assert!(state.flip_x);
+        assert!(!state.flip_y);
+        state.flip_vertical();
+        assert!(state.flip_y);
+        state.flip_horizontal();
+        assert!(!state.flip_x);
+        assert_eq!(state.rotation, 1);
+        approx(state.pan.x, 10.0);
+        approx(state.pan.y, 20.0);
     }
 }

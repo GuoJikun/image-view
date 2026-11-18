@@ -1898,6 +1898,7 @@ dependencies = [
  "iv-cache",
  "iv-domain",
  "iv-image-decode",
+ "iv-image-process",
  "iv-image-render",
  "iv-infra",
  "iv-metadata",

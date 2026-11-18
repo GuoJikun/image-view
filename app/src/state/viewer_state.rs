@@ -26,10 +26,35 @@ fn preview_pixels(image: &LoadedImage) -> usize {
     image.pixel_size[0] as usize * image.pixel_size[1] as usize
 }
 
+/// 镜像一份 RGBA 句柄：Iced 0.14 的 canvas 不支持镜像变换，只能换句柄。
+/// 未翻转或非 RGBA 句柄原样返回（句柄本身是 Arc 浅克隆）。
+fn mirrored_handle(handle: &Handle, flip_x: bool, flip_y: bool) -> Handle {
+    if !flip_x && !flip_y {
+        return handle.clone();
+    }
+    let Handle::Rgba {
+        width,
+        height,
+        pixels,
+        ..
+    } = handle
+    else {
+        return handle.clone();
+    };
+    Handle::from_rgba(
+        *width,
+        *height,
+        iv_image_process::flip_rgba8(pixels, *width, *height, flip_x, flip_y),
+    )
+}
+
 #[derive(Clone)]
 pub struct LoadedImage {
     pub path: PathBuf,
+    /// 当前显示的句柄：按 `ViewState` 的镜像状态从 `source_handle` 生成。
     pub handle: Handle,
+    /// 未镜像的原始句柄；翻转时据此重新生成显示句柄，不写回文件。
+    pub source_handle: Handle,
     pub pixel_size: [u32; 2],
     pub source_size: [u32; 2],
     pub depth: u8,
@@ -38,13 +63,15 @@ pub struct LoadedImage {
 
 impl LoadedImage {
     pub fn from_decoded(path: PathBuf, decoded: Decoded) -> Self {
+        let handle = Handle::from_rgba(
+            decoded.size[0] as u32,
+            decoded.size[1] as u32,
+            decoded.rgba.into_rgba8(),
+        );
         Self {
             path,
-            handle: Handle::from_rgba(
-                decoded.size[0] as u32,
-                decoded.size[1] as u32,
-                decoded.rgba.into_rgba8(),
-            ),
+            handle: handle.clone(),
+            source_handle: handle,
             pixel_size: [decoded.size[0] as u32, decoded.size[1] as u32],
             source_size: [decoded.source_size[0] as u32, decoded.source_size[1] as u32],
             depth: decoded.source_depth,
@@ -59,7 +86,10 @@ impl LoadedImage {
 
 /// 正在播放的动画。帧句柄存在这里，画布按 `frame_index` 取用；不保存像素缓冲。
 pub struct PlayingAnimation {
+    /// 当前显示的帧（已按镜像状态处理）。
     pub frames: Vec<Handle>,
+    /// 未镜像的原始帧；翻转时据此重新生成显示帧。
+    pub source_frames: Vec<Handle>,
     pub delays: Vec<u32>,
     /// `None` 表示无限循环。
     pub loops: Option<u32>,
@@ -74,13 +104,14 @@ pub struct PlayingAnimation {
 impl PlayingAnimation {
     fn new(loaded: LoadedAnimation) -> Self {
         let delays: Vec<u32> = loaded.frames.iter().map(|frame| frame.delay_ms).collect();
-        let frames = loaded
+        let source_frames: Vec<Handle> = loaded
             .frames
             .into_iter()
             .map(|frame| frame.handle)
             .collect();
         Self {
-            frames,
+            frames: source_frames.clone(),
+            source_frames,
             delays,
             loops: loaded.loops,
             frame_index: 0,
@@ -232,6 +263,7 @@ impl ViewerState {
     fn request_animation(&mut self, path: &Path) -> u64 {
         if let Some(loaded) = self.animations.ready_for(path) {
             self.animation = Some(PlayingAnimation::new(loaded));
+            self.refresh_flip_handles();
             return 0;
         }
         let request = self.animations.request(path.to_path_buf());
@@ -337,6 +369,7 @@ impl ViewerState {
                     // 服务保留一份供回翻复用，播放状态另持一份浅克隆。
                     self.animations.accept(loaded.clone(), result.path.clone());
                     self.animation = Some(PlayingAnimation::new(loaded));
+                    self.refresh_flip_handles();
                     changed = true;
                 }
                 AnimationLoad::NotAnimated => {
@@ -426,6 +459,33 @@ impl ViewerState {
 
     pub fn reset_view(&mut self) {
         self.view = ViewState::default();
+        self.refresh_flip_handles();
+    }
+
+    /// 按当前镜像状态重建显示句柄；原始句柄始终保留，可反复切换。
+    fn refresh_flip_handles(&mut self) {
+        let (flip_x, flip_y) = (self.view.flip_x, self.view.flip_y);
+        if let Some(image) = self.image.as_mut() {
+            image.handle = mirrored_handle(&image.source_handle, flip_x, flip_y);
+        }
+        if let Some(animation) = self.animation.as_mut() {
+            animation.frames = animation
+                .source_frames
+                .iter()
+                .map(|frame| mirrored_handle(frame, flip_x, flip_y))
+                .collect();
+        }
+    }
+
+    /// H / `显示 › 水平翻转`：只作用于显示，与 `main` 一致不写回文件。
+    pub fn flip_horizontal(&mut self) {
+        self.view.flip_horizontal();
+        self.refresh_flip_handles();
+    }
+
+    pub fn flip_vertical(&mut self) {
+        self.view.flip_vertical();
+        self.refresh_flip_handles();
     }
 
     pub fn image_size(&self) -> Option<Vec2> {
@@ -524,6 +584,82 @@ mod tests {
         })
     }
 
+    fn rgba_bytes(handle: &Handle) -> Vec<u8> {
+        match handle {
+            Handle::Rgba { pixels, .. } => pixels.to_vec(),
+            _ => panic!("测试句柄应为 RGBA"),
+        }
+    }
+
+    /// 2×2 图像，每像素首字节依次为 1 / 2 / 3 / 4，便于核对镜像方向。
+    fn marked_decoded() -> Decoded {
+        let mut decoded = decoded();
+        decoded.rgba = Pixels::Rgba8(vec![
+            1, 0, 0, 0, 2, 0, 0, 0, //
+            3, 0, 0, 0, 4, 0, 0, 0, //
+        ]);
+        decoded
+    }
+
+    #[test]
+    fn flip_swaps_display_handle_without_touching_source() {
+        let mut viewer = ViewerState::new();
+        viewer.image = Some(LoadedImage::from_decoded(
+            PathBuf::from("flip.png"),
+            marked_decoded(),
+        ));
+        let source = rgba_bytes(&viewer.image.as_ref().unwrap().source_handle);
+
+        viewer.flip_horizontal();
+        let image = viewer.image.as_ref().unwrap();
+        assert!(viewer.view.flip_x);
+        assert_eq!(rgba_bytes(&image.source_handle), source, "原图句柄不变");
+        let flipped = rgba_bytes(&image.handle);
+        assert_eq!(flipped[0], 2, "左上应取原图右上像素");
+        assert_eq!(flipped[8], 4);
+
+        viewer.flip_horizontal();
+        viewer.flip_vertical();
+        let flipped = rgba_bytes(&viewer.image.as_ref().unwrap().handle);
+        assert_eq!(flipped[0], 3, "仅垂直翻转时左上应取原图左下像素");
+
+        viewer.flip_vertical();
+        assert_eq!(
+            rgba_bytes(&viewer.image.as_ref().unwrap().handle),
+            source,
+            "两次翻转同一轴回到原图"
+        );
+
+        viewer.flip_horizontal();
+        viewer.reset_view();
+        assert!(!viewer.view.flip_x && !viewer.view.flip_y);
+        assert_eq!(rgba_bytes(&viewer.image.as_ref().unwrap().handle), source);
+    }
+
+    #[test]
+    fn flip_applies_to_animation_frames() {
+        let mut viewer = ViewerState::new();
+        viewer.animation = Some(PlayingAnimation::new(LoadedAnimation {
+            frames: vec![crate::adapters::preview::AnimFrame {
+                handle: Handle::from_rgba(
+                    2,
+                    2,
+                    vec![
+                        1, 0, 0, 0, 2, 0, 0, 0, //
+                        3, 0, 0, 0, 4, 0, 0, 0, //
+                    ],
+                ),
+                delay_ms: 50,
+            }],
+            loops: None,
+        }));
+
+        viewer.flip_horizontal();
+        let animation = viewer.animation.as_ref().unwrap();
+        assert_eq!(rgba_bytes(&animation.frames[0])[0], 2);
+        assert_eq!(rgba_bytes(&animation.source_frames[0])[0], 1);
+    }
+
     /// 播放推进：到末帧回到首帧；有限循环播完停在末帧并暂停。
     #[test]
     fn animation_advances_and_stops_after_finite_loops() {
@@ -565,9 +701,11 @@ mod tests {
 
     /// 只带尺寸元数据的假图：验证像素预算时无需真的分配几十 MP 内存。
     fn sized_image(name: &str, w: u32, h: u32) -> LoadedImage {
+        let handle = Handle::from_rgba(1, 1, vec![0; 4]);
         LoadedImage {
             path: PathBuf::from(name),
-            handle: Handle::from_rgba(1, 1, vec![0; 4]),
+            handle: handle.clone(),
+            source_handle: handle,
             pixel_size: [w, h],
             source_size: [w, h],
             depth: 8,

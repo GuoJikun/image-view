@@ -45,6 +45,22 @@ pub fn apply(state: &mut AppState, action: Action) -> Task<Message> {
             viewer::actual_size(state);
             Task::none()
         }
+        Action::RotateCw => {
+            state.viewer.rotate(1);
+            Task::none()
+        }
+        Action::RotateCcw => {
+            state.viewer.rotate(-1);
+            Task::none()
+        }
+        Action::FlipH => {
+            state.viewer.flip_horizontal();
+            Task::none()
+        }
+        Action::FlipV => {
+            state.viewer.flip_vertical();
+            Task::none()
+        }
         Action::Theme(setting) => {
             state.settings.theme = setting;
             library::persist(state);
@@ -80,4 +96,25 @@ fn open_logs(state: &mut AppState) -> Task<Message> {
         state.notice = Some(notice);
     }
     Task::none()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 工具栏图标按钮发出的 `MenuAction` 与菜单项、快捷键走同一处分派。
+    #[test]
+    fn rotate_and_flip_actions_reach_the_viewer() {
+        let mut state = AppState::for_test(
+            std::env::temp_dir().join(format!("image-view-menu-action-{}", std::process::id())),
+        );
+        let _ = apply(&mut state, Action::RotateCw);
+        assert_eq!(state.viewer.view.rotation, 1);
+        let _ = apply(&mut state, Action::RotateCcw);
+        assert_eq!(state.viewer.view.rotation, 0);
+        let _ = apply(&mut state, Action::FlipH);
+        assert!(state.viewer.view.flip_x);
+        let _ = apply(&mut state, Action::FlipV);
+        assert!(state.viewer.view.flip_y);
+    }
 }

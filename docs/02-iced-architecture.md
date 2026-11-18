@@ -556,7 +556,11 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   `iv-image-render::ViewState`（滚动缩放锚定光标、拖拽平移、双击切换
   适配/100%、旋转 90° 步进）。采样策略由 view 层按含 DPI 的显示比例判定：
   ≥100% 用 `FilterMethod::Nearest` 逐像素显示、低于 100% 用 `Linear` 平滑缩小，
-  与 `main` 一致。
+  与 `main` 一致。镜像状态也记在 `ViewState`（`flip_x` / `flip_y`），但 Iced 0.14
+  的 canvas 只能表达旋转 + 缩放、`draw_image` 无法镜像；因此翻转由
+  `iv-image-process::flip_rgba8` 改写像素、GUI 换 `Handle` 实现，原始句柄保留以便
+  反复切换。静态主图与动画帧都走同一路径，切图时随 `ViewState::default()` 重置，
+  不写回文件（与 `main` 的视图级翻转语义一致）。
 - **缩略图条**：水平虚拟滚动，只为可见区间（外扩 3 张）构建 widget，首尾用
   `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。缩略图经
   `iv-cache::FileCache` 写入磁盘缓存（键为「源路径摘要 / mtime / 目标边长」，
@@ -587,8 +591,11 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   实现令牌化的浅/深两套色板（`theme::Palette`）与样式函数（chrome、strip、
   panel、danger_banner、primary_button、icon_button、capsule_segment、
   thumb_card、text_button、icon_svg）。工具栏为 30×30 图标按钮 + 1×18 分隔线
-  + 118×30 三段式缩放胶囊（−/值块/+，值块点击回适配），图标为内联 SVG
-  （`widgets/icons.rs`，随主题着色）。缩略图卡片 76×56、间距 9、圆角 8、图片内缩 3px
+  + 118×30 三段式缩放胶囊（−/值块/+，值块点击回适配）：左侧顺序为打开 / 翻页 /
+  顺逆时针旋转 / 水平垂直翻转，右侧为缩略图 / 播放 / 排序 / 缩放，与 `main` 的
+  AppToolbar 对齐；旋转 / 翻转按钮发 `Message::MenuAction(Action::…)`，与菜单
+  共用 `update/menu.rs` 的分派。图标为内联 SVG（`widgets/icons.rs`，随主题着色）。
+  缩略图卡片 76×56、间距 9、圆角 8、图片内缩 3px
   满铺（`ContentFit::Cover`，不显示文件名）；选中态卡片撑到 80×60，2px accent 环画在
   外沿并与图片留 3px 空隙（图片两种状态同为 70×50），条带隐藏常驻滚动条。状态栏 26px 分左右两组，空状态居中图标 + 标题 +
   说明 + 主按钮，错误用 danger-soft 底横幅。标题栏策略：macOS 保持系统原生；

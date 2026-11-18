@@ -22,6 +22,10 @@ pub enum Action {
     ZoomOut,
     Fit,
     ActualSize,
+    RotateCw,
+    RotateCcw,
+    FlipH,
+    FlipV,
     Theme(ThemeSetting),
     Language(Language),
     ToggleColorBadge,
@@ -240,6 +244,31 @@ pub fn groups(state: &AppState) -> Vec<Group> {
                 has_image,
             )),
             Entry::Separator,
+            Entry::Item(item_disabled(
+                Action::RotateCw,
+                text.menu_rotate_cw,
+                Some("R".to_owned()),
+                has_image,
+            )),
+            Entry::Item(item_disabled(
+                Action::RotateCcw,
+                text.menu_rotate_ccw,
+                Some(accel(&["shift", "R"])),
+                has_image,
+            )),
+            Entry::Item(item_disabled(
+                Action::FlipH,
+                text.menu_flip_h,
+                Some("H".to_owned()),
+                has_image,
+            )),
+            Entry::Item(item_disabled(
+                Action::FlipV,
+                text.menu_flip_v,
+                Some("V".to_owned()),
+                has_image,
+            )),
+            Entry::Separator,
             Entry::Sub {
                 label: text.menu_theme,
                 items: vec![
@@ -425,6 +454,24 @@ mod tests {
         };
         assert_eq!(*label, "排序");
         assert_eq!(items.len(), 2);
+
+        // 旋转 / 翻转四项与 `main` 的菜单一致，顺序为顺时针、逆时针、水平、垂直。
+        let rotation: Vec<_> = view[10..14]
+            .iter()
+            .map(|entry| match entry {
+                Entry::Item(item) => (item.action, item.shortcut.as_deref()),
+                _ => panic!("旋转 / 翻转应为条目"),
+            })
+            .collect();
+        assert_eq!(
+            rotation,
+            vec![
+                (Action::RotateCw, Some("R")),
+                (Action::RotateCcw, Some(accel(&["shift", "R"]).as_str())),
+                (Action::FlipH, Some("H")),
+                (Action::FlipV, Some("V")),
+            ]
+        );
     }
 
     /// 没有图片时，依赖当前文件的条目应禁用。
@@ -452,7 +499,7 @@ mod tests {
 
         let built = groups(&state);
         let view = &built[GROUP_VIEW].entries;
-        let Entry::Sub { items, .. } = &view[10] else {
+        let Entry::Sub { items, .. } = &view[15] else {
             panic!("主题应为子菜单");
         };
         let Entry::Item(light) = &items[1] else {
@@ -460,7 +507,7 @@ mod tests {
         };
         assert!(light.checked);
 
-        let Entry::Sub { items, .. } = &view[11] else {
+        let Entry::Sub { items, .. } = &view[16] else {
             panic!("语言应为子菜单");
         };
         let Entry::Item(english) = &items[2] else {
