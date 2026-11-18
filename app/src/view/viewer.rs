@@ -242,12 +242,14 @@ fn capsule_zoom(label: &str, has_image: bool) -> Element<'static, Message> {
     track.into()
 }
 
-/// 从 AppState 推断当前 Iced Theme（与 app::theme 规则一致）。
+/// 当前 Iced Theme。
+///
+/// 必须直接委托给 [`crate::app::theme`]——它是 Iced 渲染所有 widget 的权威来源。
+/// 曾有一份平行实现把 `System` 当成 `Dark`，导致「跟随系统」且系统为浅色时：
+/// Iced 用浅色画背景，这里却取深色色板画文字/图标，白底浅字几乎看不见。
+/// 两处规则一旦分开就会漂移，因此只保留 `app::theme` 一个决策点。
 pub(crate) fn theme_of(state: &AppState) -> iced::Theme {
-    match state.settings.theme {
-        iv_domain::ThemeSetting::Light => iced::Theme::Light,
-        _ => iced::Theme::Dark,
-    }
+    crate::app::theme(state)
 }
 
 /// 画布 + 空状态/加载/错误叠层；`sensor` 上报逻辑尺寸供 Fit 计算。

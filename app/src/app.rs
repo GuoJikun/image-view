@@ -89,4 +89,15 @@ mod tests {
         // 与 CSS prefers-color-scheme 默认值一致：平台未报告时按浅色。
         assert_eq!(theme_for_system(iced::theme::Mode::None), Theme::Light);
     }
+
+    #[test]
+    fn view_theme_matches_app_theme_under_system_light() {
+        // 回归：view 层曾有一份平行实现把 System 当 Dark，导致浅色系统下
+        // Iced 画浅色背景、菜单文字却取深色色板（白底浅字）。两处必须永远一致。
+        let mut state = AppState::for_test(std::env::temp_dir());
+        state.settings.theme = ThemeSetting::System;
+        state.system_theme = iced::theme::Mode::Light;
+        assert_eq!(theme(&state), Theme::Light);
+        assert_eq!(crate::view::viewer::theme_of(&state), theme(&state));
+    }
 }
