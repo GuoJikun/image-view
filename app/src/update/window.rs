@@ -46,7 +46,7 @@ pub fn scaled(state: &mut AppState, factor: f32) -> Task<Message> {
 
     state.maximized = plan.maximized;
     state.minimized = false;
-    state.fullscreen = plan.fullscreen;
+    state.set_fullscreen(plan.fullscreen);
     state.restore_grace = RESTORE_GRACE_POLLS;
 
     let mut tasks = Vec::new();
@@ -180,7 +180,7 @@ pub fn close_query(state: &mut AppState, part: CloseQueryPart) -> Task<Message> 
     let fullscreen = apply_close_query(&mut state.settings.window, &query, scale);
     state.maximized = query.maximized.unwrap_or(false);
     state.minimized = query.minimized.unwrap_or(false);
-    state.fullscreen = fullscreen;
+    state.set_fullscreen(fullscreen);
 
     crate::update::library::persist(state);
 

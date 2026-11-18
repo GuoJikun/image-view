@@ -197,7 +197,7 @@ pub fn apply_window_mode(state: &mut AppState, mode: iced::window::Mode) -> Task
     } else {
         iced::window::Mode::Fullscreen
     };
-    state.fullscreen = next == iced::window::Mode::Fullscreen;
+    state.set_fullscreen(next == iced::window::Mode::Fullscreen);
     // 全屏时自绘标题栏（含菜单栏）隐藏，菜单必须收起，否则会浮在画布上。
     state.menu.close();
     match state.window_id {

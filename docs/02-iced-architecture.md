@@ -562,8 +562,11 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   总像素上限 72 MP，淘汰时跳过当前图；
   `Message::Poll` 每 50 ms 收拢一次，消息量有上界。
 - **系统集成**：`rfd` 文件对话框、拖放打开、回收站删除、资源管理器定位、
-  复制路径、全屏切换、幻灯片（3 s 自动前进）。拖放悬停时画布叠加强调色
-  描边与「松开以打开」提示（`window::Event::FileHovered` /
+  复制路径、全屏切换、幻灯片（3 s 自动前进）。全屏时工具栏中央显示文件名，
+  停留 3 s 后 200 ms 淡出（与 `main` 一致）：`AppState::set_fullscreen`
+  记录起始时刻，`fullscreen_title_alpha` 纯函数按当前时间算透明度，由 50 ms
+  的 `Poll` 持续驱动重绘，无需额外定时消息；退出全屏清空计时。拖放悬停时画布
+  叠加强调色描边与「松开以打开」提示（`window::Event::FileHovered` /
   `FilesHoveredLeft`）。
 - **界面视觉规范**：按 [design/macos-first](../design/macos-first/README.md)
   实现令牌化的浅/深两套色板（`theme::Palette`）与样式函数（chrome、strip、

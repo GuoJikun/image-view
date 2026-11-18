@@ -168,13 +168,25 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     .spacing(6)
     .align_y(iced::Center);
 
-    // 全屏时自绘标题栏隐藏，文件名回到工具栏中央（规范二/4.1）。
+    // 全屏时自绘标题栏隐藏，文件名回到工具栏中央，停留 3 s 后淡出（规范二/4.1）。
     let center_title: Element<'_, Message> = if state.fullscreen {
-        let name = state
-            .current_path()
-            .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_default();
-        text(name).size(13).color(Palette::from(&t).text).into()
+        let alpha = state.fullscreen_title_alpha();
+        if alpha <= 0.0 {
+            iced::widget::space().width(Fill).into()
+        } else {
+            let name = state
+                .current_path()
+                .and_then(|path| path.file_name().map(|n| n.to_string_lossy().into_owned()))
+                .unwrap_or_default();
+            let color = Palette::from(&t).text;
+            text(name)
+                .size(13)
+                .color(iced::Color {
+                    a: color.a * alpha,
+                    ..color
+                })
+                .into()
+        }
     } else {
         iced::widget::space().width(Fill).into()
     };

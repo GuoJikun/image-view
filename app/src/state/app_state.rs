@@ -17,6 +17,25 @@ use crate::state::viewer_state::ViewerState;
 
 /// 幻灯片自动前进间隔。
 pub const SLIDESHOW_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+/// 全屏文件名停留时长，与 `main` 一致。
+pub const FULLSCREEN_TITLE_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
+/// 文件名淡出时长（design/macos-first 4.1）。
+const FULLSCREEN_TITLE_FADE: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// 全屏文件名的透明度：进入后停留 3 s，再淡出 200 ms。
+///
+/// 抽成纯函数便于验证时长边界；`main` 用 CSS transition 实现同样的效果。
+pub fn fullscreen_title_alpha(start: Instant, now: Instant) -> f32 {
+    let elapsed = now.saturating_duration_since(start);
+    if elapsed <= FULLSCREEN_TITLE_HOLD {
+        return 1.0;
+    }
+    let fade = elapsed - FULLSCREEN_TITLE_HOLD;
+    if fade >= FULLSCREEN_TITLE_FADE {
+        return 0.0;
+    }
+    1.0 - fade.as_secs_f32() / FULLSCREEN_TITLE_FADE.as_secs_f32()
+}
 
 /// 关窗前待凑齐的窗口状态。
 ///
@@ -89,6 +108,8 @@ pub struct AppState {
     pub closing: Option<CloseQuery>,
     pub window_id: Option<iced::window::Id>,
     pub fullscreen: bool,
+    /// 进入全屏的时刻；文件名据此停留 3 s 后淡出，退出全屏时清空。
+    pub fullscreen_title_at: Option<Instant>,
     /// 文件正被拖入窗口：画布叠加强调色提示「松开以打开」。
     pub drag_hover: bool,
 }
@@ -141,6 +162,10 @@ impl AppState {
             window_id: None,
             drag_hover: false,
             fullscreen: window.as_ref().is_some_and(|window| window.fullscreen),
+            fullscreen_title_at: window
+                .as_ref()
+                .is_some_and(|window| window.fullscreen)
+                .then(Instant::now),
         };
 
         let task = match startup {
@@ -152,6 +177,20 @@ impl AppState {
         };
 
         (state, task)
+    }
+
+    /// 切换全屏并重置文件名停留计时（与 `main` 的 `flashFullscreenTitle` 一致）。
+    pub fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.fullscreen = fullscreen;
+        self.fullscreen_title_at = fullscreen.then(Instant::now);
+    }
+
+    /// 全屏标题的当前透明度；非全屏或已淡出返回 0。
+    pub fn fullscreen_title_alpha(&self) -> f32 {
+        match self.fullscreen_title_at {
+            Some(start) => fullscreen_title_alpha(start, Instant::now()),
+            None => 0.0,
+        }
     }
 
     /// 当前图片路径；用于标题栏、状态栏与文件操作。
@@ -198,6 +237,7 @@ impl AppState {
             window_id: None,
             drag_hover: false,
             fullscreen: false,
+            fullscreen_title_at: None,
         }
     }
 }
@@ -209,5 +249,40 @@ mod tests {
     #[test]
     fn slideshow_interval_is_three_seconds() {
         assert_eq!(SLIDESHOW_INTERVAL.as_secs(), 3);
+    }
+
+    /// 与 `main` 一致：停留 3 s，再用 200 ms 淡出。
+    #[test]
+    fn fullscreen_title_holds_then_fades() {
+        let start = Instant::now();
+        assert_eq!(fullscreen_title_alpha(start, start), 1.0);
+        assert_eq!(
+            fullscreen_title_alpha(start, start + FULLSCREEN_TITLE_HOLD),
+            1.0
+        );
+        let mid = fullscreen_title_alpha(
+            start,
+            start + FULLSCREEN_TITLE_HOLD + FULLSCREEN_TITLE_FADE / 2,
+        );
+        assert!((0.45..=0.55).contains(&mid), "半程应约为半透明：{mid}");
+        assert_eq!(
+            fullscreen_title_alpha(start, start + FULLSCREEN_TITLE_HOLD + FULLSCREEN_TITLE_FADE),
+            0.0
+        );
+    }
+
+    /// 只有进入全屏才开始计时；退出后清空，不再显示文件名。
+    #[test]
+    fn fullscreen_title_timer_follows_mode() {
+        let mut state = AppState::for_test(std::env::temp_dir().join("iv-title-timer-test"));
+        assert_eq!(state.fullscreen_title_alpha(), 0.0);
+
+        state.set_fullscreen(true);
+        assert!(state.fullscreen_title_at.is_some());
+        assert_eq!(state.fullscreen_title_alpha(), 1.0);
+
+        state.set_fullscreen(false);
+        assert!(state.fullscreen_title_at.is_none());
+        assert_eq!(state.fullscreen_title_alpha(), 0.0);
     }
 }

@@ -80,6 +80,7 @@ P0 的里程碑为 [PLAN-P0.md](PLAN-P0.md) §8 的 M0 ~ M7；P1 及之后统一
 | 2026-11-18 | 缩略图磁盘缓存预算由 64 MiB 提升到 256 MiB，与 `main` 一致；机制沿用 `iv-cache::FileCache`（mtime 键、删除失效、超预算裁剪到 90%） | 见本次提交 |
 | 2026-11-18 | 缩放采样对齐 `main`：≥100%（含 DPI）用 `FilterMethod::Nearest` 逐像素显示、低于 100% 用 `Linear` 平滑缩小 | 见本次提交 |
 | 2026-11-18 | 主图缓存对齐 `main`：`iv-cache::BudgetCache` 三张 / 72 MP，淘汰时跳过当前图 | 见本次提交 |
+| 2026-11-18 | 全屏文件名对齐 `main`：显示 3 s 后 200 ms 淡出，由 Poll 驱动透明度、无需额外定时消息 | 见本次提交 |
 | 2026-11-17 | 对齐 `main` 的三项能力：默认构建启用 JPEG XL（此前 `.jxl` 只能得到「解码器未包含」）、相邻图片预加载（前后各一张，大图由 Core 放弃）、缩略图磁盘缓存（`iv-cache::FileCache`，初版 64 MiB 预算，删除时失效；预算已于 2026-11-18 对齐） | 见本次提交 |
 | 2026-11-17 | Iced GUI 按 [design/macos-first](../design/macos-first/README.md) 完成界面视觉规范化：令牌化浅/深色板、图标工具栏与缩放胶囊、缩略图卡片、状态栏、空状态与错误横幅、拖放提示，Windows / Linux 自绘标题栏 | `dd693d3` |
 | 2026-11-17 | 目录结构整理：`apps/iced-app` 提升为 `app`；workspace 依赖只保留被 ≥2 个成员共享的 6 条，其余内联或删除 | `277ee2e` |
