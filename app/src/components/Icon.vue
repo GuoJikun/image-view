@@ -5,6 +5,7 @@
  *
  * 插件只把根 <svg> 的 viewBox 带进 <symbol>，fill/stroke/stroke-width 等属性
  * 会丢失，统一在 main.css 的 .icon 规则里补齐（1.5 px 描边 / currentColor）。
+ * 源文件因此不再声明 stroke：颜色只由 .icon 的 currentColor 决定。
  */
 type IconName =
   | "folder"
