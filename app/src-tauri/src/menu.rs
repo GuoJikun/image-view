@@ -262,6 +262,27 @@ fn build(app: &AppHandle, locale: &str) -> tauri::Result<(Menu<Wry>, CheckMap)> 
                 .build(app)?,
         )
         .separator()
+        .item(
+            &MenuItemBuilder::with_id("rotate-cw", text.t("menu.rotateCW"))
+                .accelerator("R")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("rotate-ccw", text.t("menu.rotateCCW"))
+                .accelerator("Shift+R")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("flip-h", text.t("menu.flipH"))
+                .accelerator("H")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("flip-v", text.t("menu.flipV"))
+                .accelerator("V")
+                .build(app)?,
+        )
+        .separator()
         .item(&theme)
         .item(&language)
         .separator()

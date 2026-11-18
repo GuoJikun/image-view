@@ -9,6 +9,7 @@ import { useActions } from "../actions";
 import { useMenuState } from "../menu";
 import { accel, isMac } from "../platform";
 import { t } from "../i18n";
+import Icon from "./Icon.vue";
 
 interface MenuEntry {
   kind: "item" | "sub" | "sep";
@@ -117,6 +118,11 @@ const groups = computed<MenuGroup[]>(() => [
       { kind: "item", id: "zoom-out", label: t("menu.zoomOut"), shortcut: accel("mod", "-"), disabled: !store.hasImage },
       { kind: "item", id: "fit", label: t("menu.fit"), shortcut: accel("mod", "0"), disabled: !store.hasImage },
       { kind: "item", id: "actual", label: t("menu.actual"), shortcut: accel("mod", "1"), disabled: !store.hasImage },
+      { kind: "sep" },
+      { kind: "item", id: "rotate-cw", label: t("menu.rotateCW"), shortcut: "R", disabled: !store.hasImage },
+      { kind: "item", id: "rotate-ccw", label: t("menu.rotateCCW"), shortcut: accel("shift", "R"), disabled: !store.hasImage },
+      { kind: "item", id: "flip-h", label: t("menu.flipH"), shortcut: "H", disabled: !store.hasImage },
+      { kind: "item", id: "flip-v", label: t("menu.flipV"), shortcut: "V", disabled: !store.hasImage },
       { kind: "sep" },
       {
         kind: "sub",
@@ -274,7 +280,7 @@ onBeforeUnmount(() => {
             >
               <span class="menu-gutter" />
               <span class="menu-label">{{ entry.label }}</span>
-              <span class="menu-chevron">›</span>
+              <Icon name="chevron-right" :size="16" class="menu-chevron" />
             </div>
 
             <div v-if="openSubId === entry.id" class="menu-panel submenu" role="menu">

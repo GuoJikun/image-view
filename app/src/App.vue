@@ -166,18 +166,18 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
       store.toggleFitActual();
       break;
     case "r":
-      store.rotate(1);
+      void run("rotate-cw");
       break;
     case "R":
-      store.rotate(-1);
+      void run("rotate-ccw");
       break;
     case "h":
     case "H":
-      store.toggleFlipX();
+      void run("flip-h");
       break;
     case "v":
     case "V":
-      store.toggleFlipY();
+      void run("flip-v");
       break;
     case " ":
       if (event.repeat || isButton(event.target)) return;

@@ -34,6 +34,11 @@ pub const KEYS: &[&str] = &[
     "menu.zoomOut",
     "menu.fit",
     "menu.actual",
+    // 显示 › 旋转 / 翻转
+    "menu.rotateCW",
+    "menu.rotateCCW",
+    "menu.flipH",
+    "menu.flipV",
     // 显示 › 主题
     "menu.theme",
     "menu.themeSystem",

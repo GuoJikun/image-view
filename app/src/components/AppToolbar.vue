@@ -6,6 +6,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useViewerStore } from "../stores/viewer";
 import { useUiStore } from "../stores/ui";
+import { useActions } from "../actions";
 import { accel, tip } from "../platform";
 import { t } from "../i18n";
 import Icon from "./Icon.vue";
@@ -13,6 +14,7 @@ import ZoomControl from "./ZoomControl.vue";
 
 const store = useViewerStore();
 const ui = useUiStore();
+const { run } = useActions();
 
 const sortOpen = ref(false);
 const sortWrap = ref<HTMLElement | null>(null);
@@ -33,6 +35,16 @@ const playbackTip = computed(() => {
   }
   return store.slideshow ? t("toolbar.pauseSlideshow") : tip(t("toolbar.slideshow"), "Space");
 });
+
+/** 旋转与翻转：与「显示」菜单、R / Shift+R / H / V 快捷键同源。 */
+const rotateCwTip = computed(() => tip(t("menu.rotateCW"), "R"));
+const rotateCcwTip = computed(() => tip(t("menu.rotateCCW"), accel("shift", "R")));
+const flipHTip = computed(() => tip(t("menu.flipH"), "H"));
+const flipVTip = computed(() => tip(t("menu.flipV"), "V"));
+
+function act(id: string): void {
+  void run(id);
+}
 
 function chooseSort(order: "name" | "modified"): void {
   sortOpen.value = false;
@@ -96,6 +108,49 @@ onBeforeUnmount(() => {
         @click="store.step(1)"
       >
         <Icon name="chevron-right" />
+      </button>
+
+      <span class="vdivider" />
+
+      <button
+        type="button"
+        class="icon-button"
+        :data-tip="rotateCwTip"
+        :aria-label="rotateCwTip"
+        :disabled="!store.hasImage"
+        @click="act('rotate-cw')"
+      >
+        <Icon name="rotate-cw" />
+      </button>
+      <button
+        type="button"
+        class="icon-button"
+        :data-tip="rotateCcwTip"
+        :aria-label="rotateCcwTip"
+        :disabled="!store.hasImage"
+        @click="act('rotate-ccw')"
+      >
+        <Icon name="rotate-ccw" />
+      </button>
+      <button
+        type="button"
+        class="icon-button"
+        :data-tip="flipHTip"
+        :aria-label="flipHTip"
+        :disabled="!store.hasImage"
+        @click="act('flip-h')"
+      >
+        <Icon name="flip-h" />
+      </button>
+      <button
+        type="button"
+        class="icon-button"
+        :data-tip="flipVTip"
+        :aria-label="flipVTip"
+        :disabled="!store.hasImage"
+        @click="act('flip-v')"
+      >
+        <Icon name="flip-v" />
       </button>
     </div>
 

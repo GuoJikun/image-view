@@ -117,6 +117,18 @@ export function useActions() {
       case "actual":
         store.setActual();
         break;
+      case "rotate-cw":
+        store.rotate(1);
+        break;
+      case "rotate-ccw":
+        store.rotate(-1);
+        break;
+      case "flip-h":
+        store.toggleFlipX();
+        break;
+      case "flip-v":
+        store.toggleFlipY();
+        break;
       case "theme-system":
         setTheme("system");
         break;

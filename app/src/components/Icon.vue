@@ -13,6 +13,10 @@ type IconName =
   | "pause"
   | "minus"
   | "plus"
+  | "rotate-cw"
+  | "rotate-ccw"
+  | "flip-h"
+  | "flip-v"
   | "photo"
   | "warning"
   | "close"
@@ -48,6 +52,24 @@ withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 17 });
     <path v-else-if="name === 'pause'" d="M9.5 6.5v11M14.5 6.5v11" />
     <path v-else-if="name === 'minus'" d="M6.5 12h11" />
     <path v-else-if="name === 'plus'" d="M12 6.5v11M6.5 12h11" />
+    <g v-else-if="name === 'rotate-cw'">
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+      <path d="M19.5 4.2v4.5H15" />
+    </g>
+    <g v-else-if="name === 'rotate-ccw'">
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" />
+      <path d="M4.5 4.2v4.5H9" />
+    </g>
+    <g v-else-if="name === 'flip-h'">
+      <path d="M12 4.5v15" stroke-dasharray="2 2" />
+      <path d="M9.5 7 4.5 12l5 5z" />
+      <path d="M14.5 7l5 5-5 5z" />
+    </g>
+    <g v-else-if="name === 'flip-v'">
+      <path d="M4.5 12h15" stroke-dasharray="2 2" />
+      <path d="M7 9.5 12 4.5l5 5z" />
+      <path d="M7 14.5 12 19.5l5-5z" />
+    </g>
     <g v-else-if="name === 'photo'">
       <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
       <circle cx="9" cy="10" r="1.6" />

@@ -563,9 +563,8 @@ button:disabled {
 
 .menu-chevron {
   margin-left: auto;
-  padding-left: 16px;
   color: var(--text3);
-  font-size: 13px;
+  stroke-width: 2;
 }
 
 .menu-row.hot .menu-chevron {
@@ -574,7 +573,8 @@ button:disabled {
 
 .menu-separator {
   height: 1px;
-  margin: 5px 4px 5px 30px;
+  /* 与菜单文字左边缘对齐：menu-gutter 宽 22px，文字紧随其后。 */
+  margin: 5px 4px 5px 22px;
   background: var(--hairline);
 }
 
