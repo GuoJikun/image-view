@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use emath::Vec2;
 use iced::widget::image::Handle;
-use iv_cache::LruCache;
+use iv_cache::BudgetCache;
 use iv_image_decode::{Decoded, LoadError, LoadResponse, Purpose};
 use iv_image_render::{ViewMode, ViewState};
 use iv_metadata::ColorInfo;
@@ -15,8 +15,15 @@ use iv_metadata::ColorInfo;
 use crate::adapters::errors;
 use crate::adapters::preview::PreviewService;
 
-/// 前后各缓存一张，快速来回翻页时不重复解码。
-const PREVIEW_CACHE_ENTRIES: usize = 4;
+/// 缓存最近三张预览（当前 + 前后各一张），与 `main` 一致。
+const PREVIEW_CACHE_ENTRIES: usize = 3;
+/// 像素预算：约三张 24 MP，当前图在淘汰时受保护，与 `main` 一致。
+const PREVIEW_CACHE_PIXELS: usize = 72_000_000;
+
+/// 缓存成本取解码后的预览像素数；`BudgetCache` 以此做双重淘汰。
+fn preview_pixels(image: &LoadedImage) -> usize {
+    image.pixel_size[0] as usize * image.pixel_size[1] as usize
+}
 
 #[derive(Clone)]
 pub struct LoadedImage {
@@ -60,7 +67,7 @@ pub struct ViewerState {
     /// 画布逻辑尺寸；`sensor` 上报，键盘缩放和边界钳制使用。
     pub canvas: Vec2,
     pub error: Option<String>,
-    cache: LruCache<PathBuf, LoadedImage>,
+    cache: BudgetCache<PathBuf, LoadedImage>,
     pending: Option<PendingPreview>,
     preview: PreviewService,
 }
@@ -78,7 +85,7 @@ impl ViewerState {
             view: ViewState::default(),
             canvas: Vec2::ZERO,
             error: None,
-            cache: LruCache::new(PREVIEW_CACHE_ENTRIES),
+            cache: BudgetCache::new(PREVIEW_CACHE_ENTRIES, PREVIEW_CACHE_PIXELS, preview_pixels),
             pending: None,
             preview: PreviewService::new(),
         }
@@ -153,7 +160,9 @@ impl ViewerState {
             match response.result {
                 Ok(decoded) => {
                     let image = LoadedImage::from_decoded(response.path.clone(), decoded);
-                    self.cache.insert(response.path, image.clone());
+                    // 与 `main` 一致：刚打开的图片已是当前图，淘汰时跳过它。
+                    self.cache
+                        .insert(response.path, image.clone(), Some(&image.path));
                     self.image = Some(image);
                     self.error = None;
                 }
@@ -199,7 +208,9 @@ impl ViewerState {
                     response.path.display()
                 );
                 let image = LoadedImage::from_decoded(response.path.clone(), decoded);
-                self.cache.insert(response.path, image);
+                // 预加载的是邻居，淘汰时保护当前显示的图片。
+                let protected = self.image.as_ref().map(|current| &current.path);
+                self.cache.insert(response.path, image, protected);
             }
             Err(LoadError::PreloadSkipped { w, h }) => {
                 log::debug!(
@@ -308,6 +319,18 @@ mod tests {
         }
     }
 
+    /// 只带尺寸元数据的假图：验证像素预算时无需真的分配几十 MP 内存。
+    fn sized_image(name: &str, w: u32, h: u32) -> LoadedImage {
+        LoadedImage {
+            path: PathBuf::from(name),
+            handle: Handle::from_rgba(1, 1, vec![0; 4]),
+            pixel_size: [w, h],
+            source_size: [w, h],
+            depth: 8,
+            color: ColorInfo::default(),
+        }
+    }
+
     /// 预加载结果只填缓存，不接管当前画面。
     #[test]
     fn preload_results_fill_cache_without_changing_view() {
@@ -324,6 +347,51 @@ mod tests {
         assert!(viewer.is_cached(&path), "预加载结果应进入主图缓存");
         assert!(viewer.image.is_none(), "预加载不应改变当前显示");
         assert!(!viewer.loading(), "预加载不应让界面进入加载态");
+    }
+
+    /// 与 `main` 一致：最多三张预览，最旧的先淘汰，当前图始终保留。
+    #[test]
+    fn preview_cache_limits_entries_and_keeps_current() {
+        let mut viewer = ViewerState::new();
+        let current = PathBuf::from("current.png");
+
+        for name in ["a.png", "b.png", "c.png"] {
+            viewer
+                .cache
+                .insert(PathBuf::from(name), sized_image(name, 2, 2), None);
+        }
+        viewer.cache.insert(
+            current.clone(),
+            sized_image("current.png", 2, 2),
+            Some(&current),
+        );
+
+        assert_eq!(viewer.cache.len(), 3);
+        assert!(!viewer.cache.contains(&PathBuf::from("a.png")));
+        assert!(viewer.cache.contains(&PathBuf::from("b.png")));
+        assert!(viewer.cache.contains(&current));
+    }
+
+    /// 像素预算 72 MP：即使只有两张也要淘汰，避免单张大图吃满内存。
+    #[test]
+    fn preview_cache_evicts_by_pixel_budget() {
+        let mut viewer = ViewerState::new();
+        let protected = PathBuf::from("keep.png");
+
+        // 每张约 42 MP，两张 84 MP 超过 72 MP 预算。
+        viewer.cache.insert(
+            PathBuf::from("first.png"),
+            sized_image("first.png", 6500, 6500),
+            None,
+        );
+        viewer.cache.insert(
+            protected.clone(),
+            sized_image("keep.png", 6500, 6500),
+            Some(&protected),
+        );
+
+        assert!(!viewer.cache.contains(&PathBuf::from("first.png")));
+        assert!(viewer.cache.contains(&protected), "当前图不能被预算淘汰");
     }
 
     /// 超过预加载上限的大图被 Core 放弃，缓存保持为空且不报错。

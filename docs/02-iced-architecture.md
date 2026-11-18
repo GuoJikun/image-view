@@ -556,8 +556,10 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   预算 256 MiB，与 `main` 对齐），命中时跳过解码；源文件删除时按路径前缀失效。
 - **异步**：主图解码复用 `iv-image-decode::Loader` 的 latest-wins 语义，过期
   结果按 generation 丢弃；相邻图片（前后各一张）以 `Purpose::Preload` 预加载，
-  结果只进 `ViewerState` 的 LRU 缓存、不改变当前画面，超过
-  `Caps::preload_max_source_pixels` 的大图由 Core 直接放弃；
+  结果只进 `ViewerState` 的预算缓存、不改变当前画面，超过
+  `Caps::preload_max_source_pixels` 的大图由 Core 直接放弃；主图缓存用
+  `iv-cache::BudgetCache`，与 `main` 一致保留最近三张（当前 + 前后各一张）、
+  总像素上限 72 MP，淘汰时跳过当前图；
   `Message::Poll` 每 50 ms 收拢一次，消息量有上界。
 - **系统集成**：`rfd` 文件对话框、拖放打开、回收站删除、资源管理器定位、
   复制路径、全屏切换、幻灯片（3 s 自动前进）。拖放悬停时画布叠加强调色
