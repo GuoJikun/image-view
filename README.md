@@ -221,6 +221,7 @@ JPEG/TIFF/PNG/WebP/JXL/HEIC/AVIF 的内嵌 ICC profile 会转换到显示目标�
 Cargo.toml          cargo workspace：成员、共享依赖、release profile 与版本号
 app/
   src/              Vue 3 + TypeScript + Pinia 前端
+  src/icons/        界面 SVG 图标（Lucide，ISC；许可见目录内 LICENSE）
   src-tauri/        Rust 适配层：命令、事件、iviewer:// 资源协议、原生菜单、自动更新
 crates/             与 GUI 无关的业务逻辑，按依赖方向分层
   iv-domain/        排序、语言、主题与支持的扩展名
@@ -260,6 +261,8 @@ cd app
 pnpm tauri dev
 pnpm tauri build
 ```
+
+界面图标使用 [Lucide](https://lucide.dev) 的 SVG 文件（ISC 许可，副本与许可见 `app/src/icons/`），由 `@jkun/vite-plugin-svg-icons` 在构建期转成 symbol sprite 注入 HTML。新增图标时把 SVG 放进该目录，并在 `Icon.vue` 的 `IconName` 里补上同名项。
 
 动画验收夹具用 `cargo run -p iv-image-decode --example animation_fixtures -- target/animation-fixtures` 生成：640×360 / 12 帧 / 80 ms 的常规 GIF、1500 ms 帧间隔且循环 2 次的 GIF、0 ms 帧间隔的 GIF，以及 4 帧无限循环 WebP，覆盖延迟钳制与循环次数两个边界。1.2.0 重写前的大图、色彩与缩略图夹具生成器（`gen_fixtures` / `color_fixtures` / `thumb_fixtures`）已随 eframe 版移除，需要时自行准备素材。
 

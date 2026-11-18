@@ -200,6 +200,13 @@ button:disabled {
 .icon {
   display: block;
   flex: none;
+  /* sprite 的 <symbol> 只继承到 viewBox，根 <svg> 上的这些属性会被插件丢弃，
+     所以在这一处统一补齐：1.5 px 线性描边 + 跟随 currentColor 主题色。 */
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* ---------- 外壳 ---------- */

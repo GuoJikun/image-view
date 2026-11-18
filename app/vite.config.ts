@@ -2,11 +2,19 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueI18n from "@intlify/unplugin-vue-i18n/vite";
 import { fileURLToPath } from "node:url";
+import svgIconPlugin from "@jkun/vite-plugin-svg-icons";
 
 // Tauri 约定：固定端口、禁用清屏，并忽略 src-tauri 的变更以避免重启循环。
 export default defineConfig({
   plugins: [
     vue(),
+    // SVG 图标文件在构建期转成 symbol sprite 注入 HTML；只走本地文件，
+    // 运行时不请求网络，CSP 保持 script-src 'self'。
+    svgIconPlugin({
+      dir: fileURLToPath(new URL("./src/icons", import.meta.url)),
+      prefix: "icon",
+      watch: true,
+    }),
     // 构建期把 locale 文案编译成消息函数，运行时不需要 new Function；
     // 配合 runtimeOnly 换成不含编译器的 vue-i18n 运行时，CSP 才能保持 script-src 'self'。
     vueI18n({
