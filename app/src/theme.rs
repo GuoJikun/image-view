@@ -27,6 +27,8 @@ pub struct Palette {
     pub chrome: Color,
     pub strip: Color,
     pub hairline: Color,
+    /// 工具栏分隔线：在 `hairline` 基础上加重 8%（浅色变暗 / 深色变亮）以提高可见度。
+    pub separator: Color,
     /// 卡片 / 图片的一像素描边（`main` 的 `--tile-border`，带 alpha 叠在内容上）。
     pub tile_border: Color,
     pub control: Color,
@@ -59,6 +61,7 @@ impl Palette {
             chrome: rgb(0xF6F6F7),
             strip: rgb(0xEFEFF1),
             hairline: rgb(0xE4E4E7),
+            separator: rgb(0xD2D2D5), // hairline 加深 8%
             tile_border: rgba(0x000000, 0.07),
             control: rgb(0xFFFFFF),
             text: rgb(0x1D1D1F),
@@ -82,6 +85,7 @@ impl Palette {
             chrome: rgb(0x2A2A2D),
             strip: rgb(0x232326),
             hairline: rgb(0x3A3A3D),
+            separator: rgb(0x3E3E42), // hairline 提亮 8%
             tile_border: rgba(0xFFFFFF, 0.07),
             control: rgb(0x3A3A3D),
             text: rgb(0xF5F5F7),

@@ -85,7 +85,7 @@ fn tool(
 
 /// 分隔线（规范 4.1：1×18，两侧各 12px）。
 fn separator(theme_ref: &iced::Theme) -> Element<'static, Message> {
-    let color = Palette::from(theme_ref).hairline;
+    let color = Palette::from(theme_ref).separator;
     container(text(""))
         .width(1)
         .height(18)
@@ -160,7 +160,9 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             &t,
         ),
     ]
-    .spacing(6);
+    .spacing(6)
+    // 与右侧 row 一样垂直居中，否则 18px 分隔线会贴顶（Row 默认 Start 对齐）。
+    .align_y(iced::Center);
 
     // 右：缩略图 / 幻灯片 / 排序 | 胶囊缩放（元数据面板等次级操作只在菜单里，与 main 一致）
     let zoom_label = match state.zoom() {
