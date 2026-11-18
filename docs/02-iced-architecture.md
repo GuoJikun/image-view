@@ -551,7 +551,7 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
 - **缩略图条**：水平虚拟滚动，只为可见区间（外扩 3 张）构建 widget，首尾用
   `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。缩略图经
   `iv-cache::FileCache` 写入磁盘缓存（键为「源路径摘要 / mtime / 目标边长」，
-  预算 64 MiB），命中时跳过解码；源文件删除时按路径前缀失效。
+  预算 256 MiB，与 `main` 对齐），命中时跳过解码；源文件删除时按路径前缀失效。
 - **异步**：主图解码复用 `iv-image-decode::Loader` 的 latest-wins 语义，过期
   结果按 generation 丢弃；相邻图片（前后各一张）以 `Purpose::Preload` 预加载，
   结果只进 `ViewerState` 的 LRU 缓存、不改变当前画面，超过

@@ -23,8 +23,8 @@ const THUMB_WORKERS: usize = 2;
 
 /// 覆盖缓存目录的环境变量，便于在临时目录里验证或排查缓存问题。
 pub const CACHE_DIR_ENV: &str = "IMAGE_VIEW_ICED_CACHE_DIR";
-/// 磁盘缓存预算：128 px 缩略图约 5~20 KiB，64 MiB 足够覆盖数万张图的目录。
-const THUMB_DISK_BYTES: u64 = 64 * 1024 * 1024;
+/// 磁盘缓存预算：与 `main` 对齐，128 px 缩略图约 5~20 KiB，256 MiB 可覆盖数万张图的目录。
+const THUMB_DISK_BYTES: u64 = 256 * 1024 * 1024;
 
 pub struct PreviewService {
     loader: Loader,
