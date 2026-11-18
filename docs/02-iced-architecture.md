@@ -541,7 +541,7 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
 | `adapters/image_resource.rs` | `adapters/preview.rs`（`PreviewService` / `ThumbnailService`） | 主图复用 `iv-image-decode::Loader`，缩略图用独立 2 线程池，句柄统一为 `iced::widget::image::Handle`。 |
 | （未定义） | `adapters/storage.rs` | Iced 没有 egui 的 `Storage`，用一个 RON 键值文件实现 `iv-infra` 的存储端口。 |
 | （未定义） | `adapters/errors.rs` | 把 Core 错误类型转成界面文案，避免文案散落在 View。 |
-| `theme/`（目录） | `theme.rs`（单文件）+ `widgets/icons.rs` | 主题令牌与样式函数集中在单文件，内联 SVG 图标单独成模块，无需拆目录。 |
+| `theme/`（目录） | `theme.rs`（单文件）+ `widgets/icons.rs` | 主题令牌与样式函数集中在单文件，图标源文件放 `icons/`、由 `widgets/icons.rs` 编译期打包，无需拆目录。 |
 
 ### 12.2 已实现能力
 
@@ -594,7 +594,7 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   + 118×30 三段式缩放胶囊（−/值块/+，值块点击回适配）：左侧顺序为打开 / 翻页 /
   顺逆时针旋转 / 水平垂直翻转，右侧为缩略图 / 播放 / 排序 / 缩放，与 `main` 的
   AppToolbar 对齐；旋转 / 翻转按钮发 `Message::MenuAction(Action::…)`，与菜单
-  共用 `update/menu.rs` 的分派。图标为内联 SVG（`widgets/icons.rs`，随主题着色）。
+  共用 `update/menu.rs` 的分派。图标为 `icons/` 下的 Lucide SVG 源文件（`widgets/icons.rs` 用 `include_bytes!` 打包，随主题着色）。
   缩略图卡片 76×56、间距 9、圆角 8、图片内缩 3px
   满铺（`ContentFit::Cover`，不显示文件名）；选中态卡片撑到 80×60，2px accent 环画在
   外沿并与图片留 3px 空隙（图片两种状态同为 70×50），条带隐藏常驻滚动条。状态栏 26px 分左右两组，空状态居中图标 + 标题 +

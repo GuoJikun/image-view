@@ -33,7 +33,15 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let buttons = row![
         caption(Caption::Minimize, Icon::Minimize, Message::MinimizeWindow),
-        caption(Caption::Maximize, Icon::Maximize, Message::ToggleMaximize),
+        caption(
+            Caption::Maximize,
+            if state.maximized {
+                Icon::Restore
+            } else {
+                Icon::Maximize
+            },
+            Message::ToggleMaximize,
+        ),
         caption(Caption::Close, Icon::Close, Message::CloseWindow),
     ]
     .spacing(0);

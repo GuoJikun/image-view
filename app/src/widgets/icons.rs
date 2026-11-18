@@ -1,9 +1,14 @@
-//! 单色 SVG 图标集（内联路径，无外部依赖）。
+//! 单色 SVG 图标集（图标源文件位于 `app/src/icons/`，编译期打包）。
 //!
-//! 图标以 `stroke="black"` 描边、通过 `svg::Style.color` 过滤上色，因此同一份路径
-//! 可随浅 / 深主题切换颜色。多数图标沿用常见的开源线性图标集合（24×24 viewBox、
-//! 1.6 线宽、圆角端点，与 macOS-first 规范的 1.5 线宽接近）；箭头类见 `CHEVRON_*`，
-//! 菜单子项与工具栏翻页共用同一份定义。
+//! 图标来自 Lucide 线性图标集合（ISC 许可，见 `icons/LICENSE`）：24×24 viewBox、
+//! 圆角端点。线宽从上游的 2.0 调到 2.5：工具栏图标只有 17px 高，2.0 的描边缩到
+//! 约 1.4px，经 Iced 的 SVG 光栅化 + 线性采样后横线会断成虚线、看起来像被压扁。
+//! 源文件只声明几何与 `stroke="currentColor"`，不带具体颜色；Iced 用 usvg 光栅化
+//! 后由 `svg::Style.color` 给所有不透明像素重新上色，因此同一份路径可随浅 / 深
+//! 主题切换颜色。
+//!
+//! `stroke` 必须留在源文件里：Iced 光栅化时不会像浏览器 CSS 那样补
+//! `stroke: currentColor`，缺失描边的路径（`fill="none"`）会渲染成透明。
 
 use iced::widget::svg;
 use iced::{Color, Element};
@@ -11,34 +16,27 @@ use iced::{Color, Element};
 use crate::message::Message;
 use crate::theme;
 
-/// 图标字节数据（`sun` 之类仅占位）；实际由 [`Icon`] 关联。
-// 文件夹形：横向 2..22、纵向 3..20，约 20×17 单位。
-const OPEN: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>"#;
-// 箭头类图标：24 viewBox + 2.0 线宽。菜单子项与工具栏翻页共用同一份几何，
-// 两处的笔画粗细与折角半径才完全一致——此前两边各写一份（24/1.8 与 16/2.0），
-// 折算到实际像素后一细一粗，看起来"不是一个实现"。
-const CHEVRON_RIGHT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 6 6 6-6 6"/></svg>"#;
-const CHEVRON_LEFT: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6-6 6 6 6"/></svg>"#;
-// 下拉箭头：与左右箭头同一份 24 viewBox / 2.0 线宽，只改折角方向；工具栏排序用 12px 渲染。
-const CHEVRON_DOWN: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>"#;
-// 播放 / 停止：2.0 线宽 + 更大的图形。三角原先只占 11×13 单位、1.6 线宽，配 17px
-// 渲染后实际 7.8×9.2px、描边 1.1px，比相邻的圆圈 / 四宫格又小又虚；现在占 12.5×15
-// 单位、19px 渲染（`viewer::TOOL_MEDIA`）≈ 9.9×11.9px、描边 1.6px。停止键同步放大。
-const PLAY: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4.5v15l12.5-7.5z"/></svg>"#;
-const STOP: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg>"#;
-// 缩略图条开关：分栏矩形（左栏竖线），与 `main` 的 `sidebar` 图标同一几何。
-const THUMBS: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M10 5v14"/></svg>"#;
-const MINIMIZE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round"><path d="M5 12h14"/></svg>"#;
-const MAXIMIZE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linejoin="round"><rect x="5.5" y="5.5" width="13" height="13" rx="1.5"/></svg>"#;
-const CLOSE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>"#;
-// 旋转 / 翻转：路径与 `main` 的 `Icon.vue` 同源，仍是 24 viewBox / 线性描边；
-// 虚线是镜像轴，两个三角分别指向镜像后的方向。
-const ROTATE_CW: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.2v4.5H15"/></svg>"#;
-const ROTATE_CCW: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.2v4.5H9"/></svg>"#;
-const FLIP_H: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v15" stroke-dasharray="2 2"/><path d="M9.5 7 4.5 12l5 5z"/><path d="M14.5 7l5 5-5 5z"/></svg>"#;
-const FLIP_V: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12h15" stroke-dasharray="2 2"/><path d="M7 9.5 12 4.5l5 5z"/><path d="M7 14.5 12 19.5l5-5z"/></svg>"#;
+const OPEN: &[u8] = include_bytes!("../icons/folder.svg");
+const PREV: &[u8] = include_bytes!("../icons/chevron-left.svg");
+const NEXT: &[u8] = include_bytes!("../icons/chevron-right.svg");
+const CHEVRON_DOWN: &[u8] = include_bytes!("../icons/chevron-down.svg");
+const ROTATE_CW: &[u8] = include_bytes!("../icons/rotate-cw.svg");
+const ROTATE_CCW: &[u8] = include_bytes!("../icons/rotate-ccw.svg");
+const FLIP_H: &[u8] = include_bytes!("../icons/flip-h.svg");
+const FLIP_V: &[u8] = include_bytes!("../icons/flip-v.svg");
+const PLAY: &[u8] = include_bytes!("../icons/play.svg");
+const PAUSE: &[u8] = include_bytes!("../icons/pause.svg");
+const THUMBS: &[u8] = include_bytes!("../icons/sidebar.svg");
+const MINUS: &[u8] = include_bytes!("../icons/minus.svg");
+const PLUS: &[u8] = include_bytes!("../icons/plus.svg");
+const PHOTO: &[u8] = include_bytes!("../icons/photo.svg");
+const WARNING: &[u8] = include_bytes!("../icons/warning.svg");
+const MINIMIZE: &[u8] = include_bytes!("../icons/minimize.svg");
+const MAXIMIZE: &[u8] = include_bytes!("../icons/maximize.svg");
+const RESTORE: &[u8] = include_bytes!("../icons/restore.svg");
+const CLOSE: &[u8] = include_bytes!("../icons/close.svg");
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
     Open,
     Prev,
@@ -47,43 +45,112 @@ pub enum Icon {
     RotateCcw,
     FlipH,
     FlipV,
-    Play,
-    Stop,
     Thumbs,
-    Minimize,
-    Maximize,
-    Close,
+    Play,
+    Pause,
     Chevron,
     ChevronDown,
+    Minus,
+    Plus,
+    Photo,
+    Warning,
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
 }
 
 impl Icon {
     fn bytes(self) -> &'static [u8] {
         match self {
             Icon::Open => OPEN,
-            Icon::Prev => CHEVRON_LEFT,
-            Icon::Next => CHEVRON_RIGHT,
+            Icon::Prev => PREV,
+            Icon::Next => NEXT,
+            Icon::Chevron => NEXT,
+            Icon::ChevronDown => CHEVRON_DOWN,
             Icon::RotateCw => ROTATE_CW,
             Icon::RotateCcw => ROTATE_CCW,
             Icon::FlipH => FLIP_H,
             Icon::FlipV => FLIP_V,
             Icon::Play => PLAY,
-            Icon::Stop => STOP,
+            Icon::Pause => PAUSE,
             Icon::Thumbs => THUMBS,
+            Icon::Minus => MINUS,
+            Icon::Plus => PLUS,
+            Icon::Photo => PHOTO,
+            Icon::Warning => WARNING,
             Icon::Minimize => MINIMIZE,
             Icon::Maximize => MAXIMIZE,
+            Icon::Restore => RESTORE,
             Icon::Close => CLOSE,
-            Icon::Chevron => CHEVRON_RIGHT,
-            Icon::ChevronDown => CHEVRON_DOWN,
         }
     }
 }
 
-/// 生成一个 17px 的单色图标元素，颜色由主题令牌决定。
+/// 生成一个单色图标元素，颜色由主题令牌决定。
 pub fn view<'a>(icon: Icon, size: f32, color: Color) -> Element<'a, Message> {
     svg(svg::Handle::from_memory(icon.bytes()))
         .width(size)
         .height(size)
         .style(move |t, _| theme::icon_svg(t, color))
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL: &[Icon] = &[
+        Icon::Open,
+        Icon::Prev,
+        Icon::Next,
+        Icon::RotateCw,
+        Icon::RotateCcw,
+        Icon::FlipH,
+        Icon::FlipV,
+        Icon::Thumbs,
+        Icon::Play,
+        Icon::Pause,
+        Icon::Chevron,
+        Icon::ChevronDown,
+        Icon::Minus,
+        Icon::Plus,
+        Icon::Photo,
+        Icon::Warning,
+        Icon::Minimize,
+        Icon::Maximize,
+        Icon::Restore,
+        Icon::Close,
+    ];
+
+    /// 图标由 Iced 的 usvg 光栅化；源文件缺少 `stroke` 时路径不可见，
+    /// 这里守住源文件的必要属性，避免换图后界面静默丢图标。
+    #[test]
+    fn every_icon_is_a_stroked_24px_svg() {
+        for icon in ALL {
+            let source = std::str::from_utf8(icon.bytes())
+                .expect("图标源文件应为 UTF-8")
+                .replace(['\r', '\n'], " ");
+            assert!(source.contains("<svg"), "{icon:?} 不是 SVG");
+            assert!(
+                source.contains("viewBox=\"0 0 24 24\""),
+                "{icon:?} 的 viewBox 应为 24×24"
+            );
+            assert!(source.contains("fill=\"none\""), "{icon:?} 应为线性图标");
+            assert!(
+                source.contains("stroke=\"currentColor\""),
+                "{icon:?} 缺少 stroke，Iced 会把路径渲染成透明"
+            );
+            assert!(
+                source.contains("stroke-width=\"2.5\""),
+                "{icon:?} 线宽不足时小尺寸下横线会断成虚线"
+            );
+        }
+    }
+
+    #[test]
+    fn chevrons_share_the_direction_of_their_arrow() {
+        assert_ne!(Icon::Prev.bytes(), Icon::Next.bytes());
+        assert_eq!(Icon::Chevron.bytes(), Icon::Next.bytes());
+    }
 }

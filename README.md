@@ -124,7 +124,8 @@ app/                    Iced GUI：入口、状态、消息、Update/View、自�
     state/              顶层状态、查看器状态、图库/元数据状态
     update/             Message → Core 用例的映射与周期轮询
     view/               工具栏、画布区、状态栏、菜单栏、快捷键弹窗、自绘标题栏
-    widgets/            图片画布、缩略图条、元数据面板、内联 SVG 图标集
+    widgets/            图片画布、缩略图条、元数据面板、SVG 图标集
+    icons/              图标源文件（Lucide，编译期经 include_bytes! 打包）
     adapters/           预览/缩略图服务、RON 存储、错误文案
 crates/                 与 GUI 无关的业务逻辑（从 main 同步），按依赖方向分层
   iv-domain/            排序、语言、主题与支持的扩展名

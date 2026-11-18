@@ -31,8 +31,13 @@ const TOOL_ICON: f32 = 17.0;
 /// viewBox 里只占 12/24，按 17px 渲染后实际只有 8px 高、1.4px 描边，比相邻的文件夹
 /// 图标弱一截。给到 20px 后约 10px 高、1.7px 描边，与菜单里的箭头观感一致。
 const TOOL_ARROW: f32 = 20.0;
-/// 播放 / 停止：三角与方块只占 viewBox 的一半，17px 下又小又虚，放大 2px。
+/// 播放 / 暂停：图形只占 viewBox 的一半，17px 下又小又虚，放大 2px。
 const TOOL_MEDIA: f32 = 19.0;
+/// 胶囊缩放两端的 − / + 图标。
+///
+/// 13px 下 Lucide 的 2px 描边缩到约 1px，再叠加 Iced SVG 的半像素采样，
+/// 横线几乎不可见；16px 配整数内边距后描边才稳定落在像素上。
+const ZOOM_ICON: f32 = 16.0;
 
 fn tool_button(
     icon: Icon,
@@ -63,10 +68,13 @@ fn tool(
     let content = icons::view(icon, size, color);
     // `button` 会把内容区的 min/max 都收紧成按钮尺寸，内部固定尺寸的 SVG 会被
     // `Limits::resolve` 拉到按钮大小；用 padding 把内容区收回到图标边长。
+    // 内边距取整：Iced 0.14 的 SVG 不做像素对齐，半像素偏移会让 2px 描边的
+    // 横线被双线性采样冲淡，看起来像「压扁」了（箭头 20px 本来就是整数偏移）。
+    let padding = ((TOOL_BUTTON - size) / 2.0).round();
     let mut btn = button(content)
         .width(TOOL_BUTTON)
         .height(TOOL_BUTTON)
-        .padding((TOOL_BUTTON - size) / 2.0)
+        .padding(padding)
         .style(move |t, status| theme::icon_button(t, status, active));
     if enabled {
         btn = btn.on_press(message);
@@ -191,7 +199,7 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
         ),
         tool(
             if state.slideshow || playback_active(state) {
-                Icon::Stop
+                Icon::Pause
             } else {
                 Icon::Play
             },
@@ -203,7 +211,7 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
         ),
         sort_button,
         separator(&t),
-        capsule_zoom(&zoom_label, has_image),
+        capsule_zoom(&zoom_label, has_image, &t),
     ]
     .spacing(6)
     .align_y(iced::Center);
@@ -244,14 +252,25 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
 
 /// 118×30 胶囊缩放：− / 值（点击=适配）/ +（规范 4.2）。
 ///
-/// 三段的 `button` 都会把内容区收紧成按钮尺寸，文字若不显式居中会被画在
-/// 内容区左侧；默认 padding 还会挤掉中段「值」的宽度，所以统一 `padding(0)`
-/// + `center()`。
-fn capsule_zoom(label: &str, has_image: bool) -> Element<'static, Message> {
-    let minus = button(text("−").size(15).center())
+/// 三段的 `button` 都会把内容区收紧成按钮尺寸：两端的 SVG 用整数 padding 收回
+/// 内容区（半像素偏移会让细横线消失），中间的值文字用 `padding(0)` + `center()`，
+/// 否则会被画在内容区左侧。
+fn capsule_zoom(
+    label: &str,
+    has_image: bool,
+    theme_ref: &iced::Theme,
+) -> Element<'static, Message> {
+    let palette = Palette::from(theme_ref);
+    // SVG 不吃 `button::Style.text_color`，禁用态要在这里自己换成弱化色。
+    let icon_color = if has_image {
+        palette.icon
+    } else {
+        palette.text3
+    };
+    let minus = button(icons::view(Icon::Minus, ZOOM_ICON, icon_color))
         .width(38)
         .height(30)
-        .padding(0)
+        .padding([7.0, 11.0])
         .style(|t, s| theme::capsule_segment(t, s, false))
         .on_press_maybe(has_image.then_some(Message::ZoomBy(0.8)));
     let middle = button(text(label.to_owned()).size(12).center())
@@ -260,10 +279,10 @@ fn capsule_zoom(label: &str, has_image: bool) -> Element<'static, Message> {
         .padding(0)
         .style(|t, s| theme::capsule_segment(t, s, true))
         .on_press_maybe(has_image.then_some(Message::Fit));
-    let plus = button(text("+").size(15).center())
+    let plus = button(icons::view(Icon::Plus, ZOOM_ICON, icon_color))
         .width(38)
         .height(30)
-        .padding(0)
+        .padding([7.0, 11.0])
         .style(|t, s| theme::capsule_segment(t, s, false))
         .on_press_maybe(has_image.then_some(Message::ZoomBy(1.25)));
 
@@ -370,7 +389,7 @@ fn empty_state(state: &AppState) -> Element<'_, Message> {
     let t = state.text();
     let hint = t.empty_hint_with(&crate::menu::accel(&["mod", "O"]));
     let content = column![
-        icons::view(Icon::Open, 60.0, iced::Color::from_rgb(0.45, 0.45, 0.48)),
+        icons::view(Icon::Photo, 60.0, iced::Color::from_rgb(0.45, 0.45, 0.48)),
         text(t.empty_title).size(15).color(fixed_color(0xF5F5F7)),
         text(hint).size(12).color(fixed_color(0xA1A1A6)),
         button(text(t.empty_open).size(13))
@@ -505,10 +524,12 @@ pub fn status_bar(state: &AppState) -> Element<'_, Message> {
 
 pub fn banner(state: &AppState) -> Option<Element<'_, Message>> {
     let message = state.notice.as_deref().or(state.viewer.error.as_deref())?;
-    // 左侧 3px 竖条 + 文本 + 按钮；竖条由带 3px 边框的容器实现（规范 4.7）。
+    let palette = Palette::from(&theme_of(state));
+    // 左侧 3px 竖条 + 警告图标 + 文本 + 按钮；竖条由带 3px 边框的容器实现（规范 4.7）。
     Some(
         container(
             row![
+                icons::view(Icon::Warning, 14.0, palette.danger),
                 text(message).size(11.5).width(Fill),
                 button(text(state.text().banner_dismiss).size(11))
                     .style(theme::text_button)
