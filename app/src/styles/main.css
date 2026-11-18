@@ -960,18 +960,24 @@ kbd {
 }
 
 .panel-close {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  flex: none;
+  border-radius: 5px;
   color: var(--text2);
+  transition: background-color 60ms ease, color 60ms ease;
 }
 
 .panel-close:hover {
   background: var(--hover);
   color: var(--text);
+}
+
+.panel-close:active {
+  background: var(--press);
 }
 
 .panel-empty {

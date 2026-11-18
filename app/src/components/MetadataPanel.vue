@@ -4,6 +4,7 @@ import { computed } from "vue";
 import { useViewerStore } from "../stores/viewer";
 import { resolvedLocale, t } from "../i18n";
 import { targetLabel } from "../services/color";
+import Icon from "./Icon.vue";
 
 const store = useViewerStore();
 
@@ -58,9 +59,7 @@ const rows = computed<[string, string][]>(() => {
         :aria-label="t('metadata.hide')"
         @click="store.showMetadata = false"
       >
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-          <path d="M7.5 7.5l9 9M16.5 7.5l-9 9" />
-        </svg>
+        <Icon name="close" :size="15" />
       </button>
     </header>
 
