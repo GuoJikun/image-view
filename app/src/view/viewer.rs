@@ -257,7 +257,8 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
 ///
 /// 三段的 `button` 都会把内容区收紧成按钮尺寸：两端的 SVG 用整数 padding `[7, 11]`
 /// 收回内容区（半像素偏移会让细横线消失），中间的值文字用 `padding(0)` + `center()`，
-/// 否则会被画在内容区左侧。
+/// 否则会被画在内容区左侧。中间的值按钮高 26（上下各比两端缩 2px），靠 row 的
+/// `align_y(Center)` 在胶囊里垂直居中。
 fn capsule_zoom(
     label: &str,
     has_image: bool,
@@ -278,7 +279,7 @@ fn capsule_zoom(
         .on_press_maybe(has_image.then_some(Message::ZoomBy(0.8)));
     let middle = button(text(label.to_owned()).size(12).center())
         .width(42)
-        .height(30)
+        .height(26)
         .padding(0)
         .style(|t, s| theme::capsule_segment(t, s, true))
         .on_press_maybe(has_image.then_some(Message::Fit));
@@ -289,7 +290,7 @@ fn capsule_zoom(
         .style(|t, s| theme::capsule_segment(t, s, false))
         .on_press_maybe(has_image.then_some(Message::ZoomBy(1.25)));
 
-    let track = container(row![minus, middle, plus])
+    let track = container(row![minus, middle, plus].align_y(iced::Center).height(30))
         .style(|t: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(Palette::from(t).track)),
             border: iced::Border {
