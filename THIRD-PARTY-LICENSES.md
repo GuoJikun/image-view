@@ -458,7 +458,6 @@ Where a crate offers a choice of licenses, this notice relies on the permissive 
 | `tauri-plugin-process` | 2.4.0 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-single-instance` | 2.5.5 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-plugin-updater` | 2.14.1 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
-| `tauri-plugin-window-state` | 2.5.0 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/plugins-workspace |
 | `tauri-runtime` | 2.12.2 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/tauri |
 | `tauri-runtime-wry` | 2.12.3 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/tauri |
 | `tauri-utils` | 2.10.2 | Apache-2.0 OR MIT | included below | https://github.com/tauri-apps/tauri |
@@ -3992,7 +3991,6 @@ Applies to:
 - `tauri-plugin-process 2.4.0`
 - `tauri-plugin-single-instance 2.5.5`
 - `tauri-plugin-updater 2.14.1`
-- `tauri-plugin-window-state 2.5.0`
 - `tauri-runtime 2.12.2`
 - `tauri-runtime-wry 2.12.3`
 - `tauri-utils 2.10.2`
@@ -7340,7 +7338,6 @@ Applies to:
 - `tauri-plugin-process 2.4.0`
 - `tauri-plugin-single-instance 2.5.5`
 - `tauri-plugin-updater 2.14.1`
-- `tauri-plugin-window-state 2.5.0`
 - `tauri-runtime 2.12.2`
 - `tauri-runtime-wry 2.12.3`
 - `tauri-utils 2.10.2`
@@ -9206,7 +9203,6 @@ Applies to:
 - `tauri-plugin-process 2.4.0`
 - `tauri-plugin-single-instance 2.5.5`
 - `tauri-plugin-updater 2.14.1`
-- `tauri-plugin-window-state 2.5.0`
 
 ~~~~text
 SPDXVersion: SPDX-2.1
@@ -11443,11 +11439,6 @@ These notices were extracted from the bundled license files listed above.
 - Copyright (c) 2017 - Present The Tauri Programme in the Commons Conservancy
 
 ### `tauri-plugin-updater 2.14.1`
-
-- (c) You must retain, in the Source form of any Derivative Works
-- Copyright (c) 2017 - Present Tauri Apps Contributors
-
-### `tauri-plugin-window-state 2.5.0`
 
 - (c) You must retain, in the Source form of any Derivative Works
 - Copyright (c) 2017 - Present Tauri Apps Contributors

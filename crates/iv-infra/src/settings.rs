@@ -1,8 +1,7 @@
 //! 持久化设置：上次浏览位置、排序方式与界面偏好。
 //!
 //! GUI 适配器决定存储位置与文件格式；这里只负责数据结构和兼容性检查。
-//! 应用把整份 [`Settings`] 以 RON 写入 `settings.ron`，
-//! 窗口几何由 `tauri-plugin-window-state` 单独管理。
+//! 应用把整份 [`Settings`] 以 RON 写入 `settings.ron`，窗口几何是其中的 `window` 字段。
 
 use std::path::PathBuf;
 
@@ -10,6 +9,7 @@ use iv_domain::{Language, SortOrder, ThemeSetting};
 use serde::{Deserialize, Serialize};
 
 use crate::storage::{self, Storage, StorageMut};
+use crate::window_state::WindowState;
 
 /// 设置 schema 版本。不兼容变更时递增，旧版本记录一律回退默认值。
 pub const CURRENT_VERSION: u32 = 1;
@@ -36,6 +36,9 @@ pub struct Settings {
     pub language: Language,
     /// 启动时自动检查更新（默认关闭，保持本地优先）。
     pub check_updates_on_startup: bool,
+    /// 主窗口几何：大小、位置与最大化状态，物理像素。
+    /// 缺字段的旧记录由 `#[serde(default)]` 补成「未记录」，不触发版本回退。
+    pub window: WindowState,
 }
 
 impl Default for Settings {
@@ -50,6 +53,7 @@ impl Default for Settings {
             show_thumbnails: true,
             language: Language::default(),
             check_updates_on_startup: false,
+            window: WindowState::default(),
         }
     }
 }
@@ -148,6 +152,18 @@ mod tests {
             show_thumbnails: false,
             language: Language::En,
             check_updates_on_startup: true,
+            window: WindowState {
+                width: 1180,
+                height: 800,
+                x: 120,
+                y: 80,
+                prev_x: 100,
+                prev_y: 60,
+                maximized: false,
+                visible: true,
+                decorated: true,
+                fullscreen: false,
+            },
         }
     }
 
@@ -189,6 +205,16 @@ mod tests {
         storage.set_string(STORAGE_KEY, "{ not valid ron".to_owned());
 
         assert_eq!(Settings::load(Some(&storage)), Settings::default());
+    }
+
+    #[test]
+    fn missing_window_field_uses_default() {
+        // 旧版本 settings.ron 没有 window 字段；容器级 #[serde(default)] 补默认值，
+        // 且不应触发版本不兼容回退（否则用户其余偏好会被清空）。
+        let text = format!("(version:{CURRENT_VERSION})");
+        let parsed = Settings::from_ron(&text).expect("parse");
+        assert_eq!(parsed.window, WindowState::default());
+        assert!(parsed.window.is_unset());
     }
 
     #[test]
