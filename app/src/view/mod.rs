@@ -4,6 +4,8 @@ pub mod dialog;
 pub mod library;
 pub mod menu;
 #[cfg(not(target_os = "macos"))]
+pub mod resize_handles;
+#[cfg(not(target_os = "macos"))]
 pub mod titlebar;
 pub mod viewer;
 
@@ -54,8 +56,23 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
 
     let base = column(sections).width(Fill).height(Fill);
 
+    // 无边框窗口的系统缩放边框被 NCCALCSIZE 抹掉，叠一层透明手柄补上手动缩放。
+    // 必须放在 base 这一层（菜单/弹窗遮罩之下），否则会挡住弹窗的拖拽和点击。
+    // 最大化 / 全屏时系统不响应缩放，手柄也无意义，直接省掉。
+    #[cfg(not(target_os = "macos"))]
+    let base: Element<'_, Message> = if state.maximized || state.fullscreen {
+        base.into()
+    } else {
+        stack([base.into(), resize_handles::view()])
+            .width(Fill)
+            .height(Fill)
+            .into()
+    };
+    #[cfg(target_os = "macos")]
+    let base: Element<'_, Message> = base.into();
+
     // 下拉菜单与弹窗都叠在内容之上，顺序即层级：菜单遮罩 → 菜单面板 → 弹窗。
-    let mut layers: Vec<Element<'_, Message>> = vec![base.into()];
+    let mut layers: Vec<Element<'_, Message>> = vec![base];
     if let Some(mut overlay) = menu::overlay(state) {
         layers.append(&mut overlay);
     }

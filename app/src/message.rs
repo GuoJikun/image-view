@@ -93,6 +93,8 @@ pub enum Message {
 
     /// 自绘标题栏（Win/Linux）：拖动 / 双击最大化 / caption 按钮。
     DragWindow,
+    /// 无边框窗口的系统缩放手柄已被 NCCALCSIZE 抹掉，边缘拖拽需手动触发。
+    DragResize(iced::window::Direction),
     ToggleMaximize,
     MinimizeWindow,
     CloseWindow,

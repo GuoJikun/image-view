@@ -164,6 +164,10 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             Some(id) => iced::window::drag(id),
             None => Task::none(),
         },
+        Message::DragResize(direction) => match state.window_id {
+            Some(id) => iced::window::drag_resize(id, direction),
+            None => Task::none(),
+        },
         Message::ToggleMaximize => window::toggle_maximize(state),
         Message::MinimizeWindow => window::minimize(state),
         Message::CloseWindow => window::begin_close(state),
