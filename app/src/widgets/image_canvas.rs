@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use emath::Vec2;
 use iced::widget::canvas::{self, Frame, Geometry, Image as CanvasImage};
-use iced::widget::image::FilterMethod;
+use iced::widget::image::{FilterMethod, Handle};
 use iced::{Color, Point, Rectangle, Size, Vector, mouse};
 
 use crate::message::Message;
@@ -26,6 +26,8 @@ pub fn filter_method_for(effective_zoom: f32) -> FilterMethod {
 /// 传给 Canvas 的只读快照；`view()` 每帧构造一次。
 pub struct ImageCanvas<'a> {
     pub image: Option<&'a LoadedImage>,
+    /// 动画当前帧的句柄；有值时替代首帧绘制，尺寸沿用 `image`（两者一致）。
+    pub frame_handle: Option<&'a Handle>,
     /// 逻辑点 / 纹理像素。
     pub zoom: f32,
     /// 图像中心相对画布中心的偏移。
@@ -162,7 +164,8 @@ impl canvas::Program<Message> for ImageCanvas<'_> {
                     Point::new(-rect.width / 2.0, -rect.height / 2.0),
                     rect.size(),
                 ),
-                CanvasImage::new(image.handle.clone()).filter_method(self.filter_method),
+                CanvasImage::new(self.frame_handle.unwrap_or(&image.handle).clone())
+                    .filter_method(self.filter_method),
             );
         });
 
@@ -217,6 +220,7 @@ mod tests {
         let image = fixture();
         let canvas = ImageCanvas {
             image: Some(&image),
+            frame_handle: None,
             zoom: 0.5,
             pan: Vec2::new(10.0, -20.0),
             rotation: 0,
@@ -243,6 +247,7 @@ mod tests {
     fn no_image_produces_no_rect() {
         let canvas = ImageCanvas {
             image: None,
+            frame_handle: None,
             zoom: 1.0,
             pan: Vec2::ZERO,
             rotation: 0,
@@ -271,6 +276,7 @@ mod tests {
         let image = fixture();
         let canvas = ImageCanvas {
             image: Some(&image),
+            frame_handle: None,
             zoom: 1.0,
             pan: Vec2::ZERO,
             rotation: 0,
@@ -290,6 +296,7 @@ mod tests {
         let image = fixture();
         let canvas = ImageCanvas {
             image: Some(&image),
+            frame_handle: None,
             zoom: 1.0,
             pan: Vec2::ZERO,
             rotation: 0,
@@ -313,6 +320,7 @@ mod tests {
         let image = fixture();
         let canvas = ImageCanvas {
             image: Some(&image),
+            frame_handle: None,
             zoom: 1.0,
             pan: Vec2::ZERO,
             rotation: 0,

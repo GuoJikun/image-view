@@ -15,7 +15,10 @@ use std::time::UNIX_EPOCH;
 use iced::widget::image::Handle;
 use image::ImageEncoder;
 use iv_cache::FileCache;
-use iv_image_decode::{Caps, LoadResponse, Loader, decode_thumbnail};
+use iv_image_decode::{
+    AnimationOutcome, Caps, DecodedAnimation, DegradeReason, LoadResponse, Loader,
+    decode_animation, decode_thumbnail,
+};
 
 /// 缩略图最长边（逻辑 64 px，按 2x DPI 预留）。
 pub const MAX_THUMB_SIDE: u32 = 128;
@@ -63,6 +66,221 @@ impl PreviewService {
     pub fn try_recv(&self) -> Option<LoadResponse> {
         self.loader.try_recv()
     }
+}
+
+/// 解码完成的一帧：像素已转成 iced `Handle`，GUI 侧不持有原始缓冲。
+#[derive(Clone, Debug)]
+pub struct AnimFrame {
+    pub handle: Handle,
+    /// 帧间隔（毫秒），已由 Core 钳制到 50~1000。
+    pub delay_ms: u32,
+}
+
+/// 一次可用的动画：帧句柄、循环次数与尺寸元数据。
+/// 派生 `Clone`：帧句柄是 Arc 浅克隆，服务缓存与播放状态可各持一份。
+#[derive(Clone, Debug)]
+pub struct LoadedAnimation {
+    pub frames: Vec<AnimFrame>,
+    /// `None` 表示无限循环；`Some(0)` 不会出现（Core 把 0 视为无限）。
+    pub loops: Option<u32>,
+}
+
+impl LoadedAnimation {
+    fn from_decoded(decoded: DecodedAnimation) -> Self {
+        let size = [decoded.size[0] as u32, decoded.size[1] as u32];
+        let frames = decoded
+            .frames
+            .into_iter()
+            .map(|frame| AnimFrame {
+                handle: Handle::from_rgba(size[0], size[1], frame.rgba.into_rgba8()),
+                delay_ms: frame.delay_ms,
+            })
+            .collect();
+        Self {
+            frames,
+            loops: decoded.loops,
+        }
+    }
+}
+
+/// 动画解码的结构化结果，对应 Core 的 `AnimationOutcome` 与 IO/解码错误。
+#[derive(Debug)]
+pub enum AnimationLoad {
+    /// 可用动画；帧句柄随结果交给 `ViewerState`。
+    Ready(LoadedAnimation),
+    /// 静态图或不足两帧：正常情况，不提示。
+    NotAnimated,
+    /// 本应能播却退回静态首帧：GUI 据此提示原因。
+    Degraded(DegradeReason),
+    /// 读取/解码彻底失败（静态主图已单独处理，这里只记录）。
+    Failed(String),
+}
+
+pub struct AnimationResult {
+    /// 与请求代号对应，用于丢弃切图前的过期结果。
+    pub generation: u64,
+    pub path: PathBuf,
+    pub outcome: AnimationLoad,
+}
+
+#[derive(Debug)]
+struct AnimQueue {
+    /// 只保留最新请求：切图后立即覆盖，旧结果按 generation 丢弃。
+    pending: Option<(u64, PathBuf)>,
+    closed: bool,
+}
+
+/// 动画解码服务：独立后台线程调用 Core 的 `decode_animation`，不阻塞 UI。
+///
+/// 与 [`PreviewService`] 分开，因为动画是「整段一次性解码」，而主图是
+/// latest-wins 的单张解码；两者混用会让长动画占住主图通道、拖慢翻页。
+pub struct AnimationService {
+    queue: Arc<(Mutex<AnimQueue>, Condvar)>,
+    results: Receiver<AnimationResult>,
+    next_generation: u64,
+    /// 已接受、正供画布逐帧显示的结果；`Result` 便于失败时保留静态首帧。
+    ready: Option<LoadedAnimation>,
+    ready_path: Option<PathBuf>,
+}
+
+impl Default for AnimationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AnimationService {
+    pub fn new() -> Self {
+        let queue = Arc::new((
+            Mutex::new(AnimQueue {
+                pending: None,
+                closed: false,
+            }),
+            Condvar::new(),
+        ));
+        let (sender, results) = mpsc::channel();
+        let worker_queue = Arc::clone(&queue);
+        std::thread::Builder::new()
+            .name("animation-decoder".to_owned())
+            .spawn(move || run_animation_worker(&worker_queue, &sender))
+            .expect("无法启动动画解码线程");
+        Self {
+            queue,
+            results,
+            next_generation: 0,
+            ready: None,
+            ready_path: None,
+        }
+    }
+
+    /// 排入一次动画解码；返回代号供丢弃过期结果。
+    pub fn request(&mut self, path: PathBuf) -> u64 {
+        self.next_generation += 1;
+        let generation = self.next_generation;
+        let (mutex, ready) = &*self.queue;
+        let mut queue = lock_anim_queue(mutex);
+        queue.pending = Some((generation, path));
+        ready.notify_one();
+        generation
+    }
+
+    /// 清空尚未开始的请求；已开始的解码仍会回报，但调用方按 generation 丢弃。
+    pub fn cancel(&mut self) {
+        let (mutex, _) = &*self.queue;
+        lock_anim_queue(mutex).pending = None;
+    }
+
+    pub fn try_recv(&self) -> Option<AnimationResult> {
+        self.results.try_recv().ok()
+    }
+
+    /// 接受一份动画结果并缓存到服务内，返回帧数供状态层建立播放状态。
+    pub fn accept(&mut self, animation: LoadedAnimation, path: PathBuf) {
+        self.ready = Some(animation);
+        self.ready_path = Some(path);
+    }
+
+    /// 当前路径的动画帧（浅克隆）；命中则切图回翻时不重复解码。
+    pub fn ready_for(&self, path: &Path) -> Option<LoadedAnimation> {
+        if self.ready_path.as_deref() == Some(path) {
+            self.ready.clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn forget(&mut self, path: &Path) {
+        if self.ready_path.as_deref() == Some(path) {
+            self.ready = None;
+            self.ready_path = None;
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.ready = None;
+        self.ready_path = None;
+    }
+}
+
+impl Drop for AnimationService {
+    fn drop(&mut self) {
+        let (mutex, ready) = &*self.queue;
+        let mut queue = lock_anim_queue(mutex);
+        queue.closed = true;
+        queue.pending = None;
+        ready.notify_all();
+    }
+}
+
+fn run_animation_worker(
+    queue: &Arc<(Mutex<AnimQueue>, Condvar)>,
+    sender: &Sender<AnimationResult>,
+) {
+    loop {
+        let Some((generation, path)) = next_animation_request(queue) else {
+            return;
+        };
+        let outcome = match decode_animation(&path, &Caps::default()) {
+            Ok(AnimationOutcome::Ready(decoded)) => {
+                AnimationLoad::Ready(LoadedAnimation::from_decoded(decoded))
+            }
+            Ok(AnimationOutcome::NotAnimated) => AnimationLoad::NotAnimated,
+            Ok(AnimationOutcome::Degraded(reason)) => AnimationLoad::Degraded(reason),
+            Err(error) => AnimationLoad::Failed(error.to_string()),
+        };
+        if sender
+            .send(AnimationResult {
+                generation,
+                path,
+                outcome,
+            })
+            .is_err()
+        {
+            return;
+        }
+    }
+}
+
+fn next_animation_request(queue: &Arc<(Mutex<AnimQueue>, Condvar)>) -> Option<(u64, PathBuf)> {
+    let (mutex, ready) = &**queue;
+    let mut queue = lock_anim_queue(mutex);
+    loop {
+        if let Some(request) = queue.pending.take() {
+            return Some(request);
+        }
+        if queue.closed {
+            return None;
+        }
+        queue = ready
+            .wait(queue)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+    }
+}
+
+fn lock_anim_queue(mutex: &Mutex<AnimQueue>) -> MutexGuard<'_, AnimQueue> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 pub struct ThumbResult {
@@ -346,6 +564,84 @@ mod tests {
     fn write_png(path: &Path, width: u32, height: u32) {
         let image = image::RgbaImage::from_pixel(width, height, image::Rgba([180, 40, 40, 255]));
         image.save(path).expect("写入测试图片");
+    }
+
+    /// 写一个两帧 gif，帧间隔 120 ms。
+    fn write_animated_gif(path: &Path) {
+        use image::codecs::gif::{GifEncoder, Repeat};
+        use image::{Delay, Frame};
+
+        let file = fs::File::create(path).expect("创建 gif");
+        let mut encoder = GifEncoder::new(file);
+        encoder.set_repeat(Repeat::Infinite).expect("设置循环");
+        for color in [[255, 0, 0, 255], [0, 0, 255, 255]] {
+            let buffer = image::RgbaImage::from_pixel(4, 2, image::Rgba(color));
+            let frame = Frame::from_parts(buffer, 0, 0, Delay::from_numer_denom_ms(120, 1));
+            encoder.encode_frame(frame).expect("写入 gif 帧");
+        }
+    }
+
+    /// 动画服务解码真实 gif：帧数、间隔与代号正确，缓存可供回翻复用。
+    #[test]
+    fn animation_service_decodes_and_caches_gif() {
+        let dir = temp_dir("anim");
+        let path = dir.join("loop.gif");
+        write_animated_gif(&path);
+
+        let mut service = AnimationService::new();
+        let generation = service.request(path.clone());
+        assert_eq!(generation, 1, "代号从 1 递增");
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let loaded = loop {
+            if let Some(result) = service.try_recv() {
+                assert_eq!(result.generation, generation);
+                assert_eq!(result.path, path);
+                match result.outcome {
+                    AnimationLoad::Ready(loaded) => break loaded,
+                    other => panic!("期望 Ready，得到 {other:?}"),
+                }
+            }
+            assert!(Instant::now() < deadline, "动画解码超时");
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(loaded.frames.len(), 2);
+        assert_eq!(loaded.frames[0].delay_ms, 120);
+        assert_eq!(loaded.loops, None, "Repeat::Infinite 对应无限循环");
+
+        service.accept(loaded, path.clone());
+        assert!(service.ready_for(&path).is_some(), "回翻应命中缓存");
+        assert!(service.ready_for(&dir.join("other.gif")).is_none());
+
+        drop(service);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 静态图应返回 NotAnimated，不触发播放与横幅。
+    #[test]
+    fn animation_service_reports_static_image_as_not_animated() {
+        let dir = temp_dir("anim-static");
+        let path = dir.join("still.png");
+        write_png(&path, 8, 8);
+
+        let mut service = AnimationService::new();
+        let generation = service.request(path.clone());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(result) = service.try_recv() {
+                assert_eq!(result.generation, generation);
+                assert!(
+                    matches!(result.outcome, AnimationLoad::NotAnimated),
+                    "静态 PNG 应返回 NotAnimated"
+                );
+                break;
+            }
+            assert!(Instant::now() < deadline, "动画解码超时");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        drop(service);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     /// 等待解码线程回报，超时视为失败，避免用例挂住。

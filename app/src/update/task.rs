@@ -9,6 +9,7 @@ use iced::Task;
 use iced::keyboard::{self, Key, Modifiers, key::Named};
 use iv_domain::SUPPORTED_EXTENSIONS;
 
+use crate::adapters::errors;
 use crate::i18n::Text;
 use crate::message::Message;
 use crate::state::AppState;
@@ -125,7 +126,7 @@ fn key_pressed(state: &mut AppState, key: Key, modifiers: Modifiers) -> Task<Mes
             Task::none()
         }
         Key::Named(Named::Space) => {
-            toggle_slideshow(state);
+            toggle_playback(state);
             Task::none()
         }
         Key::Character(text) => match text.as_str() {
@@ -184,6 +185,13 @@ pub fn toggle_slideshow(state: &mut AppState) {
     state.last_advance = Instant::now();
 }
 
+/// Space / 工具栏播放键：有动画时切动画播放，否则切幻灯片。
+pub fn toggle_playback(state: &mut AppState) {
+    if !state.viewer.toggle_animation() {
+        toggle_slideshow(state);
+    }
+}
+
 pub fn toggle_fullscreen(state: &AppState) -> Task<Message> {
     match state.window_id {
         Some(id) => iced::window::mode(id).map(Message::ApplyWindowMode),
@@ -220,11 +228,23 @@ pub fn poll(state: &mut AppState) -> Task<Message> {
         state.library.meta.absorb(&image);
     }
 
+    // 动画降级为静态首帧时，用顶部横幅说明原因（与 `main` 一致）。
+    if let Some(reason) = state.viewer.degrade.take() {
+        state.notice = Some(errors::degrade_text(&reason, state.text()));
+    }
+
     if state.library.thumbs.poll() {
         library::request_visible_thumbnails(state);
     }
 
+    // 动画正在播放时只推进帧，不叠加幻灯片翻页（与 `main` 的 playbackActive 一致）。
+    let animation_playing = state
+        .viewer
+        .animation
+        .as_ref()
+        .is_some_and(|animation| animation.playing);
     if state.slideshow
+        && !animation_playing
         && !state.viewer.loading()
         && state.last_advance.elapsed() >= SLIDESHOW_INTERVAL
     {

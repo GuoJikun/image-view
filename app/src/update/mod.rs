@@ -136,8 +136,8 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             Task::none()
         }
         Message::Noop => Task::none(),
-        Message::ToggleSlideshow => {
-            task::toggle_slideshow(state);
+        Message::TogglePlayback => {
+            task::toggle_playback(state);
             Task::none()
         }
         Message::Reveal => {

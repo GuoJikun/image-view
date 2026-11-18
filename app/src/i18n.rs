@@ -89,6 +89,9 @@ text_table! {
     status_slideshow,
     status_thumbnails,
     status_loading,
+    status_animation,
+    status_animation_paused,
+    status_frame,
     banner_dismiss,
 
     // 元数据面板
@@ -124,6 +127,10 @@ text_table! {
     error_trash,
     error_reveal,
     error_open,
+    // 动画降级提示
+    degrade_over_budget,
+    degrade_unsupported,
+    degrade_decode_failed,
 
     // 弹窗
     dialog_shortcuts,
@@ -192,6 +199,9 @@ pub static ZH: Text = Text {
     status_slideshow: "幻灯片中",
     status_thumbnails: "缩略图生成中…",
     status_loading: "正在加载…",
+    status_animation: "动画",
+    status_animation_paused: "动画已暂停",
+    status_frame: "帧",
     banner_dismiss: "关闭",
 
     metadata_empty: "未打开图片",
@@ -221,6 +231,9 @@ pub static ZH: Text = Text {
     error_svg: "SVG 解析失败",
     error_missing_decoder: "当前构建未包含该格式的解码器，请使用启用对应特性的版本",
     error_svgz: "不支持 Gzip 压缩的 SVGZ，请先解压为 .svg",
+    degrade_over_budget: "动画帧数或像素超出内存预算，已按静态首帧显示。",
+    degrade_unsupported: "16-bit APNG 暂不支持动画，已按静态首帧显示。",
+    degrade_decode_failed: "动画帧解码失败，已按静态首帧显示。",
     error_trash: "移入回收站失败",
     error_reveal: "无法在文件管理器中定位",
     error_open: "无法打开",
@@ -235,7 +248,7 @@ pub static ZH: Text = Text {
     shortcut_fit: "适配窗口",
     shortcut_actual: "实际大小",
     shortcut_rotate: "顺时针 / 逆时针旋转",
-    shortcut_playback: "幻灯片播放 / 暂停",
+    shortcut_playback: "播放 / 暂停动画（无动画时为幻灯片）",
     shortcut_fullscreen: "全屏",
     shortcut_trash: "移到废纸篓",
     shortcut_copy_path: "复制路径",
@@ -290,6 +303,9 @@ pub static EN: Text = Text {
     status_slideshow: "Slideshow",
     status_thumbnails: "Generating thumbnails…",
     status_loading: "Loading…",
+    status_animation: "Animation",
+    status_animation_paused: "Animation Paused",
+    status_frame: "Frame",
     banner_dismiss: "Dismiss",
 
     metadata_empty: "No image open",
@@ -319,6 +335,9 @@ pub static EN: Text = Text {
     error_svg: "SVG parsing failed",
     error_missing_decoder: "This build has no decoder for the format; use a build with that feature enabled",
     error_svgz: "Gzip-compressed SVGZ is not supported; extract it to .svg first",
+    degrade_over_budget: "Animation exceeds the frame or pixel budget; showing the first frame as a still image.",
+    degrade_unsupported: "Animation is not supported for 16-bit APNG; showing the first frame as a still image.",
+    degrade_decode_failed: "Failed to decode animation frames; showing the first frame as a still image.",
     error_trash: "Failed to move to Trash",
     error_reveal: "Cannot reveal in the file manager",
     error_open: "Cannot open",
@@ -333,7 +352,7 @@ pub static EN: Text = Text {
     shortcut_fit: "Fit to window",
     shortcut_actual: "Actual size",
     shortcut_rotate: "Rotate clockwise / counter-clockwise",
-    shortcut_playback: "Start / pause slideshow",
+    shortcut_playback: "Play / pause animation (slideshow when static)",
     shortcut_fullscreen: "Fullscreen",
     shortcut_trash: "Move to Trash",
     shortcut_copy_path: "Copy path",

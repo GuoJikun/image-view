@@ -3,7 +3,7 @@
 //! 核心 crate 只返回结构化错误，本地化留在 GUI 层：这里按 [`Text`] 组装句子，
 //! 不在 Core 里出现任何中英文字面量。
 
-use iv_image_decode::LoadError;
+use iv_image_decode::{DegradeReason, LoadError};
 use iv_metadata::ColorInfo;
 use iv_platform::FileOpError;
 
@@ -25,6 +25,15 @@ pub fn load_error_text(error: &LoadError, t: &Text) -> String {
         LoadError::MissingDecoder { format, extension } => t.missing_decoder(format, extension),
         #[cfg(feature = "svg")]
         LoadError::SvgzUnsupported => t.error_svgz.to_owned(),
+    }
+}
+
+/// 动画降级原因 → 用户可读提示（与 `main` 的 `degrade.*` 文案对应）。
+pub fn degrade_text(reason: &DegradeReason, t: &Text) -> String {
+    match reason {
+        DegradeReason::OverBudget { .. } => t.degrade_over_budget.to_owned(),
+        DegradeReason::Unsupported16Bit => t.degrade_unsupported.to_owned(),
+        DegradeReason::DecodeFailed { message } => t.detail(t.degrade_decode_failed, message),
     }
 }
 

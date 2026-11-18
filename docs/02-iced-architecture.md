@@ -561,6 +561,14 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。缩略图经
   `iv-cache::FileCache` 写入磁盘缓存（键为「源路径摘要 / mtime / 目标边长」，
   预算 256 MiB，与 `main` 对齐），命中时跳过解码；源文件删除时按路径前缀失效。
+- **动画播放**：`adapters/preview.rs::AnimationService` 用独立后台线程调用 Core 的
+  `decode_animation`，一次解出全部帧并转成 `iced::image::Handle`，GUI 侧不保存像素
+  缓冲。请求带 generation、latest-wins，切图时旧结果按路径 + 代号丢弃；服务内保留一份
+  帧供当前会话回翻复用（不写磁盘缓存）。`ViewerState::PlayingAnimation` 保存帧句柄、
+  帧间隔、循环次数与播放进度，`Poll` 每 50 ms 比对 `next_tick` 推进一帧，有限循环播完
+  停在末帧并暂停；`Space` / 工具栏播放键有动画时切播放、无动画时切幻灯片。画布通过
+  `ImageCanvas::frame_handle` 取当前帧，尺寸沿用首帧（与动画帧一致）。降级原因
+  （超预算 / 16-bit APNG / 解码失败）走 `DegradeReason` → 顶部横幅，中英文案在 `i18n.rs`。
 - **异步**：主图解码复用 `iv-image-decode::Loader` 的 latest-wins 语义，过期
   结果按 generation 丢弃；相邻图片（前后各一张）以 `Purpose::Preload` 预加载，
   结果只进 `ViewerState` 的预算缓存、不改变当前画面，超过
@@ -616,7 +624,7 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。缩略图磁盘缓存放在平台缓存目录的
   `image-view/thumbnails/`（可用 `IMAGE_VIEW_ICED_CACHE_DIR` 覆盖），
   与偏好分离，可随时删除重建。元数据面板开关仍只在本次会话生效。
-- **测试**：`app/src` 内有 46 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标、caption 配色、预加载分流、缩略图磁盘缓存往返与窗口几何换算 / 关闭采集）；
+- **测试**：`app/src` 内有 58 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标、caption 配色、预加载分流、缩略图磁盘缓存往返、动画循环 / 暂停与 gif 解码、窗口几何换算 / 关闭采集）；
   质量门禁命令见 [AGENTS.md](../AGENTS.md)。
 
 ### 12.3 尚未完成
@@ -627,8 +635,8 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
    标题栏，macOS 占顶部一行），但没有接入系统菜单栏；触控板手势未做。
 4. 长时浏览的大图 GPU 资源生命周期、macOS/Linux renderer 实机验证；自绘标题栏
    与窗口拖动/缩放同样只在 Windows 上验证过，macOS 分支未交叉编译验证。
-5. 动画逐帧播放：GIF / WebP / APNG 目前按静态首帧显示；Core 的动画帧解码能力
-   随 `main` 合并进来了，但 Iced GUI 尚未接线。
+5. 动画帧的磁盘缓存：当前只在内存保留已解码动画，重启后重新解码；静态缩略图
+   仍有 `iv-cache::FileCache` 磁盘缓存。
 6. 元数据面板开关仍未持久化（`iv-infra::Settings` 没有对应字段，只在本次会话
    生效）；「启动时检查更新」随自动更新一并不在本分支范围。
 7. 窗口几何的显示器校验：Iced 0.14 没有公开的显示器枚举 API，

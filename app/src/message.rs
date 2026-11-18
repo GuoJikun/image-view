@@ -60,7 +60,8 @@ pub enum Message {
     },
 
     ToggleThumbnails,
-    ToggleSlideshow,
+    /// 播放 / 暂停：有动画时控制动画，否则控制幻灯片。
+    TogglePlayback,
 
     // ---- 菜单栏 ----
     /// 点击分组：展开 / 收起。

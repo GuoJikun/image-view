@@ -74,7 +74,7 @@ cargo test --workspace
 
 ## 本分支没有的能力
 
-以下在主分支存在、但本分支**没有**，不要按主分支的文档去实现或声称具备：Tauri / Vue 前端、`iviewer://` 资源协议、系统原生菜单栏（菜单为窗口内自绘）、自动更新、单实例 / IPC / 文件关联、安装包与发布流程、WebView 相关的一切（CSP、Display P3 画布、16-bit 屏幕呈现）、动画逐帧播放、文件监听（`notify`）、触控板手势。需要这些时先确认是否属于本分支范围。
+以下在主分支存在、但本分支**没有**，不要按主分支的文档去实现或声称具备：Tauri / Vue 前端、`iviewer://` 资源协议、系统原生菜单栏（菜单为窗口内自绘）、自动更新、单实例 / IPC / 文件关联、安装包与发布流程、WebView 相关的一切（CSP、Display P3 画布、16-bit 屏幕呈现）、文件监听（`notify`）、触控板手势。需要这些时先确认是否属于本分支范围。动画逐帧播放已在 Iced GUI 接入（`AnimationService` + `ViewerState::PlayingAnimation`），但不是 WebView 路径。
 
 ## 文档措辞
 

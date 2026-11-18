@@ -3,17 +3,18 @@
 //! 像素资源由解码层持有，GUI 只保存 iced `image::Handle` 和轻量元数据；
 //! LRU 只缓存少量相邻图片，切换目录或淘汰时资源随句柄释放。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use emath::Vec2;
 use iced::widget::image::Handle;
 use iv_cache::BudgetCache;
-use iv_image_decode::{Decoded, LoadError, LoadResponse, Purpose};
+use iv_image_decode::{Decoded, DegradeReason, LoadError, LoadResponse, Purpose};
 use iv_image_render::{ViewMode, ViewState};
 use iv_metadata::ColorInfo;
 
 use crate::adapters::errors;
-use crate::adapters::preview::PreviewService;
+use crate::adapters::preview::{AnimationLoad, AnimationService, LoadedAnimation, PreviewService};
 
 /// 缓存最近三张预览（当前 + 前后各一张），与 `main` 一致。
 const PREVIEW_CACHE_ENTRIES: usize = 3;
@@ -56,7 +57,96 @@ impl LoadedImage {
     }
 }
 
+/// 正在播放的动画。帧句柄存在这里，画布按 `frame_index` 取用；不保存像素缓冲。
+pub struct PlayingAnimation {
+    pub frames: Vec<Handle>,
+    pub delays: Vec<u32>,
+    /// `None` 表示无限循环。
+    pub loops: Option<u32>,
+    pub frame_index: usize,
+    /// 已完成多少轮，用于有限循环播完停在末帧。
+    pub loops_played: u32,
+    pub playing: bool,
+    /// 下一帧的最早切换时刻；由 `Poll` 比对，避免额外定时消息。
+    pub next_tick: Instant,
+}
+
+impl PlayingAnimation {
+    fn new(loaded: LoadedAnimation) -> Self {
+        let delays: Vec<u32> = loaded.frames.iter().map(|frame| frame.delay_ms).collect();
+        let frames = loaded
+            .frames
+            .into_iter()
+            .map(|frame| frame.handle)
+            .collect();
+        Self {
+            frames,
+            delays,
+            loops: loaded.loops,
+            frame_index: 0,
+            loops_played: 0,
+            playing: true,
+            next_tick: Instant::now(),
+        }
+    }
+
+    pub fn frame_count(&self) -> usize {
+        self.frames.len()
+    }
+
+    /// 当前帧的句柄；索引由播放逻辑保证有效。
+    pub fn current_handle(&self) -> &Handle {
+        &self.frames[self.frame_index]
+    }
+
+    /// 当前帧间隔。
+    pub fn delay(&self) -> Duration {
+        Duration::from_millis(self.delays[self.frame_index] as u64)
+    }
+
+    /// 推进一帧；有限循环播完停在末帧并转为暂停。返回是否真正换了帧。
+    ///
+    /// 与 `main` 的 `advanceFrame` 同语义：到末帧后轮数 +1，未达总轮数则回到首帧。
+    pub fn advance(&mut self) -> bool {
+        let next = self.frame_index + 1;
+        if next < self.frames.len() {
+            self.frame_index = next;
+            self.next_tick = Instant::now() + self.delay();
+            return true;
+        }
+
+        self.loops_played = self.loops_played.saturating_add(1);
+        if self.loops.is_some_and(|total| self.loops_played >= total) {
+            // 有限循环播完，停在最后一帧。
+            self.playing = false;
+            return false;
+        }
+        self.frame_index = 0;
+        self.next_tick = Instant::now() + self.delay();
+        true
+    }
+
+    /// 暂停 / 继续；有限循环播完后再按播放，从首帧重新开始。
+    pub fn toggle(&mut self) {
+        if self.playing {
+            self.playing = false;
+            return;
+        }
+        if self.loops.is_some_and(|total| self.loops_played >= total) {
+            self.loops_played = 0;
+            self.frame_index = 0;
+        }
+        self.playing = true;
+        self.next_tick = Instant::now() + self.delay();
+    }
+}
+
 struct PendingPreview {
+    request: u64,
+    path: PathBuf,
+}
+
+struct PendingAnimation {
     request: u64,
     path: PathBuf,
 }
@@ -67,9 +157,14 @@ pub struct ViewerState {
     /// 画布逻辑尺寸；`sensor` 上报，键盘缩放和边界钳制使用。
     pub canvas: Vec2,
     pub error: Option<String>,
+    /// 动画因超预算 / 16-bit / 解码失败降级为静态首帧时的原因。
+    pub degrade: Option<DegradeReason>,
+    pub animation: Option<PlayingAnimation>,
     cache: BudgetCache<PathBuf, LoadedImage>,
     pending: Option<PendingPreview>,
     preview: PreviewService,
+    animations: AnimationService,
+    pending_animation: Option<PendingAnimation>,
 }
 
 impl Default for ViewerState {
@@ -85,9 +180,13 @@ impl ViewerState {
             view: ViewState::default(),
             canvas: Vec2::ZERO,
             error: None,
+            degrade: None,
+            animation: None,
             cache: BudgetCache::new(PREVIEW_CACHE_ENTRIES, PREVIEW_CACHE_PIXELS, preview_pixels),
             pending: None,
             preview: PreviewService::new(),
+            animations: AnimationService::new(),
+            pending_animation: None,
         }
     }
 
@@ -99,6 +198,10 @@ impl ViewerState {
     ///
     /// 返回 `true` 表示立即得到了结果（缓存命中），`false` 表示正在解码。
     pub fn show(&mut self, path: &PathBuf) -> bool {
+        // 先重置上一张的播放状态；动画结果按路径 + generation 判定新旧。
+        self.reset_animation();
+        let animation_request = self.request_animation(path);
+
         if self.image.as_ref().is_some_and(|image| &image.path == path) {
             return true;
         }
@@ -120,15 +223,33 @@ impl ViewerState {
         self.image = None;
         self.error = None;
         self.reset_view();
+        let _ = animation_request;
         false
+    }
+
+    /// 排入动画解码；命中服务内缓存则立即建立播放状态。
+    /// 返回本轮请求代号，`0` 表示无需解码（已有缓存）。
+    fn request_animation(&mut self, path: &Path) -> u64 {
+        if let Some(loaded) = self.animations.ready_for(path) {
+            self.animation = Some(PlayingAnimation::new(loaded));
+            return 0;
+        }
+        let request = self.animations.request(path.to_path_buf());
+        self.pending_animation = Some(PendingAnimation {
+            request,
+            path: path.to_path_buf(),
+        });
+        request
     }
 
     /// 当前图片被删除时，连同缓存一起清理。
     pub fn forget(&mut self, path: &PathBuf) {
         self.cache.remove(path);
+        self.animations.forget(path);
         if self.image.as_ref().is_some_and(|image| &image.path == path) {
             self.image = None;
             self.pending = None;
+            self.reset_animation();
         }
     }
 
@@ -137,12 +258,33 @@ impl ViewerState {
         self.pending = None;
         self.error = None;
         self.preview.cancel();
+        self.reset_animation();
+        self.animations.clear();
         self.reset_view();
     }
 
-    /// 排空解码线程；返回是否有当前图片的结果被接受。
+    /// 清空播放状态与在途动画请求（保留服务内已完成的结果供回翻复用）。
+    fn reset_animation(&mut self) {
+        self.animation = None;
+        self.degrade = None;
+        self.pending_animation = None;
+        self.animations.cancel();
+    }
+
+    /// Space / 工具栏：有动画时切播放，返回是否消费了这次操作。
+    pub fn toggle_animation(&mut self) -> bool {
+        if let Some(animation) = &mut self.animation {
+            animation.toggle();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// 排空解码线程与动画线程的结果，并按帧间隔推进动画。
+    /// 返回是否有画面变化需要重绘。
     pub fn poll(&mut self, t: &crate::i18n::Text) -> bool {
-        let mut changed = false;
+        let mut changed = self.poll_animation();
 
         while let Some(response) = self.preview.try_recv() {
             if response.purpose == Purpose::Preload {
@@ -175,6 +317,55 @@ impl ViewerState {
             changed = true;
         }
 
+        changed
+    }
+
+    /// 排空动画线程结果并按帧间隔推进；返回画面是否变化。
+    fn poll_animation(&mut self) -> bool {
+        let mut changed = false;
+        while let Some(result) = self.animations.try_recv() {
+            // 切图前的旧结果：路径或代号不匹配即丢弃。
+            let accepted = self.pending_animation.as_ref().is_some_and(|pending| {
+                pending.request == result.generation && pending.path == result.path
+            });
+            if !accepted {
+                continue;
+            }
+            self.pending_animation = None;
+            match result.outcome {
+                AnimationLoad::Ready(loaded) => {
+                    // 服务保留一份供回翻复用，播放状态另持一份浅克隆。
+                    self.animations.accept(loaded.clone(), result.path.clone());
+                    self.animation = Some(PlayingAnimation::new(loaded));
+                    changed = true;
+                }
+                AnimationLoad::NotAnimated => {
+                    // 静态图正常显示首帧，不提示。
+                }
+                AnimationLoad::Failed(message) => {
+                    // 静态主图已单独处理；动画失败只记录，避免重复错误横幅。
+                    log::debug!(
+                        target: "image_view::viewer",
+                        "动画解码失败，按静态首帧显示 {}：{message}",
+                        result.path.display()
+                    );
+                }
+                AnimationLoad::Degraded(reason) => {
+                    self.degrade = Some(reason);
+                }
+            }
+        }
+
+        let due = self
+            .animation
+            .as_ref()
+            .is_some_and(|animation| animation.playing && Instant::now() >= animation.next_tick);
+        if due
+            && let Some(animation) = &mut self.animation
+            && animation.advance()
+        {
+            changed = true;
+        }
         changed
     }
 
@@ -317,6 +508,59 @@ mod tests {
             source_depth: 8,
             color: ColorInfo::default(),
         }
+    }
+
+    fn anim_frame() -> crate::adapters::preview::AnimFrame {
+        crate::adapters::preview::AnimFrame {
+            handle: Handle::from_rgba(1, 1, vec![0; 4]),
+            delay_ms: 50,
+        }
+    }
+
+    fn animation(frame_count: usize, loops: Option<u32>) -> PlayingAnimation {
+        PlayingAnimation::new(LoadedAnimation {
+            frames: (0..frame_count).map(|_| anim_frame()).collect(),
+            loops,
+        })
+    }
+
+    /// 播放推进：到末帧回到首帧；有限循环播完停在末帧并暂停。
+    #[test]
+    fn animation_advances_and_stops_after_finite_loops() {
+        let mut animation = animation(2, Some(2));
+        assert!(animation.playing);
+        assert_eq!(animation.frame_index, 0);
+
+        assert!(animation.advance());
+        assert_eq!(animation.frame_index, 1);
+        assert!(animation.advance(), "末帧 → 首帧（第 2 轮）");
+        assert_eq!(animation.frame_index, 0);
+        assert_eq!(animation.loops_played, 1);
+        assert!(animation.advance());
+        assert_eq!(animation.frame_index, 1);
+        assert!(!animation.advance(), "第 2 轮播完应停止");
+        assert!(!animation.playing);
+        assert_eq!(animation.frame_index, 1, "停在最后一帧");
+
+        // 播完后再按播放：从首帧重新开始。
+        animation.toggle();
+        assert!(animation.playing);
+        assert_eq!(animation.frame_index, 0);
+        assert_eq!(animation.loops_played, 0);
+    }
+
+    /// 无限循环不会自行停止；暂停后帧号不变。
+    #[test]
+    fn animation_infinite_loops_and_toggle_pause() {
+        let mut animation = animation(3, None);
+        for _ in 0..7 {
+            assert!(animation.advance());
+        }
+        assert!(animation.playing);
+        animation.toggle();
+        assert!(!animation.playing);
+        animation.toggle();
+        assert!(animation.playing);
     }
 
     /// 只带尺寸元数据的假图：验证像素预算时无需真的分配几十 MP 内存。

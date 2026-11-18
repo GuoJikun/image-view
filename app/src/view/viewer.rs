@@ -86,6 +86,15 @@ fn separator(theme_ref: &iced::Theme) -> Element<'static, Message> {
         .into()
 }
 
+/// 当前是否有动画正在播放（工具栏图标据此在播放/停止间切换）。
+fn playback_active(state: &AppState) -> bool {
+    state
+        .viewer
+        .animation
+        .as_ref()
+        .is_some_and(|animation| animation.playing)
+}
+
 pub fn toolbar(state: &AppState) -> Element<'_, Message> {
     let t = theme_of(state);
 
@@ -150,15 +159,15 @@ pub fn toolbar(state: &AppState) -> Element<'_, Message> {
             &t,
         ),
         tool(
-            if state.slideshow {
+            if state.slideshow || playback_active(state) {
                 Icon::Stop
             } else {
                 Icon::Play
             },
             TOOL_MEDIA,
-            Message::ToggleSlideshow,
+            Message::TogglePlayback,
             true,
-            state.slideshow,
+            state.slideshow || playback_active(state),
             &t,
         ),
         sort_button,
@@ -258,8 +267,15 @@ pub fn canvas_area(state: &AppState) -> Element<'_, Message> {
         .viewer
         .effective_zoom(state.scale_factor)
         .unwrap_or(1.0);
+    // 暂停时同样停在当前帧（frame_index 不变），只在未播放时画面仍是该帧。
+    let frame_handle = state
+        .viewer
+        .animation
+        .as_ref()
+        .map(|animation| animation.current_handle());
     let model = crate::widgets::image_canvas::ImageCanvas {
         image: state.viewer.image.as_ref(),
+        frame_handle,
         zoom: zoom / state.scale_factor.max(0.01),
         pan: state.viewer.view.pan,
         rotation: state.viewer.view.rotation,
@@ -401,7 +417,25 @@ pub fn status_bar(state: &AppState) -> Element<'_, Message> {
 
     let right: Element<'_, Message> = {
         let mut parts: Vec<Element<'_, Message>> = Vec::new();
-        if state.slideshow {
+        if let Some(animation) = &state.viewer.animation {
+            let (label, color) = if animation.playing {
+                (state.text().status_animation, p.success)
+            } else {
+                (state.text().status_animation_paused, p.text3)
+            };
+            parts.push(text(label).size(11).color(color).into());
+            parts.push(
+                text(format!(
+                    "{} {}/{}",
+                    state.text().status_frame,
+                    animation.frame_index + 1,
+                    animation.frame_count()
+                ))
+                .size(11)
+                .color(p.text2)
+                .into(),
+            );
+        } else if state.slideshow {
             parts.push(
                 text(state.text().status_slideshow)
                     .size(11)

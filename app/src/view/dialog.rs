@@ -1,6 +1,6 @@
 //! 快捷键弹窗（规范 4.8）：两列「按键 + 说明」，遮罩点击关闭。
 //!
-//! 只列本分支真实支持的快捷键；翻转、动画逐帧等能力不在本分支，不予展示。
+//! 只列本分支真实支持的快捷键；翻转能力不在本分支，不予展示。
 
 use iced::widget::{button, column, container, mouse_area, row, space, stack, text};
 use iced::{Element, Fill, Padding, mouse};
