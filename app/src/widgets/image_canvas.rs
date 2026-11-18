@@ -13,6 +13,16 @@ use iced::{Color, Point, Rectangle, Size, Vector, mouse};
 use crate::message::Message;
 use crate::state::viewer_state::LoadedImage;
 
+/// 与 `main` 一致：显示比例 ≥100%（含 DPI）时关闭平滑，逐像素查看更锐利；
+/// 缩小时用双线性插值，避免纹理闪烁。
+pub fn filter_method_for(effective_zoom: f32) -> FilterMethod {
+    if effective_zoom >= 1.0 {
+        FilterMethod::Nearest
+    } else {
+        FilterMethod::Linear
+    }
+}
+
 /// 传给 Canvas 的只读快照；`view()` 每帧构造一次。
 pub struct ImageCanvas<'a> {
     pub image: Option<&'a LoadedImage>,
@@ -22,6 +32,8 @@ pub struct ImageCanvas<'a> {
     pub pan: Vec2,
     pub rotation: u8,
     pub background: Color,
+    /// 采样策略由 view 层按含 DPI 的显示比例算好传入；画布不做业务判断。
+    pub filter_method: FilterMethod,
 }
 
 /// 画布内部的交互状态：拖拽起点与双击计时。
@@ -150,7 +162,7 @@ impl canvas::Program<Message> for ImageCanvas<'_> {
                     Point::new(-rect.width / 2.0, -rect.height / 2.0),
                     rect.size(),
                 ),
-                CanvasImage::new(image.handle.clone()).filter_method(FilterMethod::Linear),
+                CanvasImage::new(image.handle.clone()).filter_method(self.filter_method),
             );
         });
 
@@ -209,6 +221,7 @@ mod tests {
             pan: Vec2::new(10.0, -20.0),
             rotation: 0,
             background: Color::BLACK,
+            filter_method: FilterMethod::Linear,
         };
 
         let rect = canvas.image_rect(Size::new(800.0, 600.0)).unwrap();
@@ -216,6 +229,14 @@ mod tests {
         assert_eq!(rect.height, 50.0);
         assert_eq!(rect.x, 360.0);
         assert_eq!(rect.y, 255.0);
+    }
+
+    /// 与 `main` 一致：≥100% 关闭平滑，缩小时保留双线性插值。
+    #[test]
+    fn filtering_switches_to_nearest_at_full_size() {
+        assert_eq!(filter_method_for(0.99), FilterMethod::Linear);
+        assert_eq!(filter_method_for(1.0), FilterMethod::Nearest);
+        assert_eq!(filter_method_for(2.5), FilterMethod::Nearest);
     }
 
     #[test]
@@ -226,6 +247,7 @@ mod tests {
             pan: Vec2::ZERO,
             rotation: 0,
             background: Color::BLACK,
+            filter_method: FilterMethod::Linear,
         };
         assert!(canvas.image_rect(Size::new(100.0, 100.0)).is_none());
     }
@@ -253,6 +275,7 @@ mod tests {
             pan: Vec2::ZERO,
             rotation: 0,
             background: Color::BLACK,
+            filter_method: FilterMethod::Linear,
         };
 
         assert_eq!(
@@ -271,6 +294,7 @@ mod tests {
             pan: Vec2::ZERO,
             rotation: 0,
             background: Color::BLACK,
+            filter_method: FilterMethod::Linear,
         };
 
         assert_eq!(
@@ -293,6 +317,7 @@ mod tests {
             pan: Vec2::ZERO,
             rotation: 0,
             background: Color::BLACK,
+            filter_method: FilterMethod::Linear,
         };
         let state = CanvasInteraction {
             drag_from: Some(Point::new(10.0, 10.0)),

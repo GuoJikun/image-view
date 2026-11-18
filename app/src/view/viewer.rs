@@ -250,6 +250,7 @@ pub fn canvas_area(state: &AppState) -> Element<'_, Message> {
         pan: state.viewer.view.pan,
         rotation: state.viewer.view.rotation,
         background: theme::CANVAS_BACKGROUND,
+        filter_method: crate::widgets::image_canvas::filter_method_for(zoom),
     };
 
     let mut layers: Vec<Element<'_, Message>> = vec![canvas(model).width(Fill).height(Fill).into()];

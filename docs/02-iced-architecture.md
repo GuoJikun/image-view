@@ -547,7 +547,9 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   元数据面板）、`Settings` 与 `FileStorage`；GUI 侧不保存像素 Buffer。
 - **画布**：`widgets/image_canvas.rs` 实现 `canvas::Program`，几何计算全部来自
   `iv-image-render::ViewState`（滚动缩放锚定光标、拖拽平移、双击切换
-  适配/100%、旋转 90° 步进）。
+  适配/100%、旋转 90° 步进）。采样策略由 view 层按含 DPI 的显示比例判定：
+  ≥100% 用 `FilterMethod::Nearest` 逐像素显示、低于 100% 用 `Linear` 平滑缩小，
+  与 `main` 一致。
 - **缩略图条**：水平虚拟滚动，只为可见区间（外扩 3 张）构建 widget，首尾用
   `Space` 撑出内容宽度；滚动偏移回传后按需排队解码。缩略图经
   `iv-cache::FileCache` 写入磁盘缓存（键为「源路径摘要 / mtime / 目标边长」，
