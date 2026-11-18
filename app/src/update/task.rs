@@ -14,7 +14,7 @@ use crate::message::Message;
 use crate::state::AppState;
 use crate::state::app_state::Dialog;
 use crate::state::app_state::SLIDESHOW_INTERVAL;
-use crate::update::{library, viewer};
+use crate::update::{library, viewer, window};
 
 /// 后台线程的轮询周期。解码线程本身不阻塞 UI，这里只决定结果回到 UI 的延迟。
 pub const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
@@ -38,10 +38,21 @@ pub fn handle_event(state: &mut AppState, event: iced::Event) -> Task<Message> {
         }
         iced::Event::Window(iced::window::Event::Rescaled(factor)) => {
             viewer::scale_factor(state, factor);
+            state.scale_known = true;
             Task::none()
         }
-        iced::Event::Window(iced::window::Event::CloseRequested) => {
-            library::persist(state);
+        iced::Event::Window(iced::window::Event::Moved(point)) => {
+            window::moved(state, point);
+            Task::none()
+        }
+        iced::Event::Window(iced::window::Event::Resized(size)) => {
+            window::resized(state, size);
+            Task::none()
+        }
+        iced::Event::Window(iced::window::Event::CloseRequested) => window::begin_close(state),
+        // 从任务栏还原后最小化标志失效；失焦不等于最小化，不能在这里改。
+        iced::Event::Window(iced::window::Event::Focused) => {
+            state.minimized = false;
             Task::none()
         }
         // 指针移出窗口或窗口失焦时，caption 按钮收不到 `on_exit`（鼠标直接移出边缘、
@@ -197,6 +208,11 @@ pub fn apply_window_mode(state: &mut AppState, mode: iced::window::Mode) -> Task
 
 /// 排空主图与缩略图线程的结果；解码结果只接受当前 generation。
 pub fn poll(state: &mut AppState) -> Task<Message> {
+    // 恢复几何后的移动事件会晚于动作本身到达，用几次轮询的宽限期忽略。
+    if state.restore_grace > 0 {
+        state.restore_grace -= 1;
+    }
+
     let text = state.text();
     if state.viewer.poll(text)
         && let Some(image) = state.viewer.image.clone()

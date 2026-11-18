@@ -6,16 +6,50 @@ use std::time::Instant;
 use iced::Task;
 use iv_application::FolderNav;
 use iv_infra::settings::Settings;
+use iv_infra::window_state::WindowState;
 
 use crate::adapters::storage::FileStorage;
 use crate::i18n::{self, Text};
 use crate::menu::MenuState;
-use crate::message::{Caption, Message};
+use crate::message::{Caption, CloseQueryPart, Message};
 use crate::state::library_state::LibraryState;
 use crate::state::viewer_state::ViewerState;
 
 /// 幻灯片自动前进间隔。
 pub const SLIDESHOW_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// 关窗前待凑齐的窗口状态。
+///
+/// Iced 0.14 没有最大化 / 最小化事件，只能在关闭时查询；位置、尺寸、全屏与两个
+/// 标志各查一次，全部到齐后再统一采集几何并落盘，避免多次写 `settings.ron`。
+#[derive(Debug, Default)]
+pub struct CloseQuery {
+    pub maximized: Option<bool>,
+    pub minimized: Option<bool>,
+    pub fullscreen: Option<bool>,
+    pub size: Option<iced::Size>,
+    pub position: Option<Option<iced::Point>>,
+}
+
+impl CloseQuery {
+    pub fn absorb(&mut self, part: CloseQueryPart) {
+        match part {
+            CloseQueryPart::Maximized(value) => self.maximized = Some(value),
+            CloseQueryPart::Minimized(value) => self.minimized = Some(value),
+            CloseQueryPart::Fullscreen(value) => self.fullscreen = Some(value),
+            CloseQueryPart::Size(size) => self.size = Some(size),
+            CloseQueryPart::Position(point) => self.position = Some(point),
+        }
+    }
+
+    pub fn complete(&self) -> bool {
+        self.maximized.is_some()
+            && self.minimized.is_some()
+            && self.fullscreen.is_some()
+            && self.size.is_some()
+            && self.position.is_some()
+    }
+}
 
 /// 当前打开的模态弹窗。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +76,17 @@ pub struct AppState {
     pub slideshow: bool,
     pub last_advance: Instant,
     pub scale_factor: f32,
+    /// DPI 是否已由 `WindowReady` 查询过；采集位置需要逻辑→物理换算。
+    pub scale_known: bool,
+    /// 启动时保存的窗口几何，等 DPI 到手后应用一次。
+    pub pending_window: Option<WindowState>,
+    /// 恢复几何后仍会回抛 `Moved`；用几次轮询的宽限期忽略这些事件。
+    pub restore_grace: u8,
+    /// 最大化状态：Iced 没有对应事件，由显式动作与关闭查询维护。
+    pub maximized: bool,
+    pub minimized: bool,
+    /// 关闭流程进行中；五项查询全部返回后才采集并关窗。
+    pub closing: Option<CloseQuery>,
     pub window_id: Option<iced::window::Id>,
     pub fullscreen: bool,
     /// 文件正被拖入窗口：画布叠加强调色提示「松开以打开」。
@@ -72,6 +117,7 @@ impl AppState {
 
         let system_locale = iv_platform::system_locale();
 
+        let window = crate::startup_window();
         let mut state = Self {
             nav,
             viewer: ViewerState::new(),
@@ -86,9 +132,15 @@ impl AppState {
             slideshow: false,
             last_advance: Instant::now(),
             scale_factor: 1.0,
+            scale_known: false,
+            pending_window: window.clone(),
+            restore_grace: 0,
+            maximized: window.as_ref().is_some_and(|window| window.maximized),
+            minimized: false,
+            closing: None,
             window_id: None,
             drag_hover: false,
-            fullscreen: false,
+            fullscreen: window.as_ref().is_some_and(|window| window.fullscreen),
         };
 
         let task = match startup {
@@ -137,6 +189,12 @@ impl AppState {
             slideshow: false,
             last_advance: Instant::now(),
             scale_factor: 1.0,
+            scale_known: true,
+            pending_window: None,
+            restore_grace: 0,
+            maximized: false,
+            minimized: false,
+            closing: None,
             window_id: None,
             drag_hover: false,
             fullscreen: false,

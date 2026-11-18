@@ -586,12 +586,20 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
   决定语言偏好，「跟随系统」经 `iv-platform::system_locale()` 与
   `iv-domain::Language::resolve_tag` 解析（非中文回退英文），切换即时生效并
   持久化；快捷键弹窗（`view/dialog.rs`）的文案同样取自这张表。
-- **持久化**：最近目录、最近文件、排序、缩略图条开关、主题、界面语言与
-  色彩转换标记写入 `settings.ron`（默认 `%APPDATA%\image-view\`，可用
+- **窗口几何**：主窗口大小、位置、最大化与全屏状态存在同一份 `settings.ron`
+  的 `window` 字段（`iv-infra::window_state`，物理像素）。启动时先以隐藏窗口创建，
+  `WindowReady` 查到 DPI 后换算成逻辑像素，依次 `resize` / `move_to` /
+  `maximize` / `set_mode` 再显示，避免先出现在默认位置再跳动；拖动与缩放只更新
+  内存，关闭时一次性查询最大化 / 最小化 / 全屏 / 尺寸 / 位置后采集并落盘
+  （`update/window.rs`）。Iced 0.14 没有最大化事件，也没有枚举显示器的 API：
+  标志由显式动作跟踪；位置直接按保存值恢复、不做显示器校验，
+  Core 的 `plan_restore` 仍负责尺寸与最大化/全屏。
+- **持久化**：最近目录、最近文件、排序、缩略图条开关、主题、界面语言、
+  色彩转换标记与窗口几何写入 `settings.ron`（默认 `%APPDATA%\image-view\`，可用
   `IMAGE_VIEW_ICED_CONFIG_DIR` 覆盖）。缩略图磁盘缓存放在平台缓存目录的
   `image-view/thumbnails/`（可用 `IMAGE_VIEW_ICED_CACHE_DIR` 覆盖），
   与偏好分离，可随时删除重建。元数据面板开关仍只在本次会话生效。
-- **测试**：`app/src` 内有 36 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标、caption 配色、预加载分流与缩略图磁盘缓存往返）；
+- **测试**：`app/src` 内有 46 个单测（随实现放置，含文案表完整性、菜单结构、悬停 / 点击、画布光标、caption 配色、预加载分流、缩略图磁盘缓存往返与窗口几何换算 / 关闭采集）；
   质量门禁命令见 [AGENTS.md](../AGENTS.md)。
 
 ### 12.3 尚未完成
@@ -608,4 +616,7 @@ cargo run -p image-view -- "D:\photos"     # 目录取第一张
    随 `main` 合并进来了，但 Iced GUI 尚未接线。
 7. 元数据面板开关仍未持久化（`iv-infra::Settings` 没有对应字段，只在本次会话
    生效）；「启动时检查更新」随自动更新一并不在本分支范围。
+8. 窗口几何的显示器校验：Iced 0.14 没有公开的显示器枚举 API，
+   `plan_restore` 在无法枚举时按保存坐标恢复；拔掉副屏后窗口可能出现在可见区域
+   之外，需要手动拖回。
 

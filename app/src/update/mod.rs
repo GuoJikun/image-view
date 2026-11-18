@@ -7,6 +7,7 @@ pub mod library;
 pub mod menu;
 pub mod task;
 pub mod viewer;
+pub mod window;
 
 use iced::Task;
 
@@ -152,27 +153,17 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             None => Task::none(),
         },
         Message::Event(event) => task::handle_event(state, event),
-        Message::WindowReady(id) => {
-            state.window_id = Some(id);
-            Task::none()
-        }
+        Message::WindowReady(id) => window::ready(state, id),
+        Message::WindowScale(factor) => window::scaled(state, factor),
         Message::ApplyWindowMode(mode) => task::apply_window_mode(state, mode),
         Message::DragWindow => match state.window_id {
             Some(id) => iced::window::drag(id),
             None => Task::none(),
         },
-        Message::ToggleMaximize => match state.window_id {
-            Some(id) => iced::window::toggle_maximize(id),
-            None => Task::none(),
-        },
-        Message::MinimizeWindow => match state.window_id {
-            Some(id) => iced::window::minimize(id, true),
-            None => Task::none(),
-        },
-        Message::CloseWindow => match state.window_id {
-            Some(id) => iced::window::close(id),
-            None => Task::none(),
-        },
+        Message::ToggleMaximize => window::toggle_maximize(state),
+        Message::MinimizeWindow => window::minimize(state),
+        Message::CloseWindow => window::begin_close(state),
+        Message::CloseQuery(part) => window::close_query(state, part),
         Message::CaptionHovered(caption) => {
             state.caption_hover = Some(caption);
             Task::none()

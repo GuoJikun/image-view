@@ -16,11 +16,26 @@ pub enum Caption {
     Close,
 }
 
+/// 关窗前异步查询的一项窗口状态。
+///
+/// Iced 0.14 没有「最大化 / 最小化」事件，只能在关闭时查询一次，
+/// 与位置、尺寸、全屏一起凑齐后再落盘，避免多次写 `settings.ron`。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CloseQueryPart {
+    Maximized(bool),
+    Minimized(bool),
+    Fullscreen(bool),
+    Size(iced::Size),
+    Position(Option<iced::Point>),
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     /// 全局事件（键盘、窗口、拖放）；widget 已捕获的事件不会到达这里。
     Event(iced::Event),
     WindowReady(iced::window::Id),
+    /// 窗口 DPI；恢复保存的几何与采集位置都需要它做逻辑/物理像素换算。
+    WindowScale(f32),
 
     OpenDialog,
     DialogPicked(Option<PathBuf>),
@@ -80,6 +95,8 @@ pub enum Message {
     ToggleMaximize,
     MinimizeWindow,
     CloseWindow,
+    /// 关窗查询的一项结果；全部到齐后统一采集几何并落盘。
+    CloseQuery(CloseQueryPart),
     /// 进入 caption 按钮：关闭按钮的图标据此转白。
     CaptionHovered(Caption),
     /// 离开 caption 按钮：只清掉自己那一颗，避免误清刚进入的按钮。

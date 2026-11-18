@@ -18,6 +18,8 @@ emath = "0.37"
 image = { version = "0.25.10", default-features = false }
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
+# 仅 `iv-infra` 用：解析插件时代的 `.window-state.json` 做一次性迁移。
+serde_json = "1"
 bytemuck = "1"
 ron = "0.12"
 

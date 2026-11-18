@@ -204,7 +204,10 @@ pub fn copy_path(state: &AppState) -> Task<Message> {
     iced::clipboard::write::<Message>(path.display().to_string())
 }
 
-/// 只保存 Core 定义的设置字段；窗口几何由宿主平台负责。
+/// 保存 Core 定义、由 GUI 维护的设置字段。
+///
+/// 窗口几何也在这里落盘：`window` 字段由 `update::window` 在移动/缩放与关闭查询中
+/// 写好，本函数只负责连同其他偏好一起序列化。
 pub fn persist(state: &mut AppState) {
     state.settings.last_dir =
         (!state.nav.dir.as_os_str().is_empty()).then(|| state.nav.dir.clone());
