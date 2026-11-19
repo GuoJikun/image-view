@@ -2,9 +2,9 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 最后更新 | 2026-11-17 |
+| 最后更新 | 2026-11-19 |
 | 分支 | `gui-iced`：Iced GUI 分支，不合并回 `main`，只从 `main` 合并 `crates/` 与工作区根 `Cargo.toml` |
-| 当前版本 | v1.5.0（版本号继承自工作区，随 `main` 同步；本分支不产出安装包） |
+| 当前版本 | v1.6.0（版本号继承自工作区，随 `main` 同步；本分支不产出安装包） |
 | GUI 现状 | 纯 Rust Iced 0.14（`app`），功能范围见 [02-iced-architecture.md](02-iced-architecture.md) §12 |
 | 明细计划 | [PLAN-P0.md](PLAN-P0.md) · [PLAN-P1.md](PLAN-P1.md) · [PLAN-P2.md](PLAN-P2.md) · [PLAN-P3.md](PLAN-P3.md) |
 
