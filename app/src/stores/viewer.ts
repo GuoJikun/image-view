@@ -138,6 +138,21 @@ export const useViewerStore = defineStore("viewer", () => {
     view.flipY = false;
   }
 
+  /**
+   * 进入对比时暂挂预览带来的视图重置：对比会请求多张预览，
+   * 其中可能包含当前图片，若不暂挂会把用户的缩放/平移状态清掉。
+   */
+  let suspendedView: { mode: FitMode; zoom: number; panX: number; panY: number; rotation: number; flipX: boolean; flipY: boolean } | null = null;
+  function suspendView(): void {
+    suspendedView = { ...view };
+  }
+  function restoreView(): void {
+    if (!suspendedView) return;
+    Object.assign(view, suspendedView);
+    suspendedView = null;
+    clampPan();
+  }
+
   function applySnapshot(next: DirectorySnapshot): void {
     snapshot.value = next;
   }
@@ -150,7 +165,7 @@ export const useViewerStore = defineStore("viewer", () => {
     imageUrl.value = ipc.previewUrl(payload.imageId, payload.revision);
     loading.value = false;
     error.value = null;
-    resetView();
+    if (!suspendedView) resetView();
 
     // 切图后动画回到首帧；暂存事件若与当前图片匹配则在重置后立即应用。
     const queued = pendingAnimation;
@@ -589,6 +604,8 @@ export const useViewerStore = defineStore("viewer", () => {
     toggleFlipX,
     toggleFlipY,
     clampPan,
+    suspendView,
+    restoreView,
     clearError,
     revealCurrent,
     deleteCurrent,

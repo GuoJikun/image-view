@@ -4,6 +4,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useViewerStore } from "./stores/viewer";
 import { useUiStore } from "./stores/ui";
+import { useGalleryStore } from "./stores/gallery";
+import { useCompareStore } from "./stores/compare";
 import { useActions } from "./actions";
 import { usePreferences } from "./preferences";
 import { inTauri, platform } from "./platform";
@@ -12,6 +14,8 @@ import * as ipc from "./services/ipc";
 import { colorTarget, onColorTargetChange } from "./services/color";
 import AppToolbar from "./components/AppToolbar.vue";
 import ErrorBanner from "./components/ErrorBanner.vue";
+import GalleryGrid from "./components/GalleryGrid.vue";
+import CompareView from "./components/CompareView.vue";
 import HelpDialog from "./components/HelpDialog.vue";
 import ImageCanvas from "./components/ImageCanvas.vue";
 import MetadataPanel from "./components/MetadataPanel.vue";
@@ -22,6 +26,8 @@ import UpdateDialog from "./components/UpdateDialog.vue";
 
 const store = useViewerStore();
 const ui = useUiStore();
+const gallery = useGalleryStore();
+const compare = useCompareStore();
 const { run, syncNativeMenu, menuState } = useActions();
 const { load: loadPreferences, ready: preferencesReady } = usePreferences();
 
@@ -33,8 +39,32 @@ watch([menuState, preferencesReady], () => {
 });
 
 const stripVisible = computed(
-  () => store.showThumbnails && (store.snapshot?.entries.length ?? 0) > 0,
+  () =>
+    ui.activeView === "viewer" &&
+    store.showThumbnails &&
+    (store.snapshot?.entries.length ?? 0) > 0,
 );
+
+/** 进入图库：用当前目录或上次会话目录作为索引根。 */
+function enterGallery(): void {
+  const dir = store.snapshot?.dir;
+  if (!dir) {
+    ui.notify(t("empty.title"));
+    return;
+  }
+  void gallery.open(dir).then(() => {
+    if (!gallery.error) ui.activeView = "gallery";
+  });
+}
+
+function leaveGallery(): void {
+  ui.activeView = "viewer";
+}
+
+function leaveCompare(): void {
+  compare.exit();
+  ui.activeView = "viewer";
+}
 
 const windowTitle = computed(() =>
   store.preview ? `${store.preview.fileName} — ${t("app.name")}` : t("app.name"),
@@ -84,11 +114,25 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
       event.preventDefault();
       return;
     }
+    if (ui.activeView === "compare") {
+      event.preventDefault();
+      leaveCompare();
+      return;
+    }
+    if (ui.activeView === "gallery") {
+      event.preventDefault();
+      leaveGallery();
+      return;
+    }
     store.clearError();
     return;
   }
 
   if (ui.helpOpen || ui.updateOpen) return;
+
+  // 图库/对比视图下只保留模式切换快捷键，浏览快捷键不生效。
+  // 进入对比需要选中项，由图库组件的按钮触发（见 GalleryGrid.vue）。
+  if (ui.activeView !== "viewer") return;
 
   const mod = event.ctrlKey || event.metaKey;
   const key = event.key;
@@ -164,6 +208,11 @@ async function onKeyDown(event: KeyboardEvent): Promise<void> {
     case "f":
     case "F":
       store.toggleFitActual();
+      break;
+    case "g":
+    case "G":
+      event.preventDefault();
+      enterGallery();
       break;
     case "r":
       void run("rotate-cw");
@@ -289,8 +338,12 @@ onBeforeUnmount(() => {
       @retry="store.requestCurrent()"
     />
     <main class="workspace">
-      <ImageCanvas />
-      <MetadataPanel v-if="store.showMetadata" />
+      <GalleryGrid v-if="ui.activeView === 'gallery'" />
+      <CompareView v-else-if="ui.activeView === 'compare'" />
+      <template v-else>
+        <ImageCanvas />
+        <MetadataPanel v-if="store.showMetadata" />
+      </template>
     </main>
     <Transition name="strip">
       <ThumbnailStrip v-if="stripVisible" />

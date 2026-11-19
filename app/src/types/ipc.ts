@@ -134,3 +134,57 @@ export interface UpdateProgress {
   received: number;
   total: number | null;
 }
+
+/** 图库条目（后端 `GalleryEntryDto`）。id + revision 用于缩略图 URL。 */
+export interface GalleryEntry {
+  id: string;
+  path: string;
+  name: string;
+  revision: number;
+  width: number;
+  height: number;
+  format: string;
+  modifiedAt: number | null;
+  sizeBytes: number;
+  tags: string[];
+}
+
+export type GallerySortKey = "name" | "modified" | "size" | "format";
+
+export interface GalleryFilter {
+  query: string;
+  tags: string[];
+  format: string;
+  minWidth: number;
+  maxWidth: number;
+  fromDate: number | null;
+  toDate: number | null;
+  sort: GallerySortKey;
+}
+
+/** 一次图库查询结果。 */
+export interface GallerySnapshot {
+  dir: string;
+  entries: GalleryEntry[];
+  total: number;
+  offset: number;
+  limit: number;
+  indexed: number;
+  indexReady: boolean;
+  degraded: boolean;
+  filter: GalleryFilter;
+}
+
+/** 全像素对比中单个槽位的预览版本。 */
+export interface ComparePreview {
+  imageId: string;
+  revision: number;
+}
+
+/** 对比视图（后端 `CompareViewDto`）。 */
+export interface CompareView {
+  imageIds: string[];
+  layout: "side-by-side" | "overlay";
+  /** 与 imageIds 一一对应；缩略图模式或解码失败项为 null。 */
+  previews: (ComparePreview | null)[];
+}

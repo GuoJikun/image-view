@@ -822,6 +822,291 @@ kbd {
   font-size: 0;
 }
 
+/* ---------- 图库网格 ---------- */
+
+.gallery-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+
+.gallery-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--chrome);
+}
+
+.gallery-search {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 320px;
+  max-width: 420px;
+}
+
+.gallery-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.gallery-toolbar button,
+.gallery-toolbar select {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.gallery-toolbar button:hover,
+.gallery-toolbar select:hover {
+  background: var(--hover);
+}
+
+.gallery-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.gallery-progress {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.gallery-compare {
+  color: var(--accent);
+}
+
+.gallery-notice {
+  flex: 0 0 auto;
+  padding: 6px 16px;
+  background: var(--warn);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.gallery-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.gallery-grid {
+  position: relative;
+  min-height: 100%;
+}
+
+.gallery-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-tile);
+  background: var(--control);
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+}
+
+.gallery-card.selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-tile);
+}
+
+.gallery-card img {
+  width: 100%;
+  height: 78px;
+  object-fit: cover;
+  color: transparent;
+  font-size: 0;
+}
+
+.gallery-card-name,
+.gallery-card-tags {
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gallery-card-tags {
+  color: var(--text3);
+  font-size: 10px;
+}
+
+.gallery-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--canvas-text2);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+/* ---------- 对比视图 ---------- */
+
+.compare-view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--chrome);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.compare-toolbar button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.compare-toolbar button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.compare-title {
+  font-weight: 600;
+}
+
+.compare-layout {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.compare-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--canvas);
+  cursor: grab;
+  touch-action: none;
+}
+
+.compare-canvas:active {
+  cursor: grabbing;
+}
+
+.compare-zoom {
+  font-variant-numeric: tabular-nums;
+  color: var(--text2);
+}
+
+.compare-quality {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.compare-quality input {
+  accent-color: var(--accent);
+}
+
+.compare-slot-name small {
+  margin-left: 6px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--accent);
+  color: var(--chrome);
+  font-size: 9px;
+}
+
+.compare-slot {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--tile-border);
+  overflow: hidden;
+}
+
+.compare-overlay .compare-slot {
+  background: transparent;
+  opacity: 0.72;
+}
+
+.compare-slot img {
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  pointer-events: none;
+  flex: 0 0 auto;
+}
+
+.compare-slot-fallback {
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+.compare-slot-name {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 11px;
+}
+
+.compare-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--canvas-text2);
+  font-size: 13px;
+}
+
 /* ---------- 状态栏 26 px ---------- */
 
 .status-bar {

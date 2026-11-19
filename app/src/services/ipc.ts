@@ -8,8 +8,11 @@ import type {
   AnimationReady,
   ColorTarget,
   CommandError,
+  CompareView,
   Degraded,
   DirectorySnapshot,
+  GalleryFilter,
+  GallerySnapshot,
   MenuState,
   PreviewFailed,
   PreviewReady,
@@ -116,6 +119,50 @@ export async function deleteImage(imageId: string): Promise<DirectorySnapshot> {
 
 export async function openLogDir(): Promise<void> {
   return invoke<void>("open_log_dir");
+}
+
+// ---- 图库、搜索与对比（P1-M6，只读） ----
+
+export async function openGallery(
+  path: string,
+  filter: GalleryFilter,
+): Promise<GallerySnapshot> {
+  return invoke<GallerySnapshot>("open_gallery", { path, filter });
+}
+
+export async function refreshGallery(): Promise<GallerySnapshot> {
+  return invoke<GallerySnapshot>("refresh_gallery");
+}
+
+export async function galleryPage(offset: number, limit: number): Promise<GallerySnapshot> {
+  return invoke<GallerySnapshot>("gallery_page", { offset, limit });
+}
+
+export async function setGalleryFilter(filter: GalleryFilter): Promise<GallerySnapshot> {
+  return invoke<GallerySnapshot>("set_gallery_filter", { filter });
+}
+
+export async function addGalleryTag(imageId: string, tag: string): Promise<void> {
+  return invoke<void>("add_gallery_tag", { imageId, tag });
+}
+
+export async function removeGalleryTag(imageId: string, tag: string): Promise<void> {
+  return invoke<void>("remove_gallery_tag", { imageId, tag });
+}
+
+export async function enterCompare(
+  imageIds: string[],
+  fullResolution: boolean,
+): Promise<CompareView> {
+  return invoke<CompareView>("enter_compare", { imageIds, fullResolution });
+}
+
+export async function setCompareLayout(layout: "side-by-side" | "overlay"): Promise<CompareView> {
+  return invoke<CompareView>("set_compare_layout", { layout });
+}
+
+export async function exitCompare(): Promise<void> {
+  return invoke<void>("exit_compare");
 }
 
 /**

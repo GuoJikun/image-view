@@ -4,6 +4,7 @@
  */
 import { useViewerStore } from "./stores/viewer";
 import { useUiStore, type ThemeSetting } from "./stores/ui";
+import { useGalleryStore } from "./stores/gallery";
 import { setLocale, resolvedLocale, t, type LocaleSetting } from "./i18n";
 import { useMenuState } from "./menu";
 import { inTauri } from "./platform";
@@ -25,6 +26,7 @@ function fallbackCopy(text: string): boolean {
 export function useActions() {
   const store = useViewerStore();
   const ui = useUiStore();
+  const gallery = useGalleryStore();
   const menuState = useMenuState();
 
   async function copyPath(): Promise<void> {
@@ -164,6 +166,19 @@ export function useActions() {
         break;
       case "logs":
         await openLogs();
+        break;
+      case "gallery": {
+        const dir = store.snapshot?.dir;
+        if (!dir) {
+          ui.notify(t("empty.title"));
+          break;
+        }
+        await gallery.open(dir);
+        if (!gallery.error) ui.activeView = "gallery";
+        break;
+      }
+      case "back-to-viewer":
+        ui.activeView = "viewer";
         break;
       default:
         break;

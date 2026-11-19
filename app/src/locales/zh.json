@@ -140,6 +140,33 @@
     "pan": "拖动平移",
     "wheel": "滚轮以光标为中心缩放"
   },
+  "gallery": {
+    "mode": "图库",
+    "search": "搜索文件名或标签",
+    "filter": "筛选",
+    "allFormats": "全部格式",
+    "sortName": "按名称",
+    "sortModified": "按修改时间",
+    "sortSize": "按大小",
+    "sortFormat": "按格式",
+    "empty": "此目录下没有图片",
+    "indexing": "正在索引 {indexed}/{total}",
+    "degraded": "索引不可用，已切换为普通列表",
+    "loadMore": "加载更多",
+    "open": "打开到查看器",
+    "compare": "对比选中项",
+    "back": "返回查看器",
+    "compareHint": "选中 2~4 张图片后进入对比",
+    "layoutSideBySide": "并排",
+    "layoutOverlay": "叠加"
+  },
+  "compare": {
+    "title": "对比 {count} 张",
+    "empty": "没有可对比的图片",
+    "fullPixel": "全像素",
+    "fullPixelHint": "启用后批量解码原尺寸预览，更清晰但占用更多内存；默认用 512px 缩略图",
+    "fullPixelBadge": "全像素"
+  },
   "window": {
     "minimize": "最小化",
     "maximize": "最大化",

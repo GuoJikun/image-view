@@ -77,6 +77,14 @@ const groups = computed<MenuGroup[]>(() => [
     items: [
       {
         kind: "item",
+        id: "gallery",
+        label: t("gallery.mode"),
+        shortcut: "G",
+        disabled: !store.hasImage,
+      },
+      { kind: "sep" },
+      {
+        kind: "item",
         id: "toggle-thumbnails",
         label: t("menu.thumbnails"),
         mark: "check",

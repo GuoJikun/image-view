@@ -140,6 +140,33 @@
     "pan": "Drag to pan",
     "wheel": "Wheel to zoom at cursor"
   },
+  "gallery": {
+    "mode": "Gallery",
+    "search": "Search file names or tags",
+    "filter": "Filter",
+    "allFormats": "All formats",
+    "sortName": "By name",
+    "sortModified": "By date",
+    "sortSize": "By size",
+    "sortFormat": "By format",
+    "empty": "No images in this folder",
+    "indexing": "Indexing {indexed}/{total}",
+    "degraded": "Index unavailable, switched to plain list",
+    "loadMore": "Load more",
+    "open": "Open in viewer",
+    "compare": "Compare selected",
+    "back": "Back to viewer",
+    "compareHint": "Select 2~4 images to compare",
+    "layoutSideBySide": "Side by side",
+    "layoutOverlay": "Overlay"
+  },
+  "compare": {
+    "title": "Compare {count} images",
+    "empty": "No images to compare",
+    "fullPixel": "Full resolution",
+    "fullPixelHint": "Batch-decodes original-size previews for more detail at the cost of memory; 512px thumbnails by default",
+    "fullPixelBadge": "FULL"
+  },
   "window": {
     "minimize": "Minimize",
     "maximize": "Maximize",

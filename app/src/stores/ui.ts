@@ -58,6 +58,8 @@ export const useUiStore = defineStore("ui", () => {
   const fullscreen = ref(false);
   const showFullscreenTitle = ref(false);
   const dragActive = ref(false);
+  /** 当前主视图。图库/对比是只读视图，查看器状态在后台原样保留。 */
+  const activeView = ref<"viewer" | "gallery" | "compare">("viewer");
   const helpOpen = ref(false);
   const updateOpen = ref(false);
   const notice = ref("");
@@ -141,6 +143,7 @@ export const useUiStore = defineStore("ui", () => {
     fullscreen,
     showFullscreenTitle,
     dragActive,
+    activeView,
     helpOpen,
     updateOpen,
     notice,
