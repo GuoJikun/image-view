@@ -126,23 +126,39 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 
 **风险**：代码签名证书成本 → 首版可无签名并说明；企业分发/策略管理放 P3。
 
-### 3.6 P1-M6 图库、搜索与对比（3~4 d，延后至 v1.7.0）
+### 3.6 P1-M6 图库、搜索与对比（3~4 d，目标 v1.7.0）
 
-> 只读能力，不修改任何文件；编辑能力不在 P1（见 [PLAN-P2.md](PLAN-P2.md) P2-M8）。2026-11-12 范围调整后移出 v1.0，现目标 v1.7.0，本文件保留需求与验收标准。
+> 只读能力，不修改任何原图；编辑归 P2-M8。2026-11-12 范围调整后移出 v1.0，现目标 v1.7.0。采用 **SQLite 索引 + sidecar 标签** 的混合存储，符合行业惯例（Lightroom 的 catalog + XMP、PhotoPrism 的 database + YAML/JSON）：数据库是可重建的加速层，sidecar 是标签的权威源与灾备。
 
-- [ ] 图库模式：后台目录索引、网格视图、按名称/日期/尺寸/格式筛选。
-- [ ] 搜索：文件名子串、标签；标签写入 sidecar JSON，不污染原文件。
-- [ ] 对比模式：2~4 张并排或叠加，同步缩放与平移。
-- [ ] 从图库/对比返回查看器时保持缩放、位置与当前图片。
-- [ ] 索引失败或目录不可读时降级为普通列表，不阻塞浏览。
+**存储设计（决策）**
+
+- `library.sqlite3` 存目录索引（路径、mtime、尺寸、日期、格式）与 `tags` 投影表，用于筛选与搜索；损坏或 `user_version` 不符时自动重建，不阻塞启动。
+- 标签权威源落在应用数据目录 `sidecars/{uuid5(path)}.json`，不写图片所在目录，原图保持只读（与 PhotoPrism 的 storage 目录策略一致）。写标签顺序：先 sidecar，成功后 upsert SQLite；索引重建时从 sidecar 回填。
+- `tags` 表只是搜索投影，不是权威；数据库重建只清索引表，不清 sidecar。
+- 首屏分页取数（500 条 + `LIMIT/OFFSET`），1 万张目录进图库 < 2s，索引可在后台继续。
+- 搜索用 `LIKE` 子串 + `tags` 表 `EXISTS`；FTS5 不在 M6 范围，留 P2-M7。
+
+**需求**
+
+- [x] 图库模式：后台目录索引、网格视图、按名称/日期/尺寸/格式筛选。
+- [x] 搜索：文件名子串、标签；标签写入 sidecar JSON，不污染原文件。
+- [x] 对比模式：2~4 张并排或叠加，同步缩放与平移。
+- [x] 从图库/对比返回查看器时保持缩放、位置与当前图片。
+- [x] 索引失败或目录不可读时降级为普通列表，不阻塞浏览。
 
 **验收**
 
 - 1 万张目录进入图库 < 2s（索引可后台继续），滚动不卡死。
+- 二次启动直接命中索引秒开；手动损坏索引后能自动重建并从 sidecar 恢复标签。
 - 对比模式下两张不同尺寸图片可同步缩放、平移。
-- 浏览、筛选、对比全程不写入原图或 sidecar 之外的任何文件。
+- 浏览、筛选、对比全程不写入原图或 sidecar 之外的任何用户文件；原图目录只读挂载仍可正常工作。
+- 全程不修改原图字节。
 
-**风险**：范围膨胀 → M6 严格限定为只读浏览/筛选/对比；任何“改文件”的需求一律进入 P2-M8。
+**风险**
+
+- SQLite 依赖 `bundled` 静态链接，release 体积预计 +1.5~2.5 MB，需实测并更新许可证清单。
+- `rusqlite::Connection` 非 `Sync`，必须索引线程独占，命令经 mpsc 通信。
+- 范围膨胀 → M6 严格限定为只读浏览/筛选/对比；任何“改文件”的需求一律进入 P2-M8（编辑、收藏、相册、FTS5 均不在 M6）。
 
 ### 3.7 P1-M7 GIF / WebP 动画（1~1.5 d，2026-11-16 实现）
 
@@ -542,6 +558,39 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 - 未与浏览器或系统查看器做播放速度同屏对比；WebP 循环语义按规范按总轮数处理，未与 Chrome 逐一对齐。
 - macOS / Linux 未实机验证。
 
+### P1-M6 图库、搜索与对比（2026-11-19）
+
+**实现**
+
+- 新增 `iv-library` crate：`SqliteGalleryIndex` 实现 `iv-application::GalleryIndex` 端口。SQLite（`rusqlite` + `bundled` 静态链接）存目录索引与 `tags` 投影表，`library.sqlite3` 放应用数据目录；`user_version` 不符时整表重建。
+- 后台索引线程独占可写 `Connection`（WAL 模式，查询端用独立连接），`iv-files::scan` 全量枚举 + mtime/size 指纹增量 upsert，切目录用代际计数丢弃过期批次；尺寸用 `iv-image-decode::probe_dimensions` 只读文件头，失败记为 0 表示未知。
+- 标签权威源为应用数据目录 `sidecars/{uuid5(path)}.json`，原子写；写标签先 sidecar 再更新投影；索引重建/刷新时从 sidecar 回填。原图目录保持只读。
+- 壳层新增 `AppState.gallery_registry`（图库条目独立授权表，与当前目录 `registry` 分开），`path_for` 同时查两表；`protocol.rs` 的 thumbnail 路由据此取图，无需新增资源类型。
+- 新增 8 个命令（`open_gallery` / `refresh_gallery` / `gallery_page` / `set_gallery_filter` / `add_gallery_tag` / `remove_gallery_tag` / `enter_compare` / `set_compare_layout`），DTO 全 camelCase，错误码含 `gallery_unavailable`（降级）。
+- 前端新增 `GalleryGrid.vue`（行虚拟化 + 无限滚动 + 文件名/标签搜索 + 四档筛选/排序）、`CompareView.vue`（2~4 张并排/叠加、共享 zoom/pan 的滚轮缩放与拖拽平移）、`gallery`/`compare` 两个 store；`App.vue` 引入 `activeView` 三态切换，`viewer.ts` 在对比期间暂挂视图重置以保留返回时的缩放/位置；菜单与快捷键 `G` 入口、中英文案同步。
+- 对比图源提供开关：默认 512 px 缩略图；勾选「全像素」后走独立的 `request_compare_batch` 批量预览通道——不推进 latest-wins 的 `current`/`epoch`（不影响当前浏览），缓存上限提到 6 张 / 200 MP 并把 4 张对比图都加入淘汰保护集合，命令等待解码完成后回传各槽位 revision。退出对比时 `clear_compare` 解除保护。
+
+**自动化验证**
+
+- `cargo fmt --all --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`、`pnpm --dir app build` 全部通过；0 失败（含新 `iv-library` 7 项、`iv-domain` 新增 4 项、`iv-image-decode` 探测 1 项、全像素对比汇总纯函数 5 项）。
+- `iv-library` 单测覆盖：建表/版本不符重建、sidecar 往返与损坏回退、索引扫描→分页→文件名/子串/标签搜索、删除文件后刷新清理、代际进度初始态。
+
+**手工验证**
+
+- 未做 GUI 目视确认（窗口由自动化构建验证，无人工点开图库/对比观察渲染）。分页、筛选、对比交互的实现依据是类型检查与单测，不是实机目视。
+- 1 万张目录 < 2s、滚动不卡死、二次启动秒开、不同尺寸同步缩放平移的目视效果均未量测；索引器为后台线程 + 命令立即返回首屏，性能路径按设计推断，**未实测数据**。
+- 手动损坏 `library.sqlite3` 后从 sidecar 恢复标签的端到端流程未做（单测只覆盖 `user_version` 不符的整表重建）。
+- 原图目录只读挂载场景未实机验证；代码路径保证只读（仅写应用数据目录的 DB 与 sidecar）。
+
+**未覆盖**
+
+- 动画目录 / 1 万张夹具的性能基准未建；`gallery_fixtures` 示例未产出。
+- 全像素批量预览的结果汇总已抽离为纯函数 `collect_compare_results`（无 `AppHandle` 依赖），5 个单测覆盖全命中 / 回执乱序回填 / 失败回执（revision=0）/ 超时无回执 / 越界下标 / 空输入；底层多 id 保护的淘汰逻辑由 `pixel_budget_evicts_non_current_entries` 覆盖。`request_compare_batch` 的线程/通道等待部分仍需 `AppHandle`，无法直接单测；端到端清晰度与内存占用未实测。
+- 全像素模式下缓存上限提高到 6 张 / 200 MP，是全局预算（普通浏览也受益于更大缓存）；4 张全尺寸图同时驻留的内存压力未量测。
+- 只读目录 ACL 拒绝、索引文件被占用/损坏、fork 后的并发写入未测试。
+- macOS / Linux 未实机验证。
+- `cargo deny check` 因既存的 `selectors`（MPL-2.0，来自 tauri 依赖树）失败，与本次新增的 SQLite 依赖（均为 MIT/Apache 宽松许可）无关；未为通过检查放宽 `deny.toml` 的 allow 列表。
+
 ## 7. 变更记录
 
 | 日期 | 变更 |
@@ -571,3 +620,5 @@ v1.0 合计约 **9.5~14 个工作日**（M1~M5 + M8 + M9，单人，不含返工
 | 2026-11-16 | 重写 P0-M7 相邻预加载（1.2.0）：前后各一张、`Open` 优先、>30 MP 跳过、预加载不发送事件，缓存 3 张 / 72 MP，验收记录见 [PLAN-P0.md](PLAN-P0.md) §9.8 |
 | 2026-11-16 | 完成 P1-M7：`decode_animation` 逐帧解码 GIF/WebP、帧间隔钳制 50~1000 ms、循环次数换算、`iviewer://frame` 帧资源、`image:animation-ready` 事件、前端逐帧播放与 `Space` 绑定动画优先，验收记录见 §6 |
 | 2026-11-19 | 统一 M6 目标版本口径为 v1.7.0（2026-11-12 记录中的 v1.1 为当时口径，按历史保留）；v1.6.0 已发布，M6 仍未开始 |
+| 2026-11-19 | 明确 M6 存储设计：SQLite 索引（可重建加速层）+ sidecar JSON 标签（权威源与灾备，放应用数据目录、原图只读），参照 Lightroom / PhotoPrism 的行业惯例；分页取数、FTS5 留 P2-M7 |
+| 2026-11-19 | 实现 P1-M6：`iv-library` SQLite 索引与 sidecar 标签、8 个图库/对比命令、前端图库网格与对比视图（共享缩放平移）、`activeView` 三态切换与返回视图保持；验收记录见 §6，未做目视与性能实测 |
