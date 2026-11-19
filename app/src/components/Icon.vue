@@ -28,7 +28,7 @@ type IconName =
   | "maximize"
   | "restore";
 
-withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 17 });
+withDefaults(defineProps<{ name: IconName; size?: number }>(), { size: 16 });
 </script>
 
 <template>

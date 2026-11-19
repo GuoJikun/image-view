@@ -199,7 +199,7 @@ onBeforeUnmount(() => {
           @click="sortOpen = !sortOpen"
         >
           <span>{{ sortLabel }}</span>
-          <Icon name="chevron-down" :size="13" />
+          <Icon name="chevron-down" :size="12" />
         </button>
 
         <div v-if="sortOpen" class="menu-panel sort-menu" role="menu">

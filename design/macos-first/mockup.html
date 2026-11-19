@@ -83,7 +83,7 @@
   .tb-title {
     position: absolute; left: 50%; top: 0; height: 28px;
     transform: translateX(-50%); display: flex; align-items: center;
-    font-size: 13px; font-weight: 600; color: var(--text);
+    font-size: 14px; font-weight: 600; color: var(--text);
     max-width: 50%; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; pointer-events: none;
   }
@@ -175,11 +175,11 @@
     transform: translateY(-24px);
   }
   .empty .eicon { width: 60px; height: 60px; color: var(--text3); }
-  .empty h2 { font-size: 15px; font-weight: 600; color: var(--text); margin-top: 14px; }
+  .empty h2 { font-size: 16px; font-weight: 600; color: var(--text); margin-top: 14px; }
   .empty p { font-size: 12px; color: var(--text2); margin-top: 6px; }
   .btn-primary {
     margin-top: 18px; height: 28px; padding: 0 16px; border: 0; border-radius: 6px;
-    background: var(--accent); color: #fff; font: inherit; font-size: 12.5px;
+    background: var(--accent); color: #fff; font: inherit; font-size: 12px;
   }
 
   /* ---------- 缩略图条 ---------- */
@@ -201,7 +201,7 @@
   .status {
     height: 26px; flex: none; background: var(--chrome);
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 14px; font-size: 11px; color: var(--text2);
+    padding: 0 14px; font-size: 12px; color: var(--text2);
     font-variant-numeric: tabular-nums;
   }
   .status.solo { border-top: 1px solid var(--hairline); }
@@ -213,7 +213,7 @@
   .menubar { display: flex; align-items: center; gap: 2px; flex: none; }
   .mb-item {
     height: 28px; padding: 0 8px; display: inline-flex; align-items: center;
-    font-size: 12.5px; color: var(--text); border-radius: 4px;
+    font-size: 12px; color: var(--text); border-radius: 4px;
   }
   .mb-item:hover { background: var(--hover); }
   .mb-item.open { background: var(--accent-soft); color: var(--accent); }
@@ -225,11 +225,11 @@
   }
   .mi {
     height: 26px; border-radius: 4px; padding-right: 8px; display: flex; align-items: center;
-    font-size: 13px; color: var(--text);
+    font-size: 14px; color: var(--text);
   }
   .mi .gut {
     width: 22px; flex: none; display: flex; align-items: center; justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
   }
   .mi .lbl { flex: 1; padding-right: 28px; }
   .mi .sc {
@@ -252,7 +252,7 @@
   }
   .screenbar .sb-item {
     padding: 0 10px; height: 22px; display: inline-flex; align-items: center;
-    font-size: 12.5px; color: var(--gtext); border-radius: 5px;
+    font-size: 12px; color: var(--gtext); border-radius: 5px;
   }
   .screenbar .sb-item.open { background: var(--accent, #0A7CFF); color: #fff; }
   .screenbar .sb-app { font-weight: 650; }
@@ -871,11 +871,11 @@
 
     <div class="card">
       <h3>字体 <span>三端字号/字重一致，仅字体族按平台</span></h3>
-      <div class="type-row"><div class="type-tag">title 13 / 600</div><div style="font-size:13px;font-weight:600">sunset.jpg — 图片查看器</div></div>
-      <div class="type-row"><div class="type-tag">heading 15 / 600</div><div style="font-size:15px;font-weight:600">还没有打开图片</div></div>
-      <div class="type-row"><div class="type-tag">body 13 / 400</div><div style="font-size:13px">在文件管理器中显示 · 主题 · 语言</div></div>
-      <div class="type-row"><div class="type-tag">button 12.5</div><div style="font-size:12.5px">打开图片… · 稍后</div></div>
-      <div class="type-row"><div class="type-tag">small 11</div><div style="font-size:11px;color:#6E6E73">4032 × 3024 · 8 bit · JPEG</div></div>
+      <div class="type-row"><div class="type-tag">title 14 / 600</div><div style="font-size:14px;font-weight:600">sunset.jpg — 图片查看器</div></div>
+      <div class="type-row"><div class="type-tag">heading 16 / 600</div><div style="font-size:16px;font-weight:600">还没有打开图片</div></div>
+      <div class="type-row"><div class="type-tag">body 14 / 400</div><div style="font-size:14px">在文件管理器中显示 · 主题 · 语言</div></div>
+      <div class="type-row"><div class="type-tag">button 12</div><div style="font-size:12px">打开图片… · 稍后</div></div>
+      <div class="type-row"><div class="type-tag">small 12</div><div style="font-size:12px;color:#6E6E73">4032 × 3024 · 8 bit · JPEG</div></div>
       <div class="type-row"><div class="type-tag">num · tabular</div><div style="font-size:12px;font-variant-numeric:tabular-nums">68% &nbsp;·&nbsp; 2 / 14 &nbsp;·&nbsp; 12.4 MiB</div></div>
       <div class="note">字体栈：macOS → SF Pro Text / PingFang SC；Windows → Segoe UI / 微软雅黑 UI；Linux → Inter / Noto Sans。数字启用 tabular-nums，翻页不抖动。</div>
     </div>

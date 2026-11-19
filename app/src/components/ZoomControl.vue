@@ -22,7 +22,7 @@ const fitTip = computed(() => tip(t("toolbar.fit"), accel("mod", "0")));
       :disabled="!store.hasImage"
       @click="store.zoomBy(0.8)"
     >
-      <Icon name="minus" :size="13" />
+      <Icon name="minus" :size="12" />
     </button>
     <button
       type="button"
@@ -42,7 +42,7 @@ const fitTip = computed(() => tip(t("toolbar.fit"), accel("mod", "0")));
       :disabled="!store.hasImage"
       @click="store.zoomBy(1.25)"
     >
-      <Icon name="plus" :size="13" />
+      <Icon name="plus" :size="12" />
     </button>
   </div>
 </template>

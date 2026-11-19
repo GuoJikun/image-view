@@ -59,7 +59,7 @@ const rows = computed<[string, string][]>(() => {
         :aria-label="t('metadata.hide')"
         @click="store.showMetadata = false"
       >
-        <Icon name="close" :size="15" />
+        <Icon name="close" :size="16" />
       </button>
     </header>
 
