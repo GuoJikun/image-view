@@ -45,6 +45,9 @@ pub fn navigate(state: &mut AppState, delta: isize) -> Task<Message> {
     if state.nav.step(delta).is_none() {
         return Task::none();
     }
+    // 降级 / 解码错误横幅属于上一张图，切走后不应残留。
+    // 不能放进 go_to_current：删除图片后的「已移到回收站」也走那条路径。
+    state.notice = None;
     go_to_current(state)
 }
 
@@ -52,6 +55,7 @@ pub fn select(state: &mut AppState, index: usize) -> Task<Message> {
     if state.nav.select(index).is_none() {
         return Task::none();
     }
+    state.notice = None;
     go_to_current(state)
 }
 
@@ -299,6 +303,37 @@ mod tests {
         assert_eq!(state.nav.index, Some(0));
         let _ = last(&mut state);
         assert_eq!(state.nav.index, Some(1));
+
+        let _ = fs::remove_dir_all(&images);
+        let _ = fs::remove_dir_all(&config);
+    }
+
+    /// 切换图片清掉上一张的横幅；边界无效翻页与文件操作提示不受影响。
+    #[test]
+    fn switching_image_clears_notice_but_keeps_file_op_notice() {
+        let images = temp_dir("nav-notice-images");
+        let config = temp_dir("nav-notice-config");
+        fixture(&images, &["a.png", "b.png"]);
+
+        let mut state = AppState::for_test(config.clone());
+        let _ = open_path(&mut state, images.clone());
+
+        state.notice = Some("16-bit APNG 暂不支持动画".to_string());
+        let _ = navigate(&mut state, 1);
+        assert_eq!(state.nav.index, Some(1));
+        assert_eq!(state.notice, None, "翻页后应清掉上一张的降级横幅");
+
+        state.notice = Some("已移到回收站".to_string());
+        let _ = navigate(&mut state, 1);
+        assert_eq!(
+            state.notice.as_deref(),
+            Some("已移到回收站"),
+            "边界无效翻页不应清提示"
+        );
+
+        let _ = select(&mut state, 0);
+        assert_eq!(state.nav.index, Some(0));
+        assert_eq!(state.notice, None, "点缩略图切换后应清横幅");
 
         let _ = fs::remove_dir_all(&images);
         let _ = fs::remove_dir_all(&config);
