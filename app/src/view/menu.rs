@@ -51,9 +51,19 @@ pub fn bar(state: &AppState) -> Element<'static, Message> {
 
             // `container` 默认是左上对齐（`Horizontal::Left` / `Vertical::Top`），
             // 必须显式声明两个方向居中，否则文字会贴在 54×28 格子的左上角。
+            // cosmic-text 按字体 ascent 放基线，1.3 倍行盒里中文墨迹重心比行盒中心
+            // 高约 2px（实测字形重心 y≈12.3，同栏标题文字 y≈14）。给内容区上边
+            // 留 4px、下边不留，align_y(Center) 的偏移从 5.875 变成 7.875，正好把
+            // 字压回 28px 标题栏的中心；背景与点击区仍是整个 54×28 格子。
             let item = container(text(group.label).size(12.5).center())
                 .width(ITEM_WIDTH)
                 .height(BAR_HEIGHT)
+                .padding(Padding {
+                    top: 4.0,
+                    bottom: 0.0,
+                    left: 0.0,
+                    right: 0.0,
+                })
                 .align_x(iced::Center)
                 .align_y(iced::Center)
                 .style(move |t| theme::menu_bar_item(t, hovered, open));
