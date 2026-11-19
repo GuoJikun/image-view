@@ -8,15 +8,16 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::UNIX_EPOCH;
 
-use iv_application::FolderNav;
-use iv_domain::{Language, SortOrder, ThemeSetting};
+use iv_application::{FolderNav, GalleryIndex};
+use iv_domain::{GalleryEntry, GalleryFilter, Language, SortOrder, ThemeSetting};
 use iv_image_decode::{Caps, ColorTarget};
+use iv_library::SqliteGalleryIndex;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::dto::{
-    CommandError, DirectoryEntryDto, DirectorySnapshot, MenuStateDto, PreviewRequestDto,
-    UiPreferencesDto,
+    CommandError, CompareViewDto, DirectoryEntryDto, DirectorySnapshot, GalleryEntryDto,
+    GalleryFilterDto, GallerySnapshotDto, MenuStateDto, PreviewRequestDto, UiPreferencesDto,
 };
 use crate::preview::PreviewService;
 use crate::settings_store::SettingsStore;
@@ -25,6 +26,14 @@ use crate::thumbnails::ThumbnailService;
 struct DirectoryState {
     nav: FolderNav,
     entries: Vec<DirectoryEntryDto>,
+}
+
+/// 对比视图会话：槽位的图片句柄、布局与全像素预览版本。
+/// 缩放/平移由前端 view 状态负责。
+struct CompareSession {
+    image_ids: Vec<String>,
+    layout: String,
+    previews: Vec<Option<crate::dto::ComparePreviewDto>>,
 }
 
 impl DirectoryState {
@@ -97,6 +106,13 @@ impl DirectoryState {
 pub struct AppState {
     directory: Mutex<DirectoryState>,
     registry: Mutex<HashMap<String, PathBuf>>,
+    /// 图库跨目录条目用的独立授权表；与当前目录的 `registry` 分开，避免翻目录时被清空。
+    gallery_registry: Mutex<HashMap<String, PathBuf>>,
+    gallery: Mutex<SqliteGalleryIndex>,
+    gallery_dir: Mutex<Option<PathBuf>>,
+    gallery_filter: Mutex<GalleryFilter>,
+    gallery_offset: Mutex<usize>,
+    compare: Mutex<Option<CompareSession>>,
     pub previews: PreviewService,
     pub thumbnails: ThumbnailService,
     caps: Caps,
@@ -114,6 +130,19 @@ impl AppState {
         let settings = SettingsStore::open(settings_path(app));
         let restored = settings.snapshot();
 
+        let gallery = match SqliteGalleryIndex::open(&library_db_path(app), &sidecar_dir(app)) {
+            Ok(index) => index,
+            Err(error) => {
+                log::warn!(target: "image_view::library", "图库索引初始化失败，图库功能不可用：{error}");
+                // 尝试用临时目录再开一次；仍失败时下面用占位路径，命令层返回降级快照。
+                SqliteGalleryIndex::open(
+                    &std::env::temp_dir().join("image-view-library.sqlite3"),
+                    &std::env::temp_dir().join("image-view-sidecars"),
+                )
+                .expect("临时图库索引也必须可创建")
+            }
+        };
+
         // 命令行参数优先于上次会话；会话记录的文件不存在时退回上次目录。
         let startup_path = startup_path.or_else(|| {
             if let Some(file) = restored.last_file.as_ref().filter(|file| file.is_file()) {
@@ -129,6 +158,12 @@ impl AppState {
         Self {
             directory: Mutex::new(DirectoryState::new(restored.sort)),
             registry: Mutex::new(HashMap::new()),
+            gallery_registry: Mutex::new(HashMap::new()),
+            gallery: Mutex::new(gallery),
+            gallery_dir: Mutex::new(None),
+            gallery_filter: Mutex::new(GalleryFilter::default()),
+            gallery_offset: Mutex::new(0),
+            compare: Mutex::new(None),
             previews: PreviewService::new(app.clone()),
             thumbnails: ThumbnailService::new(thumbnail_cache_dir(app)),
             caps: Caps::default(),
@@ -198,9 +233,243 @@ impl AppState {
         self.startup_path.clone()
     }
 
-    /// 只接受当前目录登记过的 ImageId。
+    /// 只接受当前目录或图库登记过的 ImageId。
     pub fn path_for(&self, image_id: &str) -> Option<PathBuf> {
-        lock(&self.registry).get(image_id).cloned()
+        lock(&self.registry)
+            .get(image_id)
+            .cloned()
+            .or_else(|| lock(&self.gallery_registry).get(image_id).cloned())
+    }
+
+    /// 打开图库目录：启动后台索引并返回首屏快照。
+    pub fn open_gallery(
+        &self,
+        path: &Path,
+        filter: GalleryFilter,
+    ) -> Result<GallerySnapshotDto, CommandError> {
+        if !path.is_dir() {
+            return Err(CommandError::invalid_path(format!(
+                "{} 不是目录",
+                path.display()
+            )));
+        }
+        *self
+            .gallery_filter
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = filter;
+        *self
+            .gallery_offset
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = 0;
+        *self.gallery_dir.lock().unwrap_or_else(|p| p.into_inner()) = Some(path.to_path_buf());
+        self.gallery
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .open(path)
+            .map_err(gallery_error)?;
+        self.gallery_snapshot(0, 500)
+    }
+
+    pub fn refresh_gallery(&self) -> Result<GallerySnapshotDto, CommandError> {
+        self.gallery
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .refresh()
+            .map_err(gallery_error)?;
+        let offset = *self
+            .gallery_offset
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        self.gallery_snapshot(offset, 500)
+    }
+
+    pub fn set_gallery_filter(
+        &self,
+        filter: GalleryFilter,
+    ) -> Result<GallerySnapshotDto, CommandError> {
+        *self
+            .gallery_filter
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = filter;
+        *self
+            .gallery_offset
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = 0;
+        self.gallery_snapshot(0, 500)
+    }
+
+    pub fn gallery_page(
+        &self,
+        offset: usize,
+        limit: usize,
+    ) -> Result<GallerySnapshotDto, CommandError> {
+        let limit = limit.clamp(1, 500);
+        *self
+            .gallery_offset
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = offset;
+        self.gallery_snapshot(offset, limit)
+    }
+
+    /// 组装图库快照：查询索引、登记授权表、拼 DTO。
+    fn gallery_snapshot(
+        &self,
+        offset: usize,
+        limit: usize,
+    ) -> Result<GallerySnapshotDto, CommandError> {
+        let filter = self
+            .gallery_filter
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        let index = self.gallery.lock().unwrap_or_else(|p| p.into_inner());
+        let progress = index.progress();
+        let page = index.page(&filter, offset, limit).map_err(gallery_error)?;
+        drop(index);
+
+        // 图库条目的 id 也登记到授权表，供缩略图与对比预览使用。
+        {
+            let mut registry = self
+                .gallery_registry
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            for entry in &page.entries {
+                registry.insert(entry.id.clone(), PathBuf::from(&entry.path));
+            }
+        }
+
+        let dir = self
+            .gallery_dir
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        Ok(GallerySnapshotDto {
+            dir,
+            entries: page.entries.into_iter().map(gallery_entry_dto).collect(),
+            total: page.total,
+            offset,
+            limit,
+            indexed: progress.indexed,
+            index_ready: progress.ready,
+            degraded: progress.degraded,
+            filter: gallery_filter_dto(&filter),
+        })
+    }
+
+    pub fn add_gallery_tag(&self, image_id: &str, tag: &str) -> Result<(), CommandError> {
+        let path = self
+            .gallery_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(image_id)
+            .cloned()
+            .ok_or_else(|| CommandError::invalid_path("图库图片句柄已失效"))?;
+        self.gallery
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .add_tag(&path, tag)
+            .map_err(gallery_error)
+    }
+
+    pub fn remove_gallery_tag(&self, image_id: &str, tag: &str) -> Result<(), CommandError> {
+        let path = self
+            .gallery_registry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(image_id)
+            .cloned()
+            .ok_or_else(|| CommandError::invalid_path("图库图片句柄已失效"))?;
+        self.gallery
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove_tag(&path, tag)
+            .map_err(gallery_error)
+    }
+
+    pub fn enter_compare(
+        &self,
+        image_ids: Vec<String>,
+        full_resolution: bool,
+    ) -> Result<CompareViewDto, CommandError> {
+        if !(2..=4).contains(&image_ids.len()) {
+            return Err(CommandError::new(
+                "invalid_argument",
+                "对比模式需要 2~4 张图片",
+            ));
+        }
+        // 每个句柄都必须已登记，否则缩略图/预览协议会 404；同时收集全像素解码所需的路径。
+        let paths: Vec<PathBuf> = {
+            let registry = self
+                .gallery_registry
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            let directory = self.registry.lock().unwrap_or_else(|p| p.into_inner());
+            image_ids
+                .iter()
+                .map(|id| {
+                    registry
+                        .get(id)
+                        .or_else(|| directory.get(id))
+                        .cloned()
+                        .ok_or_else(|| CommandError::invalid_path("对比图片句柄已失效"))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+
+        let previews: Vec<Option<crate::dto::ComparePreviewDto>> = if full_resolution {
+            let items: Vec<(String, PathBuf)> = image_ids.iter().cloned().zip(paths).collect();
+            self.previews
+                .request_compare_batch(items)
+                .into_iter()
+                .map(|item| {
+                    item.map(|(image_id, revision)| crate::dto::ComparePreviewDto {
+                        image_id,
+                        revision,
+                    })
+                })
+                .collect()
+        } else {
+            vec![None; image_ids.len()]
+        };
+
+        let session = CompareSession {
+            image_ids: image_ids.clone(),
+            layout: "side-by-side".to_owned(),
+            previews: previews.clone(),
+        };
+        let dto = CompareViewDto {
+            image_ids,
+            layout: session.layout.clone(),
+            previews,
+        };
+        *self.compare.lock().unwrap_or_else(|p| p.into_inner()) = Some(session);
+        Ok(dto)
+    }
+
+    pub fn set_compare_layout(&self, layout: &str) -> Result<CompareViewDto, CommandError> {
+        let normalized = match layout {
+            "overlay" => "overlay",
+            _ => "side-by-side",
+        };
+        let mut guard = self.compare.lock().unwrap_or_else(|p| p.into_inner());
+        let session = guard
+            .as_mut()
+            .ok_or_else(|| CommandError::new("gallery_unavailable", "尚未进入对比模式"))?;
+        session.layout = normalized.to_owned();
+        Ok(CompareViewDto {
+            image_ids: session.image_ids.clone(),
+            layout: session.layout.clone(),
+            previews: session.previews.clone(),
+        })
+    }
+
+    /// 退出对比：解除预览保护并清空会话。
+    pub fn exit_compare(&self) {
+        self.previews.clear_compare();
+        *self.compare.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
 
     /// 切换显示目标色彩空间；返回是否真的发生变化。
@@ -366,6 +635,50 @@ impl AppState {
     }
 }
 
+/// 图库领域错误 → 命令错误：`GalleryError::Unavailable` 用独立错误码供前端降级。
+fn gallery_error(error: iv_domain::GalleryError) -> CommandError {
+    let code = match &error {
+        iv_domain::GalleryError::Io(_) => "io",
+        iv_domain::GalleryError::InvalidArgument(_) => "invalid_argument",
+        iv_domain::GalleryError::Unavailable(_) => "gallery_unavailable",
+    };
+    CommandError::new(code, error.to_string())
+}
+
+fn gallery_entry_dto(entry: GalleryEntry) -> GalleryEntryDto {
+    GalleryEntryDto {
+        id: entry.id,
+        path: entry.path.to_string_lossy().into_owned(),
+        name: entry.name,
+        revision: entry.revision,
+        width: entry.width,
+        height: entry.height,
+        format: entry.format,
+        modified_at: entry.modified_at,
+        size_bytes: entry.size_bytes,
+        tags: entry.tags,
+    }
+}
+
+fn gallery_filter_dto(filter: &GalleryFilter) -> GalleryFilterDto {
+    let sort = match filter.sort {
+        iv_domain::GallerySortKey::Name => "name",
+        iv_domain::GallerySortKey::Modified => "modified",
+        iv_domain::GallerySortKey::Size => "size",
+        iv_domain::GallerySortKey::Format => "format",
+    };
+    GalleryFilterDto {
+        query: filter.query.clone(),
+        tags: filter.tags.clone(),
+        format: filter.format.clone(),
+        min_width: filter.min_width,
+        max_width: filter.max_width,
+        from_date: filter.from_date,
+        to_date: filter.to_date,
+        sort: sort.to_owned(),
+    }
+}
+
 /// 设置文件放在应用配置目录（Windows：`%APPDATA%\dev.jikun.imageview`）。
 fn settings_path(app: &AppHandle) -> PathBuf {
     match app.path().app_config_dir() {
@@ -378,6 +691,22 @@ fn settings_path(app: &AppHandle) -> PathBuf {
             std::env::temp_dir().join("image-view").join("settings.ron")
         }
     }
+}
+
+/// 图库索引库放在应用数据目录，与 `settings.ron` 同根。
+fn library_db_path(app: &AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .map(|dir| dir.join("library.sqlite3"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("image-view-library.sqlite3"))
+}
+
+/// 标签 sidecar 放在应用数据目录下，原图目录保持只读。
+fn sidecar_dir(app: &AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .map(|dir| dir.join("sidecars"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("image-view-sidecars"))
 }
 
 /// 缩略图磁盘缓存放在应用缓存目录；与配置分开，浏览器/系统清理缓存时可直接删除。

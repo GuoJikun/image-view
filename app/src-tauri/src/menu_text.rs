@@ -24,6 +24,7 @@ pub const KEYS: &[&str] = &[
     "menu.trash",
     // 显示 › 排序
     "menu.view",
+    "gallery.mode",
     "menu.thumbnails",
     "menu.slideshow",
     "menu.sort",

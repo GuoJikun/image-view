@@ -236,6 +236,12 @@ fn build(app: &AppHandle, locale: &str) -> tauri::Result<(Menu<Wry>, CheckMap)> 
         .build()?;
 
     let display = SubmenuBuilder::new(app, text.t("menu.view"))
+        .item(
+            &MenuItemBuilder::with_id("gallery", text.t("gallery.mode"))
+                .accelerator("CmdOrCtrl+G")
+                .build(app)?,
+        )
+        .separator()
         .item(&thumbnails)
         .item(&slideshow)
         .separator()

@@ -54,10 +54,12 @@ fn store_color_target(target: ColorTarget) -> bool {
     COLOR_TARGET.swap(raw, Ordering::Relaxed) != raw
 }
 
-/// 缓存最近三张预览：当前 + 前后各一张。
-const MAX_CACHED_PREVIEWS: usize = 3;
-/// 像素预算：约 3 张 24 MP，或当前大图 + 两侧预加载。
-const MAX_CACHED_PIXELS: usize = 72_000_000;
+/// 缓存最近预览：当前 + 前后各一张 + 最多 4 张对比图。
+const MAX_CACHED_PREVIEWS: usize = 6;
+/// 像素预算：约 3 张 24 MP（普通浏览），或 4 张全像素对比图 + 当前图。
+const MAX_CACHED_PIXELS: usize = 200_000_000;
+/// 批量对比预览的解码等待上限；超时后该槽位按失败回退缩略图。
+const COMPARE_BATCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// 文件身份；路径、修改时间和大小都一致才认为缓存仍然有效。
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -329,8 +331,9 @@ impl PreviewStore {
         Some(entry)
     }
 
-    /// 同一图片只保留最新 revision；`protected` 为当前显示图片，淘汰时跳过。
-    fn insert(&mut self, entry: Arc<PreviewEntry>, protected: Option<&str>) {
+    /// 同一图片只保留最新 revision；`protected` 为不可淘汰的图片集合
+    /// （当前显示图片 + 对比会话的 2~4 张）。
+    fn insert(&mut self, entry: Arc<PreviewEntry>, protected: &[String]) {
         self.entries
             .retain(|candidate| candidate.image_id != entry.image_id);
         self.entries.push_back(entry);
@@ -340,7 +343,7 @@ impl PreviewStore {
         while (self.entries.len() > MAX_CACHED_PREVIEWS || pixels > MAX_CACHED_PIXELS)
             && index < self.entries.len()
         {
-            if protected.is_some_and(|image_id| self.entries[index].image_id == image_id) {
+            if protected.contains(&self.entries[index].image_id) {
                 index += 1;
                 continue;
             }
@@ -367,18 +370,24 @@ impl PreviewStore {
 enum JobKind {
     Open,
     Preload,
+    /// 全像素对比的批量请求：不参与 latest-wins，带完成回执。
+    Compare,
 }
 
 struct Job {
     kind: JobKind,
-    /// 打开请求的代号；预加载为 0。
+    /// 打开请求的代号；预加载与对比为 0。
     request_id: u64,
-    /// 导航世代；用户切换图片后旧的预加载直接丢弃。
+    /// 导航世代；用户切换图片后旧的预加载直接丢弃。对比为 0，不受导航影响。
     epoch: u64,
     image_id: String,
     revision: u64,
     stamp: FileStamp,
     caps: Caps,
+    /// 对比批量请求的完成回执（槽位下标, revision；失败时 revision 为 0）。
+    compare_done: Option<mpsc::Sender<(usize, u64)>>,
+    /// 对比批量请求在结果数组中的槽位下标。
+    compare_index: usize,
 }
 
 /// 动画解码任务：只对当前打开的图片执行，过期任务直接丢弃。
@@ -401,6 +410,28 @@ struct Shared {
     current_image: Mutex<String>,
     /// 在途预加载，避免同一张图重复入队。
     pending: Mutex<HashSet<(String, FileStamp)>>,
+    /// 对比会话锁定的图片；这些条目的预览不能被淘汰。
+    compare_ids: Mutex<Vec<String>>,
+}
+
+impl Shared {
+    /// 当前显示图片 + 对比图片，作为淘汰时的保护集合。
+    fn protected_ids(&self) -> Vec<String> {
+        let mut ids = self
+            .compare_ids
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        let current = self
+            .current_image
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        if !current.is_empty() && !ids.contains(&current) {
+            ids.push(current);
+        }
+        ids
+    }
 }
 
 /// 预览服务的句柄：命令侧只提交请求与查询缓存，解码在独立线程完成。
@@ -422,6 +453,7 @@ impl PreviewService {
             epoch: AtomicU64::new(0),
             current_image: Mutex::new(String::new()),
             pending: Mutex::new(HashSet::new()),
+            compare_ids: Mutex::new(Vec::new()),
         });
 
         let worker_shared = shared.clone();
@@ -499,6 +531,8 @@ impl PreviewService {
             revision,
             stamp: stamp.clone(),
             caps: caps.clone(),
+            compare_done: None,
+            compare_index: 0,
         };
         if self.tx.send(job).is_err() {
             log::warn!(
@@ -564,10 +598,83 @@ impl PreviewService {
             revision,
             stamp,
             caps,
+            compare_done: None,
+            compare_index: 0,
         };
         if self.tx.send(job).is_err() {
             lock(&self.shared.pending).remove(&pending_key);
         }
+    }
+
+    /// 为全像素对比批量准备预览：不推进 latest-wins（不影响当前浏览），
+    /// 保护全部对比条目不被淘汰，等待解码完成后返回每个 image_id 的 revision。
+    ///
+    /// 调用方须先确保这些 image_id 的预览不依赖当前导航世代；返回项按入参顺序排列，
+    /// 解码失败/超时项为 `None`，前端据此回退缩略图。
+    /// 结果汇总逻辑在 [`collect_compare_results`]（纯函数，可单测）。
+    pub fn request_compare_batch(
+        &self,
+        items: Vec<(String, PathBuf)>,
+    ) -> Vec<Option<(String, u64)>> {
+        let ids: Vec<String> = items.iter().map(|(id, _)| id.clone()).collect();
+        *lock(&self.shared.compare_ids) = ids.clone();
+
+        let (done_tx, done_rx) = mpsc::channel::<(usize, u64)>();
+        let target = current_color_target();
+        let mut cached: Vec<Option<u64>> = Vec::with_capacity(items.len());
+        let mut pending = 0usize;
+
+        for (index, (image_id, path)) in items.into_iter().enumerate() {
+            let stamp = file_stamp(&path);
+            // 命中缓存直接复用 revision（find 会刷新 LRU 顺序）。
+            let hit = lock(&self.shared.store)
+                .find(&image_id, &stamp, target)
+                .map(|entry| entry.revision);
+            cached.push(hit);
+            if hit.is_some() {
+                continue;
+            }
+
+            let revision = lock(&self.shared.store).reserve_revision();
+            let job = Job {
+                kind: JobKind::Compare,
+                request_id: 0,
+                epoch: 0,
+                image_id,
+                revision,
+                stamp,
+                caps: Caps::default(),
+                compare_done: Some(done_tx.clone()),
+                compare_index: index,
+            };
+            if self.tx.send(job).is_ok() {
+                pending += 1;
+            } else {
+                log::warn!(target: "image_view::preview", "对比预览解码线程已退出：{index}");
+            }
+        }
+        drop(done_tx);
+
+        // 等待解码完成回执（含失败项 revision=0），交给纯函数汇总结果。
+        let mut receipts = Vec::with_capacity(pending);
+        let deadline = std::time::Instant::now() + COMPARE_BATCH_TIMEOUT;
+        while receipts.len() < pending {
+            let wait = deadline.saturating_duration_since(std::time::Instant::now());
+            if wait.is_zero() {
+                log::warn!(target: "image_view::preview", "对比预览批量等待超时，仍有 {} 张未完成", pending - receipts.len());
+                break;
+            }
+            match done_rx.recv_timeout(wait) {
+                Ok(receipt) => receipts.push(receipt),
+                Err(_) => break,
+            }
+        }
+        collect_compare_results(&ids, &cached, &receipts)
+    }
+
+    /// 退出对比时解除保护，让这些条目回到正常淘汰策略。
+    pub fn clear_compare(&self) {
+        lock(&self.shared.compare_ids).clear();
     }
 
     /// 推进代号，让所有在途结果过期；预加载也会被丢弃。
@@ -595,6 +702,7 @@ impl PreviewService {
         }
         lock(&self.shared.store).retain_target(target);
         lock(&self.shared.pending).clear();
+        lock(&self.shared.compare_ids).clear();
         self.shared.epoch.fetch_add(1, Ordering::Relaxed);
         log::debug!(
             target: "image_view::preview",
@@ -763,10 +871,13 @@ fn worker(rx: mpsc::Receiver<Job>, shared: Arc<Shared>) {
 
         let mut seen = HashSet::new();
         for job in batch {
-            if job.kind != JobKind::Preload || !seen.insert((job.image_id.clone(), job.epoch)) {
-                continue;
+            match job.kind {
+                JobKind::Compare => run_compare(&shared, job),
+                JobKind::Preload if seen.insert((job.image_id.clone(), job.epoch)) => {
+                    run_preload(&shared, job)
+                }
+                _ => {}
             }
-            run_preload(&shared, job);
         }
     }
 }
@@ -792,8 +903,8 @@ fn run_open(shared: &Shared, job: Job) {
                 return;
             }
             let payload = entry.ready_payload(job.request_id);
-            let current = lock(&shared.current_image).clone();
-            lock(&shared.store).insert(entry, Some(current.as_str()));
+            let protected = shared.protected_ids();
+            lock(&shared.store).insert(entry, &protected);
             emit_ready(shared, payload);
         }
         Err(error) => {
@@ -835,8 +946,67 @@ fn run_preload(shared: &Shared, job: Job) {
         return;
     }
 
-    let current = lock(&shared.current_image).clone();
-    lock(&shared.store).insert(entry, Some(current.as_str()));
+    let protected = shared.protected_ids();
+    lock(&shared.store).insert(entry, &protected);
+}
+
+/// 全像素对比的批量解码：不检查导航代号，完成后写入缓存并发回执。
+fn run_compare(shared: &Shared, job: Job) {
+    let done = job.compare_done.clone();
+    let (index, revision, image_id) = (job.compare_index, job.revision, job.image_id.clone());
+    let stamp = file_stamp(&job.stamp.path);
+    let target = current_color_target();
+
+    // 双重检查：入队后可能已被同一次批处理的其它 job 填入。
+    if lock(&shared.store).contains(&image_id, &stamp, target) {
+        if let Some(tx) = done {
+            let _ = tx.send((index, revision));
+        }
+        return;
+    }
+
+    match decode_entry(&job, Purpose::Preload) {
+        Ok(entry) => {
+            let protected = shared.protected_ids();
+            lock(&shared.store).insert(entry, &protected);
+            if let Some(tx) = done {
+                let _ = tx.send((index, revision));
+            }
+        }
+        Err(error) => {
+            log::warn!(target: "image_view::preview", "对比预览解码失败 {image_id}：{error}");
+            if let Some(tx) = done {
+                let _ = tx.send((index, 0));
+            }
+        }
+    }
+}
+
+/// 汇总全像素批量预览的结果（纯函数：无 IO、无 `AppHandle`，可单测）。
+///
+/// - `ids`：入参顺序的 image_id。
+/// - `cached`：每项命中缓存的 revision；`None` 表示需要解码。
+/// - `receipts`：解码回执 `(槽位下标, revision)`，`revision=0` 表示解码失败。
+///
+/// 命中项用缓存 revision，未命中项按回执下标回填；失败与超时（无回执）保持 `None`，
+/// 前端据此回退缩略图。回执顺序无关，越界下标被忽略。
+fn collect_compare_results(
+    ids: &[String],
+    cached: &[Option<u64>],
+    receipts: &[(usize, u64)],
+) -> Vec<Option<(String, u64)>> {
+    ids.iter()
+        .enumerate()
+        .map(|(index, id)| {
+            if let Some(revision) = cached.get(index).copied().flatten() {
+                return Some((id.clone(), revision));
+            }
+            receipts
+                .iter()
+                .find(|(slot, _)| *slot == index)
+                .and_then(|(_, revision)| (*revision > 0).then(|| (id.clone(), *revision)))
+        })
+        .collect()
 }
 
 fn decode_entry(job: &Job, purpose: Purpose) -> Result<Arc<PreviewEntry>, LoadError> {
@@ -1008,10 +1178,65 @@ mod tests {
         assert_eq!(store.reserve_revision(), 2);
     }
 
+    fn ids(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn compare_results_all_cached() {
+        let result =
+            collect_compare_results(&ids(&["a", "b", "c"]), &[Some(10), Some(20), Some(30)], &[]);
+        assert_eq!(
+            result,
+            vec![
+                Some(("a".into(), 10)),
+                Some(("b".into(), 20)),
+                Some(("c".into(), 30)),
+            ]
+        );
+    }
+
+    #[test]
+    fn compare_results_fills_pending_from_receipts_regardless_of_order() {
+        // b 命中缓存；a、c 解码成功，回执乱序到达；下标必须与入参对齐。
+        let result = collect_compare_results(
+            &ids(&["a", "b", "c"]),
+            &[None, Some(20), None],
+            &[(2, 33), (0, 11)],
+        );
+        assert_eq!(
+            result,
+            vec![
+                Some(("a".into(), 11)),
+                Some(("b".into(), 20)),
+                Some(("c".into(), 33)),
+            ]
+        );
+    }
+
+    #[test]
+    fn compare_results_failed_and_timed_out_slots_stay_none() {
+        // a 解码失败（revision=0）；b 超时（无回执）；c 命中缓存。
+        let result =
+            collect_compare_results(&ids(&["a", "b", "c"]), &[None, None, Some(30)], &[(0, 0)]);
+        assert_eq!(result, vec![None, None, Some(("c".into(), 30))]);
+    }
+
+    #[test]
+    fn compare_results_ignores_out_of_range_receipts() {
+        let result = collect_compare_results(&ids(&["a"]), &[None], &[(5, 99), (0, 7)]);
+        assert_eq!(result, vec![Some(("a".into(), 7))]);
+    }
+
+    #[test]
+    fn compare_results_handles_empty_input() {
+        assert!(collect_compare_results(&[], &[], &[]).is_empty());
+    }
+
     #[test]
     fn cache_hit_requires_the_same_file_stamp() {
         let mut store = PreviewStore::new();
-        store.insert(entry("id-a", 7, stamp("a.jpg", 100)), None);
+        store.insert(entry("id-a", 7, stamp("a.jpg", 100)), &[]);
 
         assert_eq!(
             store
@@ -1034,7 +1259,7 @@ mod tests {
     #[test]
     fn cache_hit_requires_the_same_color_target() {
         let mut store = PreviewStore::new();
-        store.insert(entry("id-a", 7, stamp("a.jpg", 100)), None);
+        store.insert(entry("id-a", 7, stamp("a.jpg", 100)), &[]);
 
         assert!(
             store
@@ -1052,7 +1277,7 @@ mod tests {
     #[test]
     fn switching_target_drops_entries_from_other_spaces() {
         let mut store = PreviewStore::new();
-        store.insert(entry("id-a", 1, stamp("a", 1)), None);
+        store.insert(entry("id-a", 1, stamp("a", 1)), &[]);
 
         store.retain_target(ColorTarget::DisplayP3);
 
@@ -1065,12 +1290,12 @@ mod tests {
         for index in 0..MAX_CACHED_PREVIEWS {
             store.insert(
                 entry(&format!("id-{index}"), 1, stamp("a", 1)),
-                Some("id-0"),
+                &["id-0".to_owned()],
             );
         }
 
         // 超出条目上限时，最旧的 id-1 被淘汰，但当前显示的 id-0 保留。
-        store.insert(entry("id-next", 1, stamp("a", 1)), Some("id-0"));
+        store.insert(entry("id-next", 1, stamp("a", 1)), &["id-0".to_owned()]);
 
         assert!(store.get("id-0", 1).is_some());
         assert!(store.get("id-1", 1).is_none());
@@ -1080,8 +1305,8 @@ mod tests {
     #[test]
     fn inserting_new_revision_replaces_older_one() {
         let mut store = PreviewStore::new();
-        store.insert(entry("id-a", 1, stamp("a", 1)), None);
-        store.insert(entry("id-a", 2, stamp("a", 1)), None);
+        store.insert(entry("id-a", 1, stamp("a", 1)), &[]);
+        store.insert(entry("id-a", 2, stamp("a", 1)), &[]);
 
         assert!(store.get("id-a", 1).is_none());
         assert!(store.get("id-a", 2).is_some());
@@ -1092,20 +1317,20 @@ mod tests {
         let mut store = PreviewStore::new();
 
         let mut first = entry("first", 1, stamp("a", 1));
-        Arc::get_mut(&mut first).expect("unique").width = 6_000;
-        Arc::get_mut(&mut first).expect("unique").height = 5_000;
-        store.insert(first, None);
+        Arc::get_mut(&mut first).expect("unique").width = 10_000;
+        Arc::get_mut(&mut first).expect("unique").height = 8_000;
+        store.insert(first, &[]);
 
         let mut second = entry("second", 1, stamp("b", 1));
-        Arc::get_mut(&mut second).expect("unique").width = 6_000;
-        Arc::get_mut(&mut second).expect("unique").height = 5_000;
-        store.insert(second, None);
+        Arc::get_mut(&mut second).expect("unique").width = 10_000;
+        Arc::get_mut(&mut second).expect("unique").height = 8_000;
+        store.insert(second, &[]);
 
-        // 60 MP 再加 20 MP 超过 72 MP 预算；淘汰第二张而不是当前显示的 first。
+        // 80 MP + 80 MP + 60 MP 超过 200 MP 预算；淘汰第二张而不是当前显示的 first。
         let mut preload = entry("preload", 1, stamp("c", 1));
-        Arc::get_mut(&mut preload).expect("unique").width = 5_000;
-        Arc::get_mut(&mut preload).expect("unique").height = 4_000;
-        store.insert(preload, Some("first"));
+        Arc::get_mut(&mut preload).expect("unique").width = 10_000;
+        Arc::get_mut(&mut preload).expect("unique").height = 6_000;
+        store.insert(preload, &["first".to_owned()]);
 
         assert!(store.get("first", 1).is_some());
         assert!(store.get("second", 1).is_none());
@@ -1142,8 +1367,8 @@ mod tests {
         let mut store = PreviewStore::new();
         let previous = entry("id-old", 1, stamp("old.gif", 1));
         previous.set_animation(animation(&[100, 100]));
-        store.insert(previous.clone(), None);
-        store.insert(entry("id-new", 1, stamp("new.jpg", 1)), None);
+        store.insert(previous.clone(), &[]);
+        store.insert(entry("id-new", 1, stamp("new.jpg", 1)), &[]);
 
         store.drop_animations_except("id-new");
         assert!(previous.animation().is_none(), "旧动画应随切图释放");

@@ -207,6 +207,71 @@ impl MenuStateDto {
     }
 }
 
+/// 图库中的一张图片。`id` 与 `revision` 用于缩略图资源 URL。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GalleryEntryDto {
+    pub id: String,
+    pub path: String,
+    pub name: String,
+    pub revision: u64,
+    pub width: usize,
+    pub height: usize,
+    pub format: String,
+    pub modified_at: Option<i64>,
+    pub size_bytes: u64,
+    pub tags: Vec<String>,
+}
+
+/// 图库筛选条件（命令入参与快照回传）。
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GalleryFilterDto {
+    pub query: String,
+    pub tags: Vec<String>,
+    pub format: String,
+    pub min_width: usize,
+    pub max_width: usize,
+    pub from_date: Option<i64>,
+    pub to_date: Option<i64>,
+    /// `name` / `modified` / `size` / `format`。
+    pub sort: String,
+}
+
+/// 一次图库查询的结果（含分页与索引进度）。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GallerySnapshotDto {
+    pub dir: String,
+    pub entries: Vec<GalleryEntryDto>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub indexed: usize,
+    pub index_ready: bool,
+    pub degraded: bool,
+    pub filter: GalleryFilterDto,
+}
+
+/// 对比视图的槽位与布局。`previews` 在全像素模式下给出每个槽位的预览版本。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompareViewDto {
+    pub image_ids: Vec<String>,
+    /// `side-by-side` 或 `overlay`。
+    pub layout: String,
+    /// 与 `image_ids` 一一对应；缩略图模式下为 `None`，全像素解码失败也为 `None`。
+    pub previews: Vec<Option<ComparePreviewDto>>,
+}
+
+/// 全像素对比中单个槽位的预览版本（用于拼 preview URL）。
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComparePreviewDto {
+    pub image_id: String,
+    pub revision: u64,
+}
+
 /// 文件扩展名 → 展示用格式名。
 pub fn format_label(path: &std::path::Path) -> String {
     path.extension()

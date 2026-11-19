@@ -21,6 +21,7 @@ iv-cache = { path = "../../crates/iv-cache" }
 iv-domain = { path = "../../crates/iv-domain" }
 iv-image-decode = { path = "../../crates/iv-image-decode" }
 iv-infra = { path = "../../crates/iv-infra" }
+iv-library = { path = "../../crates/iv-library" }
 iv-platform = { path = "../../crates/iv-platform" }
 
 tauri = { version = "2.12.6", features = [] }
