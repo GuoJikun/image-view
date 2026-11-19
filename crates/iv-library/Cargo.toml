@@ -7,3 +7,15 @@ publish.workspace = true
 description = "ImageViewer 图片库索引（SQLite、收藏、标签、搜索）"
 
 [dependencies]
+iv-domain = { path = "../iv-domain" }
+iv-application = { path = "../iv-application" }
+iv-files = { path = "../iv-files" }
+iv-image-decode = { path = "../iv-image-decode" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+uuid = { version = "1", features = ["v4", "v5"] }
+
+[dev-dependencies]
+chrono = { workspace = true }

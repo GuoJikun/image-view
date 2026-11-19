@@ -34,6 +34,8 @@ imgalifier-heif = { version = "0.1", default-features = false }
 resvg = "0.50"
 # JPEG XL 解码。`image` 集成提供 `ImageDecoder`；`lcms2` 让 CMYK 文件复用同一份 LCMS。
 jxl-oxide = { version = "0.12", features = ["image", "lcms2"] }
+# 图库索引：bundled 静态链接 SQLite，避免随包分发 DLL。
+rusqlite = { version = "0.36", features = ["bundled"] }
 
 [profile.release]
 lto = "thin"
