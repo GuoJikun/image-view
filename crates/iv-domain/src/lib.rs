@@ -7,6 +7,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+mod gallery;
+pub use gallery::*;
+
 /// 与解码器特性保持一致的扩展名列表。
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "qoi", "tga", "pnm", "hdr",

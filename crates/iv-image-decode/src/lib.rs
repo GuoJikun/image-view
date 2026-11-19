@@ -479,6 +479,18 @@ pub fn decode_thumbnail(path: &Path, max_side: u32) -> Result<Decoded, LoadError
     decode(path, &caps, Purpose::Open)
 }
 
+/// 只读图片头部取得像素尺寸，不解码整幅图像。
+///
+/// 供图库索引填充分辨率字段：失败返回 `None`，调用方用 0 表示“未知”，不阻塞索引。
+pub fn probe_dimensions(path: &Path) -> Option<[usize; 2]> {
+    let reader = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?;
+    let (width, height) = reader.into_dimensions().ok()?;
+    Some([width as usize, height as usize])
+}
+
 /// 可能包含多帧的格式。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AnimationKind {
@@ -1163,6 +1175,32 @@ mod tests {
     #[test]
     fn target_size_respects_max_side() {
         assert_eq!(target_size([10_000, 5_000], 8192, 40_000_000), [8192, 4096]);
+    }
+
+    #[test]
+    fn probe_dimensions_reads_png_header() {
+        use image::ImageEncoder;
+
+        let dir = std::env::temp_dir().join(format!(
+            "image-view-probe-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("probe.png");
+        let file = std::fs::File::create(&path).expect("create file");
+        let encoder = image::codecs::png::PngEncoder::new(file);
+        encoder
+            .write_image(&[0u8; 4 * 7 * 5], 7, 5, image::ExtendedColorType::Rgba8)
+            .expect("write png");
+
+        assert_eq!(probe_dimensions(&path), Some([7, 5]));
+        assert_eq!(probe_dimensions(&dir.join("missing.png")), None);
+
+        std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 
     #[test]

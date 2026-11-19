@@ -8,3 +8,6 @@ description = "ImageViewer 领域类型：图片格式、排序与用户偏好�
 
 [dependencies]
 serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

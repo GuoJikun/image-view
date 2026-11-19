@@ -6,7 +6,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use iv_domain::SortOrder;
+use iv_domain::{GalleryError, GalleryFilter, GalleryPage, GalleryProgress, SortOrder};
 use iv_files::{scan, sort_files};
 
 /// 当前目录及其中的图片列表。
@@ -165,6 +165,33 @@ impl FolderNav {
     pub fn can_next(&self) -> bool {
         self.index.is_some_and(|index| index + 1 < self.files.len())
     }
+}
+
+/// 图库索引端口。具体索引（如 `iv-library` 的 SQLite 实现）实现此 trait，
+/// 壳层只依赖本 trait，不直接依赖索引的存储细节。
+pub trait GalleryIndex {
+    /// 打开目录并启动增量索引，返回当前进度。
+    fn open(&mut self, dir: &Path) -> Result<GalleryProgress, GalleryError>;
+
+    /// 强制增量刷新当前目录。
+    fn refresh(&mut self) -> Result<GalleryProgress, GalleryError>;
+
+    /// 按筛选与偏移分页取条目。
+    fn page(
+        &self,
+        filter: &GalleryFilter,
+        offset: usize,
+        limit: usize,
+    ) -> Result<GalleryPage, GalleryError>;
+
+    /// 给路径加标签（sidecar 为权威源，成功后同步进索引）。
+    fn add_tag(&mut self, path: &Path, tag: &str) -> Result<(), GalleryError>;
+
+    /// 移除路径的标签。
+    fn remove_tag(&mut self, path: &Path, tag: &str) -> Result<(), GalleryError>;
+
+    /// 当前索引进度（不触发扫描）。
+    fn progress(&self) -> GalleryProgress;
 }
 
 #[cfg(test)]
