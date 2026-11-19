@@ -117,6 +117,8 @@ pub struct MetaInfo {
     pub modified: Option<SystemTime>,
     pub source_size: Option<[u32; 2]>,
     pub decoded_size: Option<[u32; 2]>,
+    /// 预览是否按像素预算缩小过；与 main 的 `PreviewReadyDto::downscaled` 同义。
+    pub downscaled: bool,
     pub depth: Option<u8>,
     /// 保留结构化色彩信息，展示时再按界面语言组句。
     pub color: Option<ColorInfo>,
@@ -132,6 +134,7 @@ impl MetaInfo {
             modified: metadata.and_then(|metadata| metadata.modified().ok()),
             source_size: None,
             decoded_size: None,
+            downscaled: false,
             depth: None,
             color: None,
         }
@@ -140,6 +143,7 @@ impl MetaInfo {
     pub fn absorb(&mut self, image: &LoadedImage) {
         self.source_size = Some(image.source_size);
         self.decoded_size = Some(image.pixel_size);
+        self.downscaled = image.source_size != image.pixel_size;
         self.depth = Some(image.depth);
         self.color = Some(image.color.clone());
     }
@@ -218,8 +222,9 @@ pub fn format_label(path: &Path, unknown: &str) -> String {
         .unwrap_or_else(|| unknown.to_owned())
 }
 
+/// 与 main 的 `MetadataPanel.vue::formatBytes` 保持同一套单位标签。
 pub fn format_size(bytes: u64) -> String {
-    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
     let mut value = bytes as f64;
     let mut unit = 0;
     while value >= 1024.0 && unit + 1 < UNITS.len() {
@@ -241,8 +246,8 @@ mod tests {
     fn file_sizes_use_binary_units() {
         assert_eq!(format_size(0), "0 B");
         assert_eq!(format_size(1023), "1023 B");
-        assert_eq!(format_size(1024), "1.0 KiB");
-        assert_eq!(format_size(5 * 1024 * 1024), "5.0 MiB");
+        assert_eq!(format_size(1024), "1.0 KB");
+        assert_eq!(format_size(5 * 1024 * 1024), "5.0 MB");
     }
 
     #[test]

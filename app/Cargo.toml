@@ -39,6 +39,8 @@ iced = { version = "0.14.0", features = [
     "wayland",
 ] }
 emath = { workspace = true }
+# 元数据面板的绝对修改时间按本地时区格式化，与 main 的 Intl.DateTimeFormat 对齐。
+chrono = { version = "0.4", features = ["clock"] }
 # 只用于窗口图标与测试夹具，不承担图片解码。
 image = { workspace = true, features = ["png"] }
 rfd = { version = "0.18", default-features = false }

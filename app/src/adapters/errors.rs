@@ -4,7 +4,7 @@
 //! 不在 Core 里出现任何中英文字面量。
 
 use iv_image_decode::{DegradeReason, LoadError};
-use iv_metadata::ColorInfo;
+use iv_metadata::{ColorInfo, ColorTarget};
 use iv_platform::FileOpError;
 
 use crate::i18n::Text;
@@ -56,4 +56,63 @@ pub fn color_label(info: &ColorInfo, t: &Text) -> Option<String> {
         Some(name) => format!("{name} → sRGB"),
         None => format!("{} sRGB", t.color_converted),
     })
+}
+
+/// 元数据面板的色彩行，与 main 的 `MetadataPanel.vue` 逐字对齐：
+/// 未转换时也显示像素被解释成的目标空间；只有转换过才追加「已转换到」和源 profile。
+pub fn metadata_color_label(info: &ColorInfo, t: &Text) -> String {
+    let target = match info.target {
+        ColorTarget::Srgb => "sRGB",
+        ColorTarget::DisplayP3 => "Display P3",
+    };
+    if !info.converted {
+        return target.to_owned();
+    }
+    match info.source_label() {
+        Some(name) => format!("{} {target} ({name})", t.color_converted),
+        None => format!("{} {target}", t.color_converted),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::{EN, ZH};
+
+    #[test]
+    fn metadata_color_label_matches_main() {
+        let srgb = ColorInfo::default();
+        assert_eq!(metadata_color_label(&srgb, &ZH), "sRGB");
+        assert_eq!(metadata_color_label(&srgb, &EN), "sRGB");
+
+        let p3 = ColorInfo {
+            target: ColorTarget::DisplayP3,
+            ..ColorInfo::default()
+        };
+        assert_eq!(metadata_color_label(&p3, &ZH), "Display P3");
+
+        let converted = ColorInfo {
+            converted: true,
+            source: Some("  Adobe RGB  ".to_owned()),
+            target: ColorTarget::Srgb,
+        };
+        assert_eq!(
+            metadata_color_label(&converted, &ZH),
+            "已转换到 sRGB (Adobe RGB)"
+        );
+        assert_eq!(
+            metadata_color_label(&converted, &EN),
+            "Converted to sRGB (Adobe RGB)"
+        );
+
+        let unnamed = ColorInfo {
+            converted: true,
+            source: None,
+            target: ColorTarget::DisplayP3,
+        };
+        assert_eq!(
+            metadata_color_label(&unnamed, &EN),
+            "Converted to Display P3"
+        );
+    }
 }

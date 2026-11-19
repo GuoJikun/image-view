@@ -8,7 +8,7 @@
 //! - 语言选择由 [`iv_domain::Language`] 决定，`System` 时按系统标签回退（非中文→英文）；
 //! - 带参数的文案走方法而不是 `format!`，由文案表决定标点与语序。
 
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use iv_domain::Language;
 
@@ -98,17 +98,21 @@ text_table! {
     status_frame,
     banner_dismiss,
 
-    // 元数据面板
+    // 元数据面板（与 main 分支的 app/src/locales/*.json 一一对应）
+    metadata_title,
+    metadata_hide,
     metadata_empty,
     metadata_format,
-    metadata_file_name,
-    metadata_dimensions,
+    metadata_source_size,
+    metadata_display_size,
     metadata_file_size,
     metadata_modified,
     metadata_depth,
     metadata_color,
-    metadata_locate,
-    metadata_copy_path,
+    metadata_downscaled,
+    metadata_yes,
+    metadata_no,
+    metadata_note,
     metadata_unknown,
     color_converted,
 
@@ -214,16 +218,20 @@ pub static ZH: Text = Text {
     status_frame: "帧",
     banner_dismiss: "关闭",
 
-    metadata_empty: "未打开图片",
+    metadata_title: "元数据",
+    metadata_hide: "隐藏面板",
+    metadata_empty: "打开图片后显示尺寸、格式与色彩信息。",
     metadata_format: "格式",
-    metadata_file_name: "文件名",
-    metadata_dimensions: "尺寸",
+    metadata_source_size: "原图尺寸",
+    metadata_display_size: "显示尺寸",
     metadata_file_size: "文件大小",
     metadata_modified: "修改时间",
     metadata_depth: "位深",
     metadata_color: "色彩",
-    metadata_locate: "定位",
-    metadata_copy_path: "复制路径",
+    metadata_downscaled: "降采样",
+    metadata_yes: "是",
+    metadata_no: "否",
+    metadata_note: "当前显示的是降采样结果；「100%」相对显示尺寸，而非原图。",
     metadata_unknown: "未知",
     color_converted: "已转换到",
 
@@ -324,16 +332,20 @@ pub static EN: Text = Text {
     status_frame: "Frame",
     banner_dismiss: "Dismiss",
 
-    metadata_empty: "No image open",
+    metadata_title: "Metadata",
+    metadata_hide: "Hide panel",
+    metadata_empty: "Image details appear here after opening a file.",
     metadata_format: "Format",
-    metadata_file_name: "File name",
-    metadata_dimensions: "Dimensions",
+    metadata_source_size: "Source size",
+    metadata_display_size: "Display size",
     metadata_file_size: "File size",
     metadata_modified: "Modified",
-    metadata_depth: "Bit depth",
+    metadata_depth: "Depth",
     metadata_color: "Color",
-    metadata_locate: "Reveal",
-    metadata_copy_path: "Copy path",
+    metadata_downscaled: "Downsampled",
+    metadata_yes: "Yes",
+    metadata_no: "No",
+    metadata_note: "The preview is downsampled; 100% refers to the displayed size, not the source.",
     metadata_unknown: "Unknown",
     color_converted: "Converted to",
 
@@ -406,20 +418,6 @@ impl Text {
         }
     }
 
-    /// 原图与显示尺寸不一致时的维度文案。
-    pub fn dimensions_with_display(&self, source: [u32; 2], decoded: [u32; 2]) -> String {
-        match self.lang {
-            Lang::Zh => format!(
-                "{}×{}（显示 {}×{}）",
-                source[0], source[1], decoded[0], decoded[1]
-            ),
-            Lang::En => format!(
-                "{}×{} (shown {}×{})",
-                source[0], source[1], decoded[0], decoded[1]
-            ),
-        }
-    }
-
     /// 图片超过安全上限。
     pub fn image_too_large(&self, width: u32, height: u32) -> String {
         match self.lang {
@@ -459,56 +457,17 @@ impl Text {
         self.detail(self.notice_path_missing, path)
     }
 
-    /// 相对修改时间；不引入额外时区依赖。
-    pub fn relative_age(&self, modified: Option<SystemTime>) -> String {
+    /// 元数据面板的绝对修改时间：与 main 的 `Intl.DateTimeFormat`
+    /// （`dateStyle: medium` + `timeStyle: short`）逐项对齐，按本地时区显示。
+    pub fn absolute_time(&self, modified: Option<SystemTime>) -> String {
         let Some(modified) = modified else {
             return self.metadata_unknown.to_owned();
         };
-        let elapsed = SystemTime::now()
-            .duration_since(modified)
-            .unwrap_or(Duration::ZERO);
-        let seconds = elapsed.as_secs();
-
+        let local = chrono::DateTime::<chrono::Local>::from(modified);
         match self.lang {
-            Lang::Zh => {
-                if seconds < 60 {
-                    "刚刚".to_owned()
-                } else if seconds < 3_600 {
-                    format!("{} 分钟前", seconds / 60)
-                } else if seconds < 86_400 {
-                    format!("{} 小时前", seconds / 3_600)
-                } else if seconds < 86_400 * 30 {
-                    format!("{} 天前", seconds / 86_400)
-                } else if seconds < 86_400 * 365 {
-                    format!("{} 个月前", seconds / (86_400 * 30))
-                } else {
-                    format!("{} 年前", seconds / (86_400 * 365))
-                }
-            }
-            Lang::En => {
-                if seconds < 60 {
-                    "just now".to_owned()
-                } else if seconds < 3_600 {
-                    plural(seconds / 60, "minute")
-                } else if seconds < 86_400 {
-                    plural(seconds / 3_600, "hour")
-                } else if seconds < 86_400 * 30 {
-                    plural(seconds / 86_400, "day")
-                } else if seconds < 86_400 * 365 {
-                    plural(seconds / (86_400 * 30), "month")
-                } else {
-                    plural(seconds / (86_400 * 365), "year")
-                }
-            }
+            Lang::Zh => local.format("%Y年%-m月%-d日 %H:%M").to_string(),
+            Lang::En => local.format("%b %-d, %Y, %-I:%M %p").to_string(),
         }
-    }
-}
-
-fn plural(count: u64, unit: &str) -> String {
-    if count == 1 {
-        format!("1 {unit} ago")
-    } else {
-        format!("{count} {unit}s ago")
     }
 }
 
@@ -565,35 +524,22 @@ mod tests {
             EN.detail("Failed to read file", "denied"),
             "Failed to read file: denied"
         );
-        assert_eq!(
-            ZH.dimensions_with_display([4000, 3000], [2000, 1500]),
-            "4000×3000（显示 2000×1500）"
-        );
-        assert_eq!(
-            EN.dimensions_with_display([4000, 3000], [2000, 1500]),
-            "4000×3000 (shown 2000×1500)"
-        );
         assert_eq!(ZH.trashed_notice("a.png"), "已移到回收站：a.png");
         assert_eq!(EN.trashed_notice("a.png"), "Moved to Trash: a.png");
     }
 
     #[test]
-    fn relative_age_is_localized() {
+    fn absolute_time_matches_main_format() {
+        // 只断言格式结构，不锁死时区（CI 可能跑在 UTC 或其他时区）。
         let now = SystemTime::now();
-        assert_eq!(ZH.relative_age(Some(now - Duration::from_secs(5))), "刚刚");
-        assert_eq!(
-            ZH.relative_age(Some(now - Duration::from_secs(120))),
-            "2 分钟前"
+        let zh = ZH.absolute_time(Some(now));
+        let en = EN.absolute_time(Some(now));
+        assert!(
+            zh.contains('年') && zh.contains('月') && zh.contains('日'),
+            "{zh}"
         );
-        assert_eq!(
-            EN.relative_age(Some(now - Duration::from_secs(120))),
-            "2 minutes ago"
-        );
-        assert_eq!(
-            EN.relative_age(Some(now - Duration::from_secs(3_600))),
-            "1 hour ago"
-        );
-        assert_eq!(ZH.relative_age(None), "未知");
-        assert_eq!(EN.relative_age(None), "Unknown");
+        assert!(en.contains(','), "{en}");
+        assert_eq!(ZH.absolute_time(None), "未知");
+        assert_eq!(EN.absolute_time(None), "Unknown");
     }
 }

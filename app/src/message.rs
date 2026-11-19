@@ -87,8 +87,6 @@ pub enum Message {
     /// 无副作用的占位消息：用于「弹窗内点击不穿透到遮罩」。
     Noop,
 
-    Reveal,
-    CopyPath,
     ApplyWindowMode(iced::window::Mode),
 
     /// 自绘标题栏（Win/Linux）：拖动 / 双击最大化 / caption 按钮。

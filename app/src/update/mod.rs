@@ -140,12 +140,6 @@ pub fn update(state: &mut AppState, message: Message) -> Task<Message> {
             task::toggle_playback(state);
             Task::none()
         }
-        Message::Reveal => {
-            library::reveal(state);
-            Task::none()
-        }
-        Message::CopyPath => library::copy_path(state),
-
         // ---- 异步结果与系统事件 ----
         Message::SystemTheme(mode) => {
             state.system_theme = mode;

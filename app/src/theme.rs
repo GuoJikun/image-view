@@ -4,7 +4,7 @@
 //! `style` 闭包从 `Palette::from(theme)` 取色，避免在 view 层散落颜色字面量。
 
 use iced::border::Radius;
-use iced::widget::{button, container, svg};
+use iced::widget::{button, container, rule, svg};
 use iced::{Background, Border, Color, Shadow, Theme, Vector};
 
 /// 将 `#RRGGBB` 转为 [`Color`]（不透明）。
@@ -438,6 +438,27 @@ pub fn keycap(theme: &Theme) -> container::Style {
             width: HAIRLINE,
             radius: radius(4.0),
         },
+        ..Default::default()
+    }
+}
+
+/// 元数据面板内的 1px 分隔线：标题栏下沿、文件信息下沿。
+pub fn hairline_rule(theme: &Theme) -> rule::Style {
+    rule::Style {
+        color: Palette::from(theme).hairline,
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    }
+}
+
+/// 降采样提示条：accent-soft 底 + accent 文字，与 main 的 `.panel-note` 对应。
+pub fn accent_note(theme: &Theme) -> container::Style {
+    let p = Palette::from(theme);
+    container::Style {
+        background: Some(Background::Color(p.accent_soft)),
+        text_color: Some(p.accent),
+        border: Border::default().rounded(RADIUS_CONTROL),
         ..Default::default()
     }
 }
