@@ -3,7 +3,7 @@
 //! macOS 不编译此模块——那里用系统原生标题栏（`main.rs` 保留 decorations），
 //! 菜单栏单独占窗口顶部一行（见 `view/mod.rs`）。
 
-use iced::widget::{button, container, mouse_area, row, text};
+use iced::widget::{button, column, container, mouse_area, row, rule, text};
 use iced::{Alignment, Element, Fill, Padding};
 
 use crate::message::{Caption, Message};
@@ -59,11 +59,16 @@ pub fn view(state: &AppState) -> Element<'_, Message> {
             left: 12.0,
         });
 
-    container(bar)
-        .style(theme::chrome)
-        .width(Fill)
-        .height(28)
-        .into()
+    // main 的 `.titlebar` 有 `border-bottom: 1px solid var(--hairline)`，用来把
+    // 标题栏与工具栏隔开。chrome 样式被多处复用，不能就地加边框，故在标题栏
+    // 下方补一条同款 1px rule。column 默认 Shrink，必须显式 width(Fill)，
+    // 否则 rule 的 Fill 宽度会被解析成 0 而看不见。
+    column![
+        container(bar).style(theme::chrome).width(Fill).height(28),
+        rule::horizontal(1.0).style(theme::hairline_rule),
+    ]
+    .width(Fill)
+    .into()
 }
 
 fn caption_button(
