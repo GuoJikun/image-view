@@ -11,8 +11,8 @@ const gallery = useGalleryStore();
 const compare = useCompareStore();
 const ui = useUiStore();
 
-const CARD_WIDTH = 140;
-const CARD_HEIGHT = 116;
+const MIN_CARD_WIDTH = 124; // 卡片最小宽度：宽度不足时列数减少，卡片不会太窄
+const CARD_HEIGHT = 112;
 const GAP = 12;
 const PAD = 16;
 const OVERSCAN = 2;
@@ -23,14 +23,22 @@ const viewportHeight = ref(0);
 const viewportWidth = ref(0);
 const queryInput = ref("");
 
+/** 列数随可用宽度变化；每列至少 MIN_CARD_WIDTH，多余空间均分给卡片。 */
 const columns = computed(() =>
-  Math.max(1, Math.floor((viewportWidth.value - PAD * 2 + GAP) / (CARD_WIDTH + GAP))),
+  Math.max(1, Math.floor((viewportWidth.value - PAD * 2 + GAP) / (MIN_CARD_WIDTH + GAP))),
 );
-const rowHeight = CARD_HEIGHT + GAP;
+/** 卡片实际宽度：把剩余空间平均分给每列，铺满整行。 */
+const cardWidth = computed(() => {
+  const total = viewportWidth.value - PAD * 2 - GAP * (columns.value - 1);
+  return Math.max(MIN_CARD_WIDTH, total / columns.value);
+});
+const rowHeight = computed(() => CARD_HEIGHT + GAP);
 const totalRows = computed(() => Math.ceil(gallery.entries.length / columns.value));
-const startRow = computed(() => Math.max(0, Math.floor(scrollTop.value / rowHeight) - OVERSCAN));
+const startRow = computed(() =>
+  Math.max(0, Math.floor(scrollTop.value / rowHeight.value) - OVERSCAN),
+);
 const visibleRows = computed(
-  () => Math.ceil(viewportHeight.value / rowHeight) + OVERSCAN * 2 + 1,
+  () => Math.ceil(viewportHeight.value / rowHeight.value) + OVERSCAN * 2 + 1,
 );
 const visible = computed(() => {
   const start = startRow.value * columns.value;
@@ -40,7 +48,7 @@ const visible = computed(() => {
     index: start + offset,
   }));
 });
-const trackHeight = computed(() => PAD * 2 + totalRows.value * rowHeight - GAP);
+const trackHeight = computed(() => PAD * 2 + totalRows.value * rowHeight.value - GAP);
 
 function onScroll(offset: number): void {
   scrollTop.value = offset;
@@ -48,13 +56,18 @@ function onScroll(offset: number): void {
   if (offset + viewportHeight.value >= trackHeight.value - 200) void gallery.loadMore();
 }
 
-function onResize(size: { client: number; scroll: number; width?: number }): void {
+function onResize(size: { client: number; scroll: number }): void {
   viewportHeight.value = size.client;
+  measureWidth();
+}
+
+function measureWidth(): void {
+  viewportWidth.value = scroller.value?.wrap?.clientWidth ?? 0;
 }
 
 function measure(): void {
   viewportHeight.value = scroller.value?.wrap?.clientHeight ?? 0;
-  viewportWidth.value = scroller.value?.wrap?.clientWidth ?? 0;
+  measureWidth();
 }
 
 async function submitSearch(): Promise<void> {
@@ -152,9 +165,9 @@ onMounted(() => {
           class="gallery-card"
           :class="{ selected: gallery.selectedIds.includes(entry.id) }"
           :style="{
-            left: `${PAD + (index % columns) * (CARD_WIDTH + GAP)}px`,
+            left: `${PAD + (index % columns) * (cardWidth + GAP)}px`,
             top: `${PAD + Math.floor(index / columns) * rowHeight}px`,
-            width: `${CARD_WIDTH}px`,
+            width: `${cardWidth}px`,
           }"
           :title="entry.name"
           @click="gallery.toggleSelected(entry.id, true)"
@@ -167,7 +180,6 @@ onMounted(() => {
             decoding="async"
             draggable="false"
           />
-          <span class="gallery-card-name">{{ entry.name }}</span>
           <span v-if="entry.tags.length" class="gallery-card-tags">{{ entry.tags.join(" · ") }}</span>
         </button>
       </div>
